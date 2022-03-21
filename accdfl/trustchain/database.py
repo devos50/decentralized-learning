@@ -94,9 +94,7 @@ class TrustChainDB(Database):
             self.execute(self.get_sql_header() + query, params, fetch_all=True)
         )
         return [
-            self.get_block_class(
-                db_item if isinstance(db_item, bytes) else str(db_item).encode("utf-8")
-            )(db_item)
+            self.get_block_class(db_item[0])(db_item)
             for db_item in db_result
         ]
 

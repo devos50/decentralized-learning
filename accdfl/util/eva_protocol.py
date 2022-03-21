@@ -401,7 +401,6 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
             return
 
         transfer.block_number = payload.number
-        print("Block nr: %d, count: %d" % (transfer.block_number, transfer.block_count))
         if transfer.block_number > transfer.block_count:
             self.finish_outgoing_transfer(peer, transfer)
             return
