@@ -57,3 +57,11 @@ class TestDFLCommunity(TestBase):
         await gather(*[node.overlay.advance_round() for node in self.nodes])
         for node in self.nodes:
             assert node.overlay.round == 2
+
+    async def test_compute_accuracy(self):
+        """
+        Test computing the accuracy of a model.
+        """
+        await self.nodes[0].overlay.train()
+        accuracy, loss = self.nodes[0].overlay.compute_accuracy(max_items=10)
+        assert accuracy > 0

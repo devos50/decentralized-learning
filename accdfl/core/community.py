@@ -130,12 +130,18 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         self.round_deferred = Future()
         self.incoming_models = None
 
-    def compute_accuracy(self):
+    def compute_accuracy(self, max_items=-1):
+        """
+        Compute the accuracy/loss of the current model.
+        """
         self.model.eval()
         correct = example_number = total_loss = num_batches = 0
-        train = torch.utils.data.DataLoader(self.dataset.dataset, 1000)
+        train = torch.utils.data.DataLoader(self.dataset.dataset, 100)
         with torch.no_grad():
+            cur_item = 0
             for data, target in train:
+                if max_items != -1 and cur_item == max_items:
+                    break
                 data, target = Variable(data), Variable(target)
                 output = self.model.forward(data)
                 loss = F.nll_loss(output, target)
@@ -144,6 +150,11 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                 _, predicted = torch.max(output.data, 1)
                 correct += (predicted == target).sum().item()
                 example_number += target.size(0)
+                cur_item += 1
+
+        accuracy = float(correct) / float(example_number)
+        loss = total_loss / float(example_number)
+        return accuracy, loss
 
     def get_peer_by_pk(self, target_pk: bytes):
         peers = list(self.get_peers())
