@@ -1,7 +1,6 @@
 import hashlib
 import io
 import json
-import pickle
 from asyncio import Future
 from binascii import unhexlify, hexlify
 from typing import Optional
@@ -24,7 +23,7 @@ from accdfl.trustchain.community import TrustChainCommunity
 from accdfl.util.eva_protocol import EVAProtocolMixin
 from ipv8.lazy_community import lazy_wrapper
 from ipv8.messaging.payload_headers import BinMemberAuthenticationPayload, GlobalTimeDistributionPayload
-from ipv8.util import fail, succeed
+from ipv8.util import fail
 
 
 class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
@@ -35,10 +34,14 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         self.eva_init()
         self.data_store = DataStore()
         self.model_store = ModelStore()
+        self.parameters = None
         self.model = None
         self.dataset = None
         self.optimizer = None
         self.round = 1
+        self.participants = 1
+        self.round_deferred = Future()
+        self.incoming_models = {}
 
         self.eva_register_receive_callback(self.on_receive)
         self.eva_register_send_complete_callback(self.on_send_complete)
@@ -51,9 +54,11 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         self.add_message_handler(DataNotFoundResponse, self.on_data_not_found_response)
 
     def setup(self, parameters):
+        self.parameters = parameters
         self.model = LinearModel(28 * 28)  # For MNIST
         self.dataset = Dataset("/Users/martijndevos/Documents/mnist", parameters["batch_size"])
         self.optimizer = SGDOptimizer(self.model, parameters["learning_rate"], parameters["momentum"])
+        self.participants = parameters["participants"]
 
     async def train(self):
         old_model_serialized = serialize_model(self.model)
@@ -88,6 +93,42 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         # Record the training and aggregation step
         tx = {"round": self.round, "inputs": hashes, "old_model": old_model_hash, "new_model": new_model_hash}
         await self.self_sign_block(b"model_update", transaction=tx)
+
+    def average_models(self, models):
+        with torch.no_grad():
+            weights = [float(1. / len(models)) for _ in range(len(models))]
+            center_model = models[0].copy()
+            for p in center_model.parameters():
+                p.mul_(0)
+            for m, w in zip(models, weights):
+                for c1, p1 in zip(center_model.parameters(), m.parameters()):
+                    c1.add_(w * p1)
+            return center_model
+
+    async def advance_round(self):
+        """
+        Complete a round of training and model aggregation.
+        """
+        # Train
+        await self.train()
+
+        # Send the model to your neighbours
+        for peer in self.get_peers():
+            response = {"round": self.round}
+            self.eva_send_binary(peer, json.dumps(response).encode(), serialize_model(self.model))
+
+        await self.round_deferred
+
+        # Average your model with those of the other participants
+        avg_model = self.average_models(list(self.incoming_models.values()) + [self.model])
+        with torch.no_grad():
+            for p, new_p in zip(self.model.parameters(), avg_model.parameters()):
+                p.mul_(0.)
+                p.add_(new_p)
+
+        self.round += 1
+        self.round_deferred = Future()
+        self.incoming_models = None
 
     def compute_accuracy(self):
         self.model.eval()
@@ -243,17 +284,25 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         return self.verify_model_training(old_model, Tensor(datas), torch.LongTensor(targets), new_model)
 
     def on_receive(self, peer, binary_info, binary_data, nonce):
-        self.logger.info(f'Data has been received: {binary_info}')
+        self.logger.info(f'Data has been received from peer {peer}: {binary_info}')
         json_data = json.loads(binary_info.decode())
-        if not self.request_cache.has("datarequest", json_data["request_id"]):
-            self.logger.warning("Data request cache with ID %d not found!", json_data["request_id"])
+        if "request_id" in json_data:
+            # We received this data in response to an earlier request
+            if not self.request_cache.has("datarequest", json_data["request_id"]):
+                self.logger.warning("Data request cache with ID %d not found!", json_data["request_id"])
 
-        cache = self.request_cache.get("datarequest", json_data["request_id"])
-        request_type = DataType(json_data["type"])
-        if request_type == DataType.TRAIN_DATA:
-            cache.request_future.set_result((json_data["target"], binary_data))
-        elif request_type == DataType.MODEL:
-            cache.request_future.set_result(binary_data)
+            cache = self.request_cache.get("datarequest", json_data["request_id"])
+            request_type = DataType(json_data["type"])
+            if request_type == DataType.TRAIN_DATA:
+                cache.request_future.set_result((json_data["target"], binary_data))
+            elif request_type == DataType.MODEL:
+                cache.request_future.set_result(binary_data)
+        else:
+            # This response is the model of another participant
+            incoming_model = unserialize_model(binary_data)
+            self.incoming_models[peer.public_key.key_to_bin()] = incoming_model
+            if len(self.incoming_models) == self.parameters["participants"] - 1:
+                self.round_deferred.set_result(None)
 
     def on_send_complete(self, peer, binary_info, binary_data, nonce):
         self.logger.info(f'Transfer has been completed: {binary_info}')
