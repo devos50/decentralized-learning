@@ -5,6 +5,7 @@ from ipv8.messaging.payload_dataclass import dataclass
 class DataRequest:
     request_id: int
     data_hash: bytes
+    request_type: int
 
 
 @dataclass(msg_id=11)

@@ -32,6 +32,10 @@ class TestDFLCommunity(TestBase):
         assert len(self.nodes[0].overlay.data_store.data_items) == self.batch_size
         assert len(self.nodes[0].overlay.model_store.models) == 2
         await self.deliver_messages()
-        assert len(self.nodes[1].overlay.persistence.get_all_blocks())
+        blocks = self.nodes[1].overlay.persistence.get_all_blocks()
+        assert blocks
+        block = blocks[0]
+        assert block.transaction["old_model"] != block.transaction["new_model"]
+
         assert await self.nodes[1].overlay.audit(self.nodes[0].my_peer.public_key.key_to_bin(), 1)
         assert len(self.nodes[1].overlay.data_store.data_items) == self.batch_size

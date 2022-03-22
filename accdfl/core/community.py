@@ -1,6 +1,7 @@
 import hashlib
 import io
 import json
+import pickle
 from asyncio import Future
 from binascii import unhexlify, hexlify
 from typing import Optional
@@ -10,8 +11,10 @@ import torch.nn.functional as F
 from torch import Tensor
 from torch.autograd import Variable
 
+from accdfl.core.blocks import ModelUpdateBlock
 from accdfl.core.caches import DataRequestCache
-from accdfl.core.stores import DataStore, ModelStore
+from accdfl.core.model import serialize_model, unserialize_model
+from accdfl.core.stores import DataStore, ModelStore, DataType
 from accdfl.core.dataset import Dataset
 from accdfl.core.listeners import ModelUpdateBlockListener
 from accdfl.core.model.linear import LinearModel
@@ -53,8 +56,10 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         self.optimizer = SGDOptimizer(self.model, parameters["learning_rate"], parameters["momentum"])
 
     async def train(self):
-        old_model_hash = hash(self.model.parameters())
-        self.model_store.add(self.model.state_dict())
+        old_model_serialized = serialize_model(self.model)
+        old_model_hash = hexlify(hashlib.md5(old_model_serialized).digest()).decode()
+        self.model_store.add(old_model_serialized)
+
         hashes = []
         try:
             data, target = self.dataset.iterator.__next__()
@@ -76,8 +81,9 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         if not epoch_done:
             self.optimizer.optimizer.step()
 
-        new_model_hash = hash(self.model.parameters())
-        self.model_store.add(self.model.state_dict())
+        new_model_serialized = serialize_model(self.model)
+        new_model_hash = hexlify(hashlib.md5(new_model_serialized).digest()).decode()
+        self.model_store.add(new_model_serialized)
 
         # Record the training and aggregation step
         tx = {"round": self.round, "inputs": hashes, "old_model": old_model_hash, "new_model": new_model_hash}
@@ -105,7 +111,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                 return peer
         return None
 
-    async def request_data(self, other_peer, data_hash) -> Optional[bytes]:
+    async def request_data(self, other_peer, data_hash: bytes, type=DataType.MODEL) -> Optional[bytes]:
         """
         Request data from another peer, based on a hash.
         """
@@ -115,7 +121,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
 
         global_time = self.claim_global_time()
         auth = BinMemberAuthenticationPayload(self.my_peer.public_key.key_to_bin())
-        payload = DataRequest(cache.number, data_hash)
+        payload = DataRequest(cache.number, data_hash, type.value)
         dist = GlobalTimeDistributionPayload(global_time)
         packet = self._ez_pack(self._prefix, DataRequest.msg_id, [auth, dist, payload])
         self.endpoint.send(other_peer.address, packet)
@@ -124,28 +130,46 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
 
     @lazy_wrapper(GlobalTimeDistributionPayload, DataRequest)
     def on_data_request(self, peer, dist, payload):
-        request_data = self.data_store.get(payload.data_hash)
-        if request_data:
-            # Send the requested data to the requesting peer
-            self.logger.debug("Sending data item with hash %s to peer %s", hexlify(payload.data_hash).decode(), peer)
-            data, target = request_data
-            b = io.BytesIO()
-            torch.save(data, b)
-            b.seek(0)
-            response_data = json.dumps({
-                "hash": hexlify(payload.data_hash).decode(),
-                "request_id": payload.request_id,
-                "target": int(target)
-            }).encode()
-            self.eva_send_binary(peer, response_data, b.read())
-        else:
-            self.logger.warning("Data item %s requested by peer %s not found", hexlify(payload.data_hash).decode(), peer)
-            global_time = self.claim_global_time()
-            auth = BinMemberAuthenticationPayload(self.my_peer.public_key.key_to_bin())
-            payload = DataNotFoundResponse(payload.request_id)
-            dist = GlobalTimeDistributionPayload(global_time)
-            packet = self._ez_pack(self._prefix, DataNotFoundResponse.msg_id, [auth, dist, payload])
-            self.endpoint.send(peer.address, packet)
+        request_type = DataType(payload.request_type)
+        if request_type == DataType.TRAIN_DATA:
+            request_data = self.data_store.get(payload.data_hash)
+            if request_data:
+                # Send the requested data to the requesting peer
+                self.logger.debug("Sending data item with hash %s to peer %s", hexlify(payload.data_hash).decode(), peer)
+                data, target = request_data
+                b = io.BytesIO()
+                torch.save(data, b)
+                b.seek(0)
+                response_data = json.dumps({
+                    "hash": hexlify(payload.data_hash).decode(),
+                    "request_id": payload.request_id,
+                    "type": payload.request_type,
+                    "target": int(target)
+                }).encode()
+                self.eva_send_binary(peer, response_data, b.read())
+            else:
+                self.send_data_not_found_message(peer, payload.data_hash, payload.request_id)
+        elif request_type == DataType.MODEL:
+            request_data = self.model_store.get(payload.data_hash)
+            if request_data:
+                self.logger.debug("Sending model with hash %s to peer %s", hexlify(payload.data_hash).decode(), peer)
+                response_data = json.dumps({
+                    "hash": hexlify(payload.data_hash).decode(),
+                    "request_id": payload.request_id,
+                    "type": payload.request_type
+                }).encode()
+                self.eva_send_binary(peer, response_data, request_data)
+            else:
+                self.send_data_not_found_message(peer, payload.data_hash, payload.request_id)
+
+    def send_data_not_found_message(self, peer, data_hash, request_id):
+        self.logger.warning("Data item %s requested by peer %s not found", hexlify(data_hash).decode(), peer)
+        global_time = self.claim_global_time()
+        auth = BinMemberAuthenticationPayload(self.my_peer.public_key.key_to_bin())
+        payload = DataNotFoundResponse(request_id)
+        dist = GlobalTimeDistributionPayload(global_time)
+        packet = self._ez_pack(self._prefix, DataNotFoundResponse.msg_id, [auth, dist, payload])
+        self.endpoint.send(peer.address, packet)
 
     @lazy_wrapper(GlobalTimeDistributionPayload, DataNotFoundResponse)
     def on_data_not_found_response(self, peer, _, payload):
@@ -165,12 +189,24 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                 return block
         return None
 
+    def verify_model_training(self, old_model, data, target, new_model) -> bool:
+        optimizer = SGDOptimizer(old_model, self.optimizer.learning_rate, self.optimizer.momentum)
+        data, target = Variable(data), Variable(target)
+        optimizer.optimizer.zero_grad()
+        self.logger.info('d-sgd.next node forward propagation')
+        output = old_model.forward(data)
+        loss = F.nll_loss(output, target)
+        self.logger.info('d-sgd.next node backward propagation')
+        loss.backward()
+        optimizer.optimizer.step()
+        return torch.allclose(old_model.state_dict()["fc.weight"], new_model.state_dict()["fc.weight"])
+
     async def audit(self, other_peer_pk, round):
         """
         Audit the actions of another peer in a particular round.
         """
         # Get the TrustChain record associated with the other peer and a particular round
-        block = self.get_tc_record(other_peer_pk, round)
+        block: ModelUpdateBlock = self.get_tc_record(other_peer_pk, round)
         if not block:
             return fail(RuntimeError("Could not find block associated with round %d" % round))
 
@@ -180,8 +216,10 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         if not other_peer:
             return fail(RuntimeError("Could not find peer with public key %s" % hexlify(other_peer_pk)))
 
+        datas = []
+        targets = []
         for input_hash in block.inputs:
-            data = await self.request_data(other_peer, input_hash)
+            data = await self.request_data(other_peer, input_hash, type=DataType.TRAIN_DATA)
             if not data:
                 return False
 
@@ -189,13 +227,19 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
             target, data = data
             b = io.BytesIO(data)
             data = torch.load(b)
-            target = Tensor([target])
             self.data_store.add(data, target)
+            datas.append(data.tolist())
+            targets.append(target)
 
         # Fetch the model
+        old_model_serialized = await self.request_data(other_peer, block.old_model, type=DataType.MODEL)
+        old_model = unserialize_model(old_model_serialized)
 
+        # TODO optimize this so we only compare the hash (avoid pulling in the new model)
+        new_model_serialized = await self.request_data(other_peer, block.new_model, type=DataType.MODEL)
+        new_model = unserialize_model(new_model_serialized)
 
-        return True
+        return self.verify_model_training(old_model, Tensor(datas), torch.LongTensor(targets), new_model)
 
     def on_receive(self, peer, binary_info, binary_data, nonce):
         self.logger.info(f'Data has been received: {binary_info}')
@@ -204,7 +248,11 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
             self.logger.warning("Data request cache with ID %d not found!", json_data["request_id"])
 
         cache = self.request_cache.get("datarequest", json_data["request_id"])
-        cache.request_future.set_result((json_data["target"], binary_data))
+        request_type = DataType(json_data["type"])
+        if request_type == DataType.TRAIN_DATA:
+            cache.request_future.set_result((json_data["target"], binary_data))
+        elif request_type == DataType.MODEL:
+            cache.request_future.set_result(binary_data)
 
     def on_send_complete(self, peer, binary_info, binary_data, nonce):
         self.logger.info(f'Transfer has been completed: {binary_info}')

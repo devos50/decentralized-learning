@@ -1,9 +1,15 @@
 import hashlib
 import io
+from enum import Enum
 from typing import Optional, Tuple
 
 import torch
 from torch import Tensor
+
+
+class DataType(Enum):
+    TRAIN_DATA = 0
+    MODEL = 1
 
 
 class DataStore:
@@ -24,17 +30,15 @@ class DataStore:
 
 class ModelStore:
     """
-    Class to store/retrieve models in Tensor form.
+    Class to store/retrieve models in serialized form.
     """
 
     def __init__(self):
         self.models = {}
 
-    def add(self, model_state_dict):
-        b = io.BytesIO()
-        torch.save(model_state_dict, b)
-        b.seek(0)
-        serialized_model = b.read()
-
+    def add(self, serialized_model: bytes) -> None:
         h = hashlib.md5(serialized_model).digest()
         self.models[h] = serialized_model
+
+    def get(self, model_hash: bytes) -> Optional[bytes]:
+        return self.models.get(model_hash, None)
