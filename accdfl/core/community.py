@@ -211,7 +211,6 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
             return fail(RuntimeError("Could not find block associated with round %d" % round))
 
         # Request all inputs for a particular round
-        # TODO optimize this such that we request only missing inputs
         other_peer = self.get_peer_by_pk(other_peer_pk)
         if not other_peer:
             return fail(RuntimeError("Could not find peer with public key %s" % hexlify(other_peer_pk)))
@@ -219,9 +218,11 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         datas = []
         targets = []
         for input_hash in block.inputs:
-            data = await self.request_data(other_peer, input_hash, type=DataType.TRAIN_DATA)
-            if not data:
-                return False
+            data = self.data_store.get(input_hash)
+            if not self.data_store.get(input_hash):
+                data = await self.request_data(other_peer, input_hash, type=DataType.TRAIN_DATA)
+                if not data:
+                    return False
 
             # Convert data elements to Tensors
             target, data = data
