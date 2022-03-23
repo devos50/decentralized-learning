@@ -37,7 +37,7 @@ class Dataset:
         rand = Random()
         rand.seed(1337)
 
-        logging.info('partition: split the dataset per class')
+        logging.info('partition: split the dataset per class (samples per class %d', total_samples_per_class)
         indexes = {x: [] for x in range(10)}
         if type(self.dataset.targets) != torch.Tensor:
             targets = torch.tensor(self.dataset.targets)

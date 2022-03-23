@@ -44,6 +44,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         self.dataset = None
         self.optimizer = None
         self.round = 1
+        self.epoch = 1
         self.participants = None
         self.round_deferred = Future()
         self.incoming_models = {}
@@ -118,12 +119,12 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         # Are we at the end of the epoch?
         res = it_has_next(self.dataset.iterator)
         if res is None:
+            self.epoch += 1
+            self.logger.info("Epoch done - resetting dataset iterator")
             self.dataset.reset_iterator()
-            print("a")
             return True
         else:
             self.dataset.iterator = res
-            print("b")
             return False
 
     def average_models(self, models):
