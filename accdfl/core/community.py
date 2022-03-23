@@ -189,6 +189,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         """
         Compute the accuracy/loss of the current model.
         """
+        self.logger.info("Computing accuracy of model")
         self.model.eval()
         correct = example_number = total_loss = num_batches = 0
         train = torch.utils.data.DataLoader(self.dataset.dataset, 100)
@@ -209,6 +210,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
 
         accuracy = float(correct) / float(example_number)
         loss = total_loss / float(example_number)
+        self.logger.info("Finished computing accuracy of model (accuracy: %f, loss: %f)", accuracy, loss)
         return accuracy, loss
 
     def get_peer_by_pk(self, target_pk: bytes):
