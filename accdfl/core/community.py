@@ -65,7 +65,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
     def get_participant_index(self):
         if not self.participants:
             return -1
-        return self.participants.index(self.my_peer.public_key.key_to_bin())
+        return self.participants.index(hexlify(self.my_peer.public_key.key_to_bin()).decode())
 
     def setup(self, parameters):
         self.parameters = parameters

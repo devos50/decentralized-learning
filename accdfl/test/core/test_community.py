@@ -1,4 +1,5 @@
 from asyncio import sleep, ensure_future, gather
+from binascii import hexlify
 
 from accdfl.core.community import DFLCommunity
 
@@ -25,7 +26,7 @@ class TestDFLCommunity(TestBase):
             "learning_rate": 0.1,
             "momentum": 0.0,
             "batch_size": self.batch_size,
-            "participants": [node.my_peer.public_key.key_to_bin() for node in self.nodes],
+            "participants": [hexlify(node.my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
             "rounds": self.NUM_ROUNDS
         }
         for node in self.nodes:
