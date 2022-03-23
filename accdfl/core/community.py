@@ -54,6 +54,9 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         self.add_message_handler(DataRequest, self.on_data_request)
         self.add_message_handler(DataNotFoundResponse, self.on_data_not_found_response)
 
+        self.logger.info("The ADFL community started with public ,ey: %s",
+                         hexlify(self.my_peer.public_key.key_to_bin()).decode())
+
     def setup(self, parameters):
         self.parameters = parameters
         self.model = LinearModel(28 * 28)  # For MNIST
@@ -120,6 +123,8 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
 
         await self.round_deferred
 
+        self.logger.info("Received %d models from other peers - starting to average", len(self.incoming_models))
+
         # Average your model with those of the other participants
         avg_model = self.average_models(list(self.incoming_models.values()) + [self.model])
         with torch.no_grad():
@@ -127,6 +132,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                 p.mul_(0.)
                 p.add_(new_p)
 
+        self.logger.info("Round %d done", self.round)
         self.round += 1
         self.round_deferred = Future()
         self.incoming_models = None
