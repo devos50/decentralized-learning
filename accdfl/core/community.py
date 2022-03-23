@@ -35,6 +35,8 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         self.eva_init()
         self.data_store = DataStore()
         self.model_store = ModelStore()
+        self.compute_accuracy_after_averaging = False
+        self.model_performances = []
         self.parameters = None
         self.model = None
         self.dataset = None
@@ -132,6 +134,11 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                 for p, new_p in zip(self.model.parameters(), avg_model.parameters()):
                     p.mul_(0.)
                     p.add_(new_p)
+
+        if self.compute_accuracy_after_averaging:
+            self.logger.info("Computing accuracy of model for round %d", self.round)
+            accuracy, loss = self.compute_accuracy()
+            self.model_performances.append((self.round, accuracy, loss))
 
         self.logger.info("Round %d done", self.round)
         self.round += 1
