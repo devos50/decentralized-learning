@@ -54,7 +54,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         self.add_message_handler(DataRequest, self.on_data_request)
         self.add_message_handler(DataNotFoundResponse, self.on_data_not_found_response)
 
-        self.logger.info("The ADFL community started with public ,ey: %s",
+        self.logger.info("The ADFL community started with public key: %s",
                          hexlify(self.my_peer.public_key.key_to_bin()).decode())
 
     def setup(self, parameters):
@@ -121,16 +121,17 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
             response = {"round": self.round}
             self.eva_send_binary(peer, json.dumps(response).encode(), serialize_model(self.model))
 
-        await self.round_deferred
+        if self.participants > 1:
+            await self.round_deferred
 
-        self.logger.info("Received %d models from other peers - starting to average", len(self.incoming_models))
+            self.logger.info("Received %d models from other peers - starting to average", len(self.incoming_models))
 
-        # Average your model with those of the other participants
-        avg_model = self.average_models(list(self.incoming_models.values()) + [self.model])
-        with torch.no_grad():
-            for p, new_p in zip(self.model.parameters(), avg_model.parameters()):
-                p.mul_(0.)
-                p.add_(new_p)
+            # Average your model with those of the other participants
+            avg_model = self.average_models(list(self.incoming_models.values()) + [self.model])
+            with torch.no_grad():
+                for p, new_p in zip(self.model.parameters(), avg_model.parameters()):
+                    p.mul_(0.)
+                    p.add_(new_p)
 
         self.logger.info("Round %d done", self.round)
         self.round += 1
