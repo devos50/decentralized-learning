@@ -62,6 +62,7 @@ class TestDFLCommunity(TestBase):
         await gather(*[node.overlay.advance_round() for node in self.nodes])
         for node in self.nodes:
             assert node.overlay.round == 2
+            assert not node.overlay.incoming_models
 
     async def test_multiple_rounds(self):
         """

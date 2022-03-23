@@ -6,7 +6,7 @@ import os
 import random
 from asyncio import Future, sleep
 from binascii import unhexlify, hexlify
-from typing import Optional
+from typing import Optional, Dict, List
 
 import torch
 import torch.nn.functional as F
@@ -51,7 +51,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         self.epoch = 1
         self.participants = None
         self.round_deferred = Future()
-        self.incoming_models = {}
+        self.incoming_models: Dict[int, List] = {}
 
         self.eva_register_receive_callback(self.on_receive)
         self.eva_register_send_complete_callback(self.on_send_complete)
@@ -159,10 +159,11 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         if len(self.participants) > 1:
             await self.round_deferred
 
-            self.logger.info("Received %d models from other peers - starting to average", len(self.incoming_models))
+            self.logger.info("Received %d models from other peers for round %d - starting to average",
+                             len(self.incoming_models[self.round]), self.round)
 
             # Average your model with those of the other participants
-            avg_model = self.average_models(list(self.incoming_models.values()) + [self.model])
+            avg_model = self.average_models(self.incoming_models[self.round] + [self.model])
             with torch.no_grad():
                 for p, new_p in zip(self.model.parameters(), avg_model.parameters()):
                     p.mul_(0.)
@@ -176,9 +177,9 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         self.logger.info("Round %d done", self.round)
         if self.round_complete_callback:
             self.round_complete_callback(self.round)
+        self.incoming_models.pop(self.round, None)
         self.round += 1
         self.round_deferred = Future()
-        self.incoming_models = {}
 
     async def rounds(self):
         while self.round != self.parameters["rounds"] + 1:
@@ -364,13 +365,18 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                 cache.request_future.set_result(binary_data)
         else:
             # This response is the model of another participant
-            if json_data["round"] != self.round:
+            if json_data["round"] != self.round and json_data["round"] != self.round + 1:
+                # We only accept models from the current round and the next round.
+                # Specifically, this peer might still be in round x while waiting for other models to receive, and at
+                # the same time receive a model from another peer for round x+1.
                 self.logger.warning("Received model from peer %s for round %d but we are at round %d - ignoring model",
                                     peer, json_data["round"], self.round)
             else:
                 incoming_model = unserialize_model(binary_data)
-                self.incoming_models[peer.public_key.key_to_bin()] = incoming_model
-                if len(self.incoming_models) == len(self.participants) - 1:
+                if self.round not in self.incoming_models:
+                    self.incoming_models[self.round] = []
+                self.incoming_models[self.round].append(incoming_model)
+                if len(self.incoming_models[self.round]) == len(self.participants) - 1:
                     self.round_deferred.set_result(None)
 
     def on_send_complete(self, peer, binary_info, binary_data, nonce):
