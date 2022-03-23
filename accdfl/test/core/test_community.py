@@ -16,18 +16,20 @@ class TestDFLCommunity(TestBase):
     def setUp(self):
         super().setUp()
         self.batch_size = 1
+        self.total_samples_per_class = 2
+
+        self.initialize(DFLCommunity, self.NUM_NODES, working_directory=":memory:")
 
         experiment_data = {
             "classes": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
             "learning_rate": 0.1,
             "momentum": 0.0,
             "batch_size": self.batch_size,
-            "participants": self.NUM_NODES,
+            "participants": [node.my_peer.public_key.key_to_bin() for node in self.nodes],
             "rounds": self.NUM_ROUNDS
         }
-
-        self.initialize(DFLCommunity, self.NUM_NODES, working_directory=":memory:")
         for node in self.nodes:
+            node.overlay.total_samples_per_class = self.total_samples_per_class
             node.overlay.setup(experiment_data)
 
     async def test_train(self):
@@ -75,3 +77,12 @@ class TestDFLCommunity(TestBase):
         await self.nodes[0].overlay.train()
         accuracy, loss = self.nodes[0].overlay.compute_accuracy(max_items=10)
         assert accuracy > 0
+
+    async def test_epoch(self):
+        """
+        Test training for an entire epoch.
+        """
+        steps_in_epoch = int((self.total_samples_per_class * 10) / len(self.nodes) / self.batch_size)
+        for _ in range(steps_in_epoch - 1):
+            assert not await self.nodes[0].overlay.train()
+        assert await self.nodes[0].overlay.train()

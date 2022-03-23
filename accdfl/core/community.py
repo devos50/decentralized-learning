@@ -1,5 +1,6 @@
 import hashlib
 import io
+import itertools
 import json
 import os
 from asyncio import Future
@@ -37,12 +38,13 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         self.model_store = ModelStore()
         self.compute_accuracy_after_averaging = False
         self.model_performances = []
+        self.total_samples_per_class = 5000
         self.parameters = None
         self.model = None
         self.dataset = None
         self.optimizer = None
         self.round = 1
-        self.participants = 1
+        self.participants = None
         self.round_deferred = Future()
         self.incoming_models = {}
 
@@ -59,38 +61,51 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         self.logger.info("The ADFL community started with public key: %s",
                          hexlify(self.my_peer.public_key.key_to_bin()).decode())
 
+    def get_participant_index(self):
+        if not self.participants:
+            return -1
+        return self.participants.index(self.my_peer.public_key.key_to_bin())
+
     def setup(self, parameters):
         self.parameters = parameters
         self.model = LinearModel(28 * 28)  # For MNIST
-        self.dataset = Dataset(os.path.join(os.environ["HOME"], "dfl-data"), parameters["batch_size"])
-        self.optimizer = SGDOptimizer(self.model, parameters["learning_rate"], parameters["momentum"])
         self.participants = parameters["participants"]
+        self.logger.info("Setting up experiment with %d participants (I am participant %d)" %
+                         (len(self.participants), self.get_participant_index()))
 
-    async def train(self):
+        self.dataset = Dataset(os.path.join(os.environ["HOME"], "dfl-data"), parameters["batch_size"],
+                               self.total_samples_per_class, len(self.participants), self.get_participant_index())
+        self.optimizer = SGDOptimizer(self.model, parameters["learning_rate"], parameters["momentum"])
+
+    async def train(self) -> bool:
+        """
+        Train the model on a batch. Return a boolean that indicates whether the epoch is completed.
+        """
         old_model_serialized = serialize_model(self.model)
         old_model_hash = hexlify(hashlib.md5(old_model_serialized).digest()).decode()
         self.model_store.add(old_model_serialized)
 
-        hashes = []
-        try:
-            data, target = self.dataset.iterator.__next__()
-            for ddata, dtarget in zip(data, target):
-                h = hashlib.md5(b"%d" % hash(ddata))
-                hashes.append(hexlify(h.digest()).decode())
-                self.data_store.add(ddata, dtarget)
-            data, target = Variable(data), Variable(target)
-            self.optimizer.optimizer.zero_grad()
-            self.logger.info('d-sgd.next node forward propagation')
-            output = self.model.forward(data)
-            loss = F.nll_loss(output, target)
-            self.logger.info('d-sgd.next node backward propagation')
-            loss.backward()
-            epoch_done = False
-        except StopIteration:
-            epoch_done = True
+        def it_has_next(iterable):
+            try:
+                first = next(iterable)
+            except StopIteration:
+                return None
+            return itertools.chain([first], iterable)
 
-        if not epoch_done:
-            self.optimizer.optimizer.step()
+        hashes = []
+        data, target = self.dataset.iterator.__next__()
+        for ddata, dtarget in zip(data, target):
+            h = hashlib.md5(b"%d" % hash(ddata))
+            hashes.append(hexlify(h.digest()).decode())
+            self.data_store.add(ddata, dtarget)
+        data, target = Variable(data), Variable(target)
+        self.optimizer.optimizer.zero_grad()
+        self.logger.info('d-sgd.next node forward propagation')
+        output = self.model.forward(data)
+        loss = F.nll_loss(output, target)
+        self.logger.info('d-sgd.next node backward propagation')
+        loss.backward()
+        self.optimizer.optimizer.step()
 
         new_model_serialized = serialize_model(self.model)
         new_model_hash = hexlify(hashlib.md5(new_model_serialized).digest()).decode()
@@ -99,6 +114,17 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         # Record the training and aggregation step
         tx = {"round": self.round, "inputs": hashes, "old_model": old_model_hash, "new_model": new_model_hash}
         await self.self_sign_block(b"model_update", transaction=tx)
+
+        # Are we at the end of the epoch?
+        res = it_has_next(self.dataset.iterator)
+        if res is None:
+            self.dataset.reset_iterator()
+            print("a")
+            return True
+        else:
+            self.dataset.iterator = res
+            print("b")
+            return False
 
     def average_models(self, models):
         with torch.no_grad():
@@ -123,7 +149,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
             response = {"round": self.round}
             self.eva_send_binary(peer, json.dumps(response).encode(), serialize_model(self.model))
 
-        if self.participants > 1:
+        if len(self.participants) > 1:
             await self.round_deferred
 
             self.logger.info("Received %d models from other peers - starting to average", len(self.incoming_models))
@@ -331,7 +357,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
             # This response is the model of another participant
             incoming_model = unserialize_model(binary_data)
             self.incoming_models[peer.public_key.key_to_bin()] = incoming_model
-            if len(self.incoming_models) == self.parameters["participants"] - 1:
+            if len(self.incoming_models) == len(self.participants) - 1:
                 self.round_deferred.set_result(None)
 
     def on_send_complete(self, peer, binary_info, binary_data, nonce):
