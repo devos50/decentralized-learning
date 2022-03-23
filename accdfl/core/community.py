@@ -42,6 +42,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         self.model_performances = []
         self.total_samples_per_class = 5000
         self.model_send_delay = None
+        self.round_complete_callback = None
         self.parameters = None
         self.model = None
         self.dataset = None
@@ -173,6 +174,8 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
             self.model_performances.append((self.round, accuracy, loss))
 
         self.logger.info("Round %d done", self.round)
+        if self.round_complete_callback:
+            self.round_complete_callback(self.round)
         self.round += 1
         self.round_deferred = Future()
         self.incoming_models = {}
