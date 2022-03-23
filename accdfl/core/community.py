@@ -374,7 +374,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                     self.round_deferred.set_result(None)
 
     def on_send_complete(self, peer, binary_info, binary_data, nonce):
-        self.logger.info(f'Transfer has been completed: {binary_info}')
+        self.logger.info(f'Outgoing transfer to peer {peer} has completed: {binary_info}')
 
     def on_error(self, peer, exception):
-        self.logger.error(f'Error has been occurred: {exception}')
+        self.logger.error(f'An error has occurred in transfer to peer {peer}: {exception}')
