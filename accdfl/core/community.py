@@ -3,7 +3,8 @@ import io
 import itertools
 import json
 import os
-from asyncio import Future
+import random
+from asyncio import Future, sleep
 from binascii import unhexlify, hexlify
 from typing import Optional
 
@@ -40,6 +41,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         self.compute_accuracy_after_epoch = False
         self.model_performances = []
         self.total_samples_per_class = 5000
+        self.model_send_delay = None
         self.parameters = None
         self.model = None
         self.dataset = None
@@ -149,6 +151,8 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         # Send the model to your neighbours
         for peer in self.get_peers():
             response = {"round": self.round}
+            if self.model_send_delay is not None:
+                await sleep(random.randint(0, self.model_send_delay) / 1000)
             self.eva_send_binary(peer, json.dumps(response).encode(), serialize_model(self.model))
 
         if len(self.participants) > 1:
