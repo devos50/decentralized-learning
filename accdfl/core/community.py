@@ -37,6 +37,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         self.data_store = DataStore()
         self.model_store = ModelStore()
         self.compute_accuracy_after_averaging = False
+        self.compute_accuracy_after_epoch = False
         self.model_performances = []
         self.total_samples_per_class = 5000
         self.parameters = None
@@ -143,7 +144,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         Complete a round of training and model aggregation.
         """
         # Train
-        await self.train()
+        epoch_done = await self.train()
 
         # Send the model to your neighbours
         for peer in self.get_peers():
@@ -162,8 +163,8 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                     p.mul_(0.)
                     p.add_(new_p)
 
-        if self.compute_accuracy_after_averaging:
-            self.logger.info("Computing accuracy of model for round %d", self.round)
+        if self.compute_accuracy_after_averaging or (epoch_done and self.compute_accuracy_after_epoch):
+            self.logger.info("Computing accuracy of model for round %d (epoch: %d)", self.round, self.epoch)
             accuracy, loss = self.compute_accuracy()
             self.model_performances.append((self.round, accuracy, loss))
 
