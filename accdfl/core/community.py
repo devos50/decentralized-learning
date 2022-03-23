@@ -171,7 +171,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
 
         if self.compute_accuracy_after_averaging or (epoch_done and self.compute_accuracy_after_epoch):
             self.logger.info("Computing accuracy of model for round %d (epoch: %d)", self.round, self.epoch)
-            accuracy, loss = self.compute_accuracy()
+            accuracy, loss = await self.compute_accuracy()
             self.model_performances.append((self.round, accuracy, loss))
 
         self.logger.info("Round %d done", self.round)
@@ -185,7 +185,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         while self.round != self.parameters["rounds"] + 1:
             await self.advance_round()
 
-    def compute_accuracy(self, max_items=-1):
+    async def compute_accuracy(self, max_items=-1):
         """
         Compute the accuracy/loss of the current model.
         """
@@ -207,6 +207,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                 correct += (predicted == target).sum().item()
                 example_number += target.size(0)
                 cur_item += 1
+                await sleep(0.001)
 
         accuracy = float(correct) / float(example_number)
         loss = total_loss / float(example_number)

@@ -77,7 +77,7 @@ class TestDFLCommunity(TestBase):
         Test computing the accuracy of a model.
         """
         await self.nodes[0].overlay.train()
-        accuracy, loss = self.nodes[0].overlay.compute_accuracy(max_items=10)
+        accuracy, loss = await self.nodes[0].overlay.compute_accuracy(max_items=10)
         assert accuracy > 0
 
     async def test_epoch(self):
