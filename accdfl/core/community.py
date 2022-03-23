@@ -357,10 +357,14 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                 cache.request_future.set_result(binary_data)
         else:
             # This response is the model of another participant
-            incoming_model = unserialize_model(binary_data)
-            self.incoming_models[peer.public_key.key_to_bin()] = incoming_model
-            if len(self.incoming_models) == len(self.participants) - 1:
-                self.round_deferred.set_result(None)
+            if json_data["round"] != self.round:
+                self.logger.warning("Received model from peer %s for round %d but we are at round %d - ignoring model",
+                                    peer, json_data["round"], self.round)
+            else:
+                incoming_model = unserialize_model(binary_data)
+                self.incoming_models[peer.public_key.key_to_bin()] = incoming_model
+                if len(self.incoming_models) == len(self.participants) - 1:
+                    self.round_deferred.set_result(None)
 
     def on_send_complete(self, peer, binary_info, binary_data, nonce):
         self.logger.info(f'Transfer has been completed: {binary_info}')
