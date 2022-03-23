@@ -1,6 +1,7 @@
 import hashlib
 import io
 import json
+import os
 from asyncio import Future
 from binascii import unhexlify, hexlify
 from typing import Optional
@@ -56,7 +57,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
     def setup(self, parameters):
         self.parameters = parameters
         self.model = LinearModel(28 * 28)  # For MNIST
-        self.dataset = Dataset("/Users/martijndevos/Documents/mnist", parameters["batch_size"])
+        self.dataset = Dataset(os.path.join(os.environ["HOME"], "dfl-data"), parameters["batch_size"])
         self.optimizer = SGDOptimizer(self.model, parameters["learning_rate"], parameters["momentum"])
         self.participants = parameters["participants"]
 
