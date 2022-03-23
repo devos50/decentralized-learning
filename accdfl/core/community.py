@@ -143,7 +143,11 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         self.logger.info("Round %d done", self.round)
         self.round += 1
         self.round_deferred = Future()
-        self.incoming_models = None
+        self.incoming_models = {}
+
+    async def rounds(self):
+        while self.round != self.parameters["rounds"] + 1:
+            await self.advance_round()
 
     def compute_accuracy(self, max_items=-1):
         """
