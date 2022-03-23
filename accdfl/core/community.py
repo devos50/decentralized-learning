@@ -157,8 +157,8 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
             self.eva_send_binary(peer, json.dumps(response).encode(), serialize_model(self.model))
 
         if len(self.participants) > 1:
+            self.logger.info("Waiting for models from other peers for round %d", self.round)
             await self.round_deferred
-
             self.logger.info("Received %d models from other peers for round %d - starting to average",
                              len(self.incoming_models[self.round]), self.round)
 
@@ -376,9 +376,9 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                                     peer, json_data["round"], self.round)
             else:
                 incoming_model = unserialize_model(binary_data)
-                if self.round not in self.incoming_models:
-                    self.incoming_models[self.round] = []
-                self.incoming_models[self.round].append(incoming_model)
+                if json_data["round"] not in self.incoming_models:
+                    self.incoming_models[json_data["round"]] = []
+                self.incoming_models[json_data["round"]].append(incoming_model)
                 if len(self.incoming_models[self.round]) == len(self.participants) - 1:
                     self.round_deferred.set_result(None)
 
