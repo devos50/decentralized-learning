@@ -377,7 +377,7 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
                                                peer, transfer, delay=self.retransmit_interval_in_sec, )
 
     def _resend_writerequest_task(self, peer, transfer):
-        if transfer.released or not self.retransmit_enabled:
+        if transfer.released or not self.retransmit_enabled or transfer.block_number != Transfer.NONE:
             return
 
         attempts_are_over = transfer.attempt >= self.retransmit_attempt_count
@@ -438,6 +438,7 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
             logger.warning("Cannot handle incoming acknowledgement from peer %s - nonce mismatch", peer)
             return
 
+        transfer.attempt = 0
         transfer.block_number = payload.number
         if transfer.block_number > transfer.block_count:
             self.finish_outgoing_transfer(peer, transfer)
