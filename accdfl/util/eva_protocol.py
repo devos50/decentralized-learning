@@ -360,9 +360,41 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
         self.outgoing[peer] = transfer
 
         self._schedule_terminate(self.outgoing, peer, transfer)
+        self._schedule_resend_writerequest(peer, transfer)
 
         logger.debug(f'Write Request. Peer: {peer}. Transfer: {transfer}')
-        self.community.eva_send_message(peer, WriteRequest(data_size, nonce, info_binary))
+        self.send_writerequest(peer, transfer)
+
+    def send_writerequest(self, peer, transfer):
+        write_request = WriteRequest(len(transfer.data_binary), transfer.nonce, transfer.info_binary)
+        self.community.eva_send_message(peer, write_request)
+
+    def _schedule_resend_writerequest(self, peer, transfer):
+        if not self.retransmit_enabled:
+            return
+
+        self.community.register_anonymous_task('eva_resend_writerequest', self._resend_writerequest_task,
+                                               peer, transfer, delay=self.retransmit_interval_in_sec, )
+
+    def _resend_writerequest_task(self, peer, transfer):
+        if transfer.released or not self.retransmit_enabled:
+            return
+
+        attempts_are_over = transfer.attempt >= self.retransmit_attempt_count
+        if attempts_are_over:
+            return
+
+        resend_needed = time.time() - transfer.updated >= self.retransmit_interval_in_sec
+        if resend_needed:
+            transfer.attempt += 1
+
+            logger.debug(f'Re-writerequest. '
+                         f'Attempt: {transfer.attempt + 1}/{self.retransmit_attempt_count} for peer: {peer}')
+
+            self.send_writerequest(peer, transfer)
+
+        self.community.register_anonymous_task('eva_resend_writerequest', self._resend_writerequest_task, peer,
+                                               transfer, delay=self.retransmit_interval_in_sec, )
 
     async def on_write_request(self, peer: Peer, payload: WriteRequest):
         logger.debug(f'On write request. Peer: {peer}. Info: {payload.info_binary}. '
