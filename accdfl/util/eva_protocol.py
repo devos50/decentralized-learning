@@ -339,6 +339,7 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
             nonce = randint(0, MAX_U64)
 
         if peer in self.outgoing:
+            logger.info("Existing outgoing transfer to peer %s found - scheduling next outgoing transfer", peer)
             scheduled_transfer = SimpleNamespace(info_binary=info_binary, data_binary=data_binary, nonce=nonce)
             self.scheduled[peer].append(scheduled_transfer)
             return
