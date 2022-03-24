@@ -154,6 +154,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
             response = {"round": self.round}
             if self.model_send_delay is not None:
                 await sleep(random.randint(0, self.model_send_delay) / 1000)
+            self.logger.info("Sending round %d model to peer %s", self.round, peer)
             self.eva_send_binary(peer, json.dumps(response).encode(), serialize_model(self.model))
 
         if len(self.participants) > 1:
