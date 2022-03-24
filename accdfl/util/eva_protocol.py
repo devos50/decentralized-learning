@@ -512,6 +512,7 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
         self.send_scheduled()
 
     def finish_incoming_transfer(self, peer, transfer):
+        logger.debug("Finishing incoming transfer with peer %s", peer)
         data = transfer.data_binary
         info = transfer.info_binary
         nonce = transfer.nonce
