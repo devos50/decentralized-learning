@@ -379,7 +379,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                 if json_data["round"] not in self.incoming_models:
                     self.incoming_models[json_data["round"]] = []
                 self.incoming_models[json_data["round"]].append(incoming_model)
-                if len(self.incoming_models[self.round]) == len(self.participants) - 1:
+                if len(self.incoming_models[self.round]) == len(self.participants) - 1 and not self.round_deferred.done():
                     self.round_deferred.set_result(None)
 
     def on_send_complete(self, peer, binary_info, binary_data, nonce):
