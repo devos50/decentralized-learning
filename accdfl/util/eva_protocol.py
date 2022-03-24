@@ -426,10 +426,12 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
 
         transfer = self.outgoing.get(peer, None)
         if not transfer:
+            logger.warning("No outgoing transfer found with peer %s associated with incoming ackowledgement.", peer)
             return
 
         can_be_handled = transfer.block_number <= payload.number
         if not can_be_handled or transfer.nonce != payload.nonce:
+            logger.warning("Cannot handle incoming acknowledgement from peer %s", peer)
             return
 
         transfer.block_number = payload.number
@@ -514,6 +516,7 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
             callback(peer, info, data, nonce)
 
     def finish_outgoing_transfer(self, peer, transfer):
+        logger.debug("Finishing outgoing transfer with peer %s", peer)
         data = transfer.data_binary
         info = transfer.info_binary
         nonce = transfer.nonce
