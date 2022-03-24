@@ -34,7 +34,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.eva_init(retransmit_attempt_count=10, retransmit_interval_in_sec=2, terminate_by_timeout_enabled=False)
+        self.eva_init(retransmit_attempt_count=10, retransmit_interval_in_sec=1, timeout_interval_in_sec=10)
         self.data_store = DataStore()
         self.model_store = ModelStore()
         self.compute_accuracy_after_averaging = False
