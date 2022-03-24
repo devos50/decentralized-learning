@@ -361,11 +361,11 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
 
         self._schedule_terminate(self.outgoing, peer, transfer)
 
-        logger.debug(f'Write Request. Peer hash: {hash(peer)}. Transfer: {transfer}')
+        logger.debug(f'Write Request. Peer: {peer}. Transfer: {transfer}')
         self.community.eva_send_message(peer, WriteRequest(data_size, nonce, info_binary))
 
     async def on_write_request(self, peer: Peer, payload: WriteRequest):
-        logger.debug(f'On write request. Peer hash: {hash(peer)}. Info: {payload.info_binary}. '
+        logger.debug(f'On write request. Peer: {peer}. Info: {payload.info_binary}. '
                      f'Size: {payload.data_size}')
 
         if payload.data_size <= 0:
@@ -390,7 +390,7 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
 
     async def on_acknowledgement(self, peer: Peer, payload: Acknowledgement):
         logger.debug(f'On acknowledgement({payload.number}). Window size: {payload.window_size}. '
-                     f'Peer hash: {hash(peer)}.')
+                     f'Peer: {peer}.')
 
         transfer = self.outgoing.get(peer, None)
         if not transfer:
@@ -412,14 +412,14 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
             start_position = block_number * self.block_size
             stop_position = start_position + self.block_size
             data = transfer.data_binary[start_position:stop_position]
-            logger.debug(f'Transmit({block_number}). Peer hash: {hash(peer)}.')
+            logger.debug(f'Transmit({block_number}). Peer: {peer}.')
             self.community.eva_send_message(peer, Data(block_number, transfer.nonce, data))
             if len(data) == 0:
                 break
 
     async def on_data(self, peer, payload):
         logger.debug(
-            f'On data({payload.block_number}). Peer hash: {hash(peer)}. Data hash: {hash(payload.data_binary)}')
+            f'On data({payload.block_number}). Peer: {peer}. Data hash: {payload.data_binary}')
         transfer = self.incoming.get(peer, None)
         if not transfer:
             return
@@ -454,14 +454,14 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
         transfer.acknowledgement_number = transfer.block_number + 1
 
         logger.debug(f'Acknowledgement ({transfer.acknowledgement_number}). Window size: {transfer.window_size}. '
-                     f'Peer hash: {hash(peer)}')
+                     f'Peer: {peer}')
 
         acknowledgement = Acknowledgement(transfer.acknowledgement_number, transfer.window_size, transfer.nonce)
         self.community.eva_send_message(peer, acknowledgement)
 
     async def on_error(self, peer, payload):
         message = payload.message.decode('utf-8')
-        logger.debug(f'On error. Peer hash: {hash(peer)}. Message: "{message}"')
+        logger.debug(f'On error. Peer: {peer}. Message: "{message}"')
         transfer = self.outgoing.get(peer, None)
         if not transfer:
             return
@@ -510,7 +510,7 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
 
     @staticmethod
     def terminate(container, peer, transfer):
-        logger.debug(f'Finish. Peer hash: {hash(peer)}. Transfer: {transfer}')
+        logger.debug(f'Finish. Peer: {peer}. Transfer: {transfer}')
 
         transfer.release()
         container.pop(peer, None)
@@ -522,7 +522,7 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
         self._notify_error(peer, e)
 
     def _notify_error(self, peer, exception):
-        logger.warning(f'Exception.Peer hash {hash(peer)}: "{exception}"')
+        logger.warning(f'Exception.Peer hash {peer}: "{exception}"')
 
         for callback in self.error_callbacks:
             callback(peer, exception)
@@ -570,7 +570,7 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
             transfer.attempt += 1
 
             logger.debug(f'Re-acknowledgement({transfer.acknowledgement_number}). '
-                         f'Attempt: {transfer.attempt + 1}/{self.retransmit_attempt_count} for peer: {hash(peer)}')
+                         f'Attempt: {transfer.attempt + 1}/{self.retransmit_attempt_count} for peer: {peer}')
 
             self.send_acknowledgement(peer, transfer)
 
