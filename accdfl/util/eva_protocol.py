@@ -429,9 +429,13 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
             logger.warning("No outgoing transfer found with peer %s associated with incoming ackowledgement.", peer)
             return
 
-        can_be_handled = transfer.block_number <= payload.number
-        if not can_be_handled or transfer.nonce != payload.nonce:
-            logger.warning("Cannot handle incoming acknowledgement from peer %s", peer)
+        if transfer.block_number > payload.number:
+            logger.warning("Cannot handle incoming acknowledgement from peer %s - ack num mismatch (%d - %d)",
+                           peer, transfer.block_number, payload.number)
+            return
+
+        if transfer.nonce != payload.nonce:
+            logger.warning("Cannot handle incoming acknowledgement from peer %s - nonce mismatch", peer)
             return
 
         transfer.block_number = payload.number
