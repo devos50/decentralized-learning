@@ -419,7 +419,7 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
 
     async def on_data(self, peer, payload):
         logger.debug(
-            f'On data({payload.block_number}). Peer: {peer}. Data hash: {payload.data_binary}')
+            f'On data({payload.block_number}). Peer: {peer}. Data hash: {hash(payload.data_binary)}')
         transfer = self.incoming.get(peer, None)
         if not transfer:
             return
