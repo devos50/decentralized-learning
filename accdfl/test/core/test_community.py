@@ -1,4 +1,4 @@
-from asyncio import sleep, ensure_future, gather
+from asyncio import gather, sleep, Future
 from binascii import hexlify
 
 from accdfl.core.community import DFLCommunity
@@ -27,7 +27,8 @@ class TestDFLCommunity(TestBase):
             "momentum": 0.0,
             "batch_size": self.batch_size,
             "participants": [hexlify(node.my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
-            "rounds": self.NUM_ROUNDS
+            "rounds": self.NUM_ROUNDS,
+            "sample_size": self.NUM_NODES,
         }
         for node in self.nodes:
             node.overlay.total_samples_per_class = self.total_samples_per_class
@@ -41,36 +42,63 @@ class TestDFLCommunity(TestBase):
         assert len(self.nodes[0].overlay.data_store.data_items) == self.batch_size
         assert len(self.nodes[0].overlay.model_store.models) == 2
 
-    async def test_audit(self):
-        """
-        Test the audit procedure.
-        """
-        await self.nodes[0].overlay.train()
-        await self.deliver_messages()
-        blocks = self.nodes[1].overlay.persistence.get_all_blocks()
-        assert blocks
-        block = blocks[0]
-        assert block.transaction["old_model"] != block.transaction["new_model"]
-
-        assert await self.nodes[1].overlay.audit(self.nodes[0].my_peer.public_key.key_to_bin(), 1)
-        assert len(self.nodes[1].overlay.data_store.data_items) == self.batch_size
+    # async def test_audit(self):
+    #     """
+    #     Test the audit procedure.
+    #     """
+    #     await self.nodes[0].overlay.train()
+    #     await self.deliver_messages()
+    #     blocks = self.nodes[1].overlay.persistence.get_all_blocks()
+    #     assert blocks
+    #     block = blocks[0]
+    #     assert block.transaction["old_model"] != block.transaction["new_model"]
+    #
+    #     assert await self.nodes[1].overlay.audit(self.nodes[0].my_peer.public_key.key_to_bin(), 1)
+    #     assert len(self.nodes[1].overlay.data_store.data_items) == self.batch_size
 
     async def test_single_round(self):
         """
         Test whether a single round of training can be completed successfully.
         """
-        await gather(*[node.overlay.advance_round() for node in self.nodes])
-        for node in self.nodes:
-            assert node.overlay.round == 2
-            assert not node.overlay.incoming_models
+        assert len(self.nodes[0].overlay.get_participants_for_round(1)) == self.NUM_NODES
+        assert self.nodes[0].overlay.is_participant_for_round(1)
+        await gather(*[node.overlay.participate_in_round() for node in self.nodes])
 
-    async def test_multiple_rounds(self):
+    async def test_multiple_round(self):
         """
-        Test whether multiple rounds of training can be completed successfully.
+        Test multiple rounds of training.
         """
-        await gather(*[node.overlay.rounds() for node in self.nodes])
+        round_2_completed = []
+        round_2_completed_deferred = Future()
+
+        def on_round_complete(round_nr):
+            if round_nr == 2:
+                round_2_completed.append(True)
+                if len(round_2_completed) == self.NUM_NODES:
+                    round_2_completed_deferred.set_result(None)
+
         for node in self.nodes:
-            assert node.overlay.round == self.NUM_ROUNDS + 1
+            node.overlay.round_complete_callback = on_round_complete
+            node.overlay.start()
+
+        await round_2_completed_deferred
+
+    async def test_multiple_round_smaller_sample(self):
+        """
+        Test multiple rounds of training with a smaller sample size.
+        """
+        round_2_completed_deferred = Future()
+
+        def on_round_complete(round_nr):
+            if round_nr == 2:
+                round_2_completed_deferred.set_result(None)
+
+        for node in self.nodes:
+            node.overlay.sample_size = 1
+            node.overlay.round_complete_callback = on_round_complete
+            node.overlay.start()
+
+        await round_2_completed_deferred
 
     async def test_compute_accuracy(self):
         """
