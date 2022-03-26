@@ -469,6 +469,8 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                 if json_data["round"] not in self.incoming_local_models:
                     self.incoming_local_models[json_data["round"]] = []
                 self.incoming_local_models[json_data["round"]].append(incoming_model)
+                self.logger.info("Received expected local model (now have %d/%d)",
+                                 len(self.incoming_local_models[self.round]), self.sample_size - 1)
                 if len(self.incoming_local_models[self.round]) == self.sample_size - 1 and not self.round_deferred.done():
                     self.round_deferred.set_result(None)
             else:
