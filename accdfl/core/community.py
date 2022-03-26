@@ -55,6 +55,8 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         self.round_deferred = Future()
         self.incoming_local_models: Dict[int, List] = {}
         self.incoming_aggregated_models: Dict[int, List] = {}
+        self.is_computing_accuracy = False
+        self.compute_accuracy_deferred = None
 
         self.eva_register_receive_callback(self.on_receive)
         self.eva_register_send_complete_callback(self.on_send_complete)
@@ -216,6 +218,12 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         """
         self.logger.info("Participant %d starts participating in round %d", self.get_participant_index(), self.round)
 
+        # It can happen that this node is still computing the accuracy of the model produced by the previous round
+        # when starting the next round. If so, we wait until this accuracy computation is done.
+        if self.is_computing_accuracy:
+            self.logger.info("Waiting for accuracy computation to finish")
+            await self.compute_accuracy_deferred
+
         # Train
         epoch_done = await self.train()
 
@@ -260,6 +268,8 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         Compute the accuracy/loss of the current model.
         """
         self.logger.info("Computing accuracy of model")
+        self.is_computing_accuracy = True
+        self.compute_accuracy_deferred = Future()
         correct = example_number = total_loss = num_batches = 0
         with torch.no_grad():
             copied_model = self.model.copy()
@@ -281,6 +291,8 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         loss = total_loss / float(example_number)
         self.logger.info("Finished computing accuracy of model (accuracy: %f, loss: %f)", accuracy, loss)
         self.dataset.reset_validation_iterator()
+        self.is_computing_accuracy = False
+        self.compute_accuracy_deferred.set_result(None)
         return accuracy, loss
 
     def get_peer_by_pk(self, target_pk: bytes):
