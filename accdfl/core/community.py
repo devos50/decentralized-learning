@@ -102,7 +102,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         self.logger.info("Setting up experiment with %d participants and sample size %d (I am participant %d)" %
                          (len(self.participants), self.sample_size, self.get_participant_index()))
 
-        self.dataset = Dataset(os.path.join(os.environ["HOME"], "dfl-data"), parameters["batch_size"],
+        self.dataset = Dataset(os.path.join(os.environ["HOME"], "dfl-data"), os.path.join(os.environ["HOME"], "dfl-data-validation"), parameters["batch_size"],
                                self.total_samples_per_class, len(self.participants), self.get_participant_index())
         self.optimizer = SGDOptimizer(self.model, parameters["learning_rate"], parameters["momentum"])
 
@@ -123,6 +123,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
 
         hashes = []
         data, target = self.dataset.iterator.__next__()
+        self.model.train()
         for ddata, dtarget in zip(data, target):
             h = hashlib.md5(b"%d" % hash(ddata))
             hashes.append(hexlify(h.digest()).decode())
@@ -149,7 +150,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         if res is None:
             self.epoch += 1
             self.logger.info("Epoch done - resetting dataset iterator")
-            self.dataset.reset_iterator()
+            self.dataset.reset_train_iterator()
             return True
         else:
             self.dataset.iterator = res
@@ -243,14 +244,9 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         blk, _ = await self.self_sign_block(b"global_model", transaction=tx)
         self.send_aggregated_model(avg_model, blk)
 
-        if self.compute_accuracy_after_averaging or (epoch_done and self.compute_accuracy_after_epoch):
-            self.logger.info("Computing accuracy of model for round %d (epoch: %d)", self.round, self.epoch)
-            accuracy, loss = await self.compute_accuracy()
-            self.model_performances.append((self.round, accuracy, loss))
-
         self.logger.info("Round %d done", self.round)
         if self.round_complete_callback:
-            self.round_complete_callback(self.round)
+            await self.round_complete_callback(self.round)
         self.incoming_local_models.pop(self.round, None)
         self.round_deferred = Future()
 
@@ -264,14 +260,14 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         Compute the accuracy/loss of the current model.
         """
         self.logger.info("Computing accuracy of model")
-        self.model.eval()
         correct = example_number = total_loss = num_batches = 0
-        train = self.dataset.get_validation_iterator()
         with torch.no_grad():
+            copied_model = self.model.copy()
+            copied_model.eval()
             cur_item = 0
-            for data, target in train:
+            for data, target in self.dataset.validation_iterator:
                 data, target = Variable(data), Variable(target)
-                output = self.model.forward(data)
+                output = copied_model.forward(data)
                 loss = F.nll_loss(output, target)
                 total_loss += loss.item()
                 num_batches += 1.0
@@ -284,6 +280,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         accuracy = float(correct) / float(example_number)
         loss = total_loss / float(example_number)
         self.logger.info("Finished computing accuracy of model (accuracy: %f, loss: %f)", accuracy, loss)
+        self.dataset.reset_validation_iterator()
         return accuracy, loss
 
     def get_peer_by_pk(self, target_pk: bytes):

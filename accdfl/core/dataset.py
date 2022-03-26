@@ -9,11 +9,13 @@ from torchvision import datasets, transforms
 
 class Dataset:
 
-    def __init__(self, data_dir, batch_size, total_samples_per_class: int,
+    def __init__(self, data_dir, validation_data_dir, batch_size, total_samples_per_class: int,
                  total_participants: int, participant_index: int):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.train_set = None
+        self.validation_set = None
         self.data_dir = data_dir
+        self.validation_data_dir = validation_data_dir
         self.batch_size = batch_size
         self.total_participants = total_participants
         self.participant_index = participant_index
@@ -26,7 +28,13 @@ class Dataset:
             train=True,
             download=True,
             transform=transform)
+        self.validation_dataset = datasets.MNIST(
+            self.validation_data_dir,
+            train=True,
+            download=True,
+            transform=transform)
         self.iterator = None
+        self.validation_iterator = None
 
         self.partition_dataset([total_samples_per_class] * 10)
 
@@ -76,20 +84,22 @@ class Dataset:
             partition.extend(shuffled[c][start:end])
 
         self.train_set = [self.dataset[i] for i in partition]
-        self.reset_iterator()
+        self.validation_set = [self.validation_dataset[i] for i in partition]
+        self.reset_train_iterator()
+        self.reset_validation_iterator()
 
         self.logger.info("Partition: done")
 
-    def reset_iterator(self):
+    def reset_train_iterator(self):
         self.iterator = iter(torch.utils.data.DataLoader(
             self.train_set,
             batch_size=self.batch_size,
             shuffle=True
         ))
 
-    def get_validation_iterator(self):
-        return iter(torch.utils.data.DataLoader(
-            self.train_set,
+    def reset_validation_iterator(self):
+        self.validation_iterator = iter(torch.utils.data.DataLoader(
+            self.validation_set,
             batch_size=self.batch_size,
             shuffle=True
         ))

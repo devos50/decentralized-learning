@@ -71,7 +71,7 @@ class TestDFLCommunity(TestBase):
         round_2_completed = []
         round_2_completed_deferred = Future()
 
-        def on_round_complete(round_nr):
+        async def on_round_complete(round_nr):
             if round_nr == 2:
                 round_2_completed.append(True)
                 if len(round_2_completed) == self.NUM_NODES:
@@ -89,7 +89,7 @@ class TestDFLCommunity(TestBase):
         """
         round_2_completed_deferred = Future()
 
-        def on_round_complete(round_nr):
+        async def on_round_complete(round_nr):
             if round_nr == 2:
                 round_2_completed_deferred.set_result(None)
 
