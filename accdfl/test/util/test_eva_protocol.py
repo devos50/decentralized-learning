@@ -1,4 +1,5 @@
 import asyncio
+import collections
 import logging
 import os
 import random
@@ -21,12 +22,13 @@ from accdfl.util.eva_protocol import (
     TimeoutException,
     Transfer,
     TransferException,
+    TransferLimitException,
     TransferType,
     WriteRequest,
 )
 
 # fmt: off
-# pylint: disable=redefined-outer-name
+# pylint: disable=redefined-outer-name, protected-access
 
 PYTEST_TIMEOUT_IN_SEC = 60
 
@@ -378,6 +380,31 @@ class TestEVA(TestBase):
         assert self.overlay(1).received_data[self.peer(0)] == data
 
     @pytest.mark.timeout(PYTEST_TIMEOUT_IN_SEC)
+    async def test_write_request_packets_lost(self):
+        # Test that `eva_protocol` can sent message in the case of lost first N WriteRequests
+        self.overlay(0).eva_protocol.retransmit_interval_in_sec = 0
+        self.lost_packet_count = 2
+
+        # replace `real_send_writerequest` function by `fake_write_request` which
+        # ignores (drops) first `lost_packet_count` messages
+        real_send_writerequest_f = self.overlay(0).eva_protocol.send_writerequest
+
+        def fake_write_request(peer, transfer):
+            self.lost_packet_count -= 1
+            if self.lost_packet_count < 0:
+                real_send_writerequest_f(peer, transfer)
+
+        self.overlay(0).eva_protocol.send_writerequest = fake_write_request
+
+        data = b'info', b'data', 0
+        self.overlay(0).eva_send_binary(self.peer(1), *data)
+
+        await drain_loop(asyncio.get_event_loop())
+
+        # ensures that received data is correct
+        assert self.overlay(1).most_recent_received_data == data
+
+    @pytest.mark.timeout(PYTEST_TIMEOUT_IN_SEC)
     async def test_dynamically_changed_window_size(self):
         window_size = 5
 
@@ -544,3 +571,60 @@ async def test_on_acknowledgement_window_size_attr(eva: EVAProtocol, peer):
     window_size = eva.binary_size_limit + 1
     await eva.on_acknowledgement(peer, Acknowledgement(1, window_size, 0))
     assert transfer.window_size == eva.binary_size_limit
+
+
+def test_is_simultaneously_served_transfers_limit_exceeded(eva: EVAProtocol):
+    eva.max_simultaneous_transfers = 3
+
+    assert not eva._is_simultaneously_served_transfers_limit_exceeded()
+
+    eva.incoming['peer1'] = create_transfer()
+    eva.outgoing['peer2'] = create_transfer()
+
+    assert not eva._is_simultaneously_served_transfers_limit_exceeded()
+
+    eva.outgoing['peer3'] = create_transfer()
+    assert eva._is_simultaneously_served_transfers_limit_exceeded()
+
+
+def test_send_binary_with_transfers_limit(eva: EVAProtocol):
+    # Test that in case `max_simultaneous_transfers` limit exceeded, call of
+    # `send_binary` function will lead to schedule a transfer
+    eva.max_simultaneous_transfers = 2
+
+    eva.send_binary(peer=Mock(), info_binary=b'info', data_binary=b'data')
+    assert not eva.scheduled
+
+    eva.send_binary(peer=Mock(), info_binary=b'info', data_binary=b'data')
+    assert not eva.scheduled
+
+    eva.send_binary(peer=Mock(), info_binary=b'info', data_binary=b'data')
+    assert eva._is_simultaneously_served_transfers_limit_exceeded()
+    assert eva.scheduled
+
+
+async def test_on_write_request_with_transfers_limit(eva: EVAProtocol):
+    # Test that in case of exceeded incoming transfers limit, TransferLimitException
+    # will be returned
+    eva.max_simultaneous_transfers = 1
+    eva._incoming_error = Mock()
+
+    await eva.on_write_request(Mock(), WriteRequest(10, 0, b''))
+    eva._incoming_error.assert_not_called()
+
+    await eva.on_write_request(Mock(), WriteRequest(10, 0, b''))
+    actual_exception = eva._incoming_error.call_args[0][-1]
+    assert isinstance(actual_exception, TransferLimitException)
+
+
+def test_send_scheduled_with_transfers_limit(eva: EVAProtocol):
+    # Test that `max_simultaneous_transfers` limit uses during `send_scheduled`
+    eva.max_simultaneous_transfers = 2
+    eva.scheduled['peer1'] = collections.deque([create_transfer()])
+    eva.scheduled['peer2'] = collections.deque([create_transfer()])
+    eva.scheduled['peer3'] = collections.deque([create_transfer()])
+    eva.send_scheduled()
+
+    assert len(eva.scheduled['peer1']) == 0
+    assert len(eva.scheduled['peer2']) == 0
+    assert len(eva.scheduled['peer3']) == 1

@@ -95,7 +95,8 @@ class EVAProtocolMixin:
             retransmit_attempt_count=3,
             timeout_interval_in_sec=10,
             binary_size_limit=1024 * 1024 * 1024,
-            terminate_by_timeout_enabled=True
+            terminate_by_timeout_enabled=True,
+            max_simultaneous_transfers=10,
     ):
         """Init should be called manually within his parent class.
 
@@ -115,6 +116,9 @@ class EVAProtocolMixin:
                 error handler
             terminate_by_timeout_enabled: the flag indicating is termination-by-timeout
                 mechanism enabled or not
+            max_simultaneous_transfers: upper limit of simultaneously served peers.
+                The reason for introducing this parameter is to have a tool for
+                limiting socket load which could lead to packet loss.
         """
         self.last_message_id = start_message_id
         self.eva_messages = dict()
@@ -129,6 +133,7 @@ class EVAProtocolMixin:
             timeout_interval_in_sec=timeout_interval_in_sec,
             binary_size_limit=binary_size_limit,
             terminate_by_timeout_enabled=terminate_by_timeout_enabled,
+            max_simultaneous_transfers=max_simultaneous_transfers,
         )
 
         # note:
@@ -280,6 +285,10 @@ class ValueException(TransferException):
     pass
 
 
+class TransferLimitException(TransferException):
+    """Maximum simultaneous transfers limit exceeded"""
+
+
 class EVAProtocol:  # pylint: disable=too-many-instance-attributes
     MIN_WINDOWS_SIZE = 1
 
@@ -294,7 +303,8 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
             scheduled_send_interval_in_sec=5,
             timeout_interval_in_sec=10,
             binary_size_limit=1024 * 1024 * 1024,
-            terminate_by_timeout_enabled=True
+            terminate_by_timeout_enabled=True,
+            max_simultaneous_transfers=10
     ):
         self.community = community
 
@@ -306,6 +316,7 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
         self.timeout_interval_in_sec = timeout_interval_in_sec
         self.scheduled_send_interval_in_sec = scheduled_send_interval_in_sec
         self.binary_size_limit = binary_size_limit
+        self.max_simultaneous_transfers = max_simultaneous_transfers
 
         self.send_complete_callbacks = set()
         self.receive_callbacks = set()
@@ -338,8 +349,8 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
         if nonce is None:
             nonce = randint(0, MAX_U64)
 
-        if peer in self.outgoing:
-            logger.info("Existing outgoing transfer to peer %s found - scheduling next outgoing transfer", peer)
+        need_to_schedule = peer in self.outgoing or self._is_simultaneously_served_transfers_limit_exceeded()
+        if need_to_schedule:
             scheduled_transfer = SimpleNamespace(info_binary=info_binary, data_binary=data_binary, nonce=nonce)
             self.scheduled[peer].append(scheduled_transfer)
             return
@@ -370,39 +381,15 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
         write_request = WriteRequest(len(transfer.data_binary), transfer.nonce, transfer.info_binary)
         self.community.eva_send_message(peer, write_request)
 
-    def _schedule_resend_writerequest(self, peer, transfer):
-        if not self.retransmit_enabled:
-            return
-
-        self.community.register_anonymous_task('eva_resend_writerequest', self._resend_writerequest_task,
-                                               peer, transfer, delay=self.retransmit_interval_in_sec, )
-
-    def _resend_writerequest_task(self, peer, transfer):
-        if transfer.released or not self.retransmit_enabled or transfer.block_number != Transfer.NONE:
-            return
-
-        attempts_are_over = transfer.attempt >= self.retransmit_attempt_count
-        if attempts_are_over:
-            return
-
-        resend_needed = time.time() - transfer.updated >= self.retransmit_interval_in_sec
-        if resend_needed:
-            transfer.attempt += 1
-
-            logger.debug(f'Re-writerequest. '
-                         f'Attempt: {transfer.attempt + 1}/{self.retransmit_attempt_count} for peer: {peer}')
-
-            self.send_writerequest(peer, transfer)
-
-        self.community.register_anonymous_task('eva_resend_writerequest', self._resend_writerequest_task, peer,
-                                               transfer, delay=self.retransmit_interval_in_sec, )
-
     async def on_write_request(self, peer: Peer, payload: WriteRequest):
-        logger.debug(f'On write request. Peer: {peer}. Info: {payload.info_binary}. '
-                     f'Size: {payload.data_size}')
+        logger.debug(f'On write request. Peer: {peer}. Info: {payload.info_binary}. Size: {payload.data_size}')
 
         if payload.data_size <= 0:
             self._incoming_error(peer, None, ValueException('Data size can not be less or equal to 0'))
+            return
+
+        if self._is_simultaneously_served_transfers_limit_exceeded():
+            self._incoming_error(peer, None, TransferLimitException('Maximum simultaneous transfers limit exceeded'))
             return
 
         transfer = Transfer(TransferType.INCOMING, payload.info_binary, b'', payload.nonce)
@@ -422,8 +409,7 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
         self.send_acknowledgement(peer, transfer)
 
     async def on_acknowledgement(self, peer: Peer, payload: Acknowledgement):
-        logger.debug(f'On acknowledgement({payload.number}). Window size: {payload.window_size}. '
-                     f'Peer: {peer}.')
+        logger.debug(f'On acknowledgement({payload.number}). Window size: {payload.window_size}. Peer: {peer}.')
 
         transfer = self.outgoing.get(peer, None)
         if not transfer:
@@ -458,8 +444,7 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
                 break
 
     async def on_data(self, peer, payload):
-        logger.debug(
-            f'On data({payload.block_number}). Peer: {peer}. Data hash: {hash(payload.data_binary)}')
+        logger.debug(f'On data({payload.block_number}). Peer: {peer}. Data hash: {hash(payload.data_binary)}')
         transfer = self.incoming.get(peer, None)
         if not transfer:
             return
@@ -512,7 +497,6 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
         self.send_scheduled()
 
     def finish_incoming_transfer(self, peer, transfer):
-        logger.debug("Finishing incoming transfer with peer %s", peer)
         data = transfer.data_binary
         info = transfer.info_binary
         nonce = transfer.nonce
@@ -545,6 +529,9 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
                 self.scheduled.pop(peer, None)
                 continue
 
+            if self._is_simultaneously_served_transfers_limit_exceeded():
+                break
+
             transfer = self.scheduled[peer].popleft()
 
             logger.debug(f'Scheduled send: {transfer.info_binary}')
@@ -568,6 +555,33 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
 
         for callback in self.error_callbacks:
             callback(peer, exception)
+
+    def _schedule_resend_writerequest(self, peer, transfer):
+        if not self.retransmit_enabled:
+            return
+
+        self.community.register_anonymous_task('eva_resend_writerequest', self._resend_writerequest_task,
+                                               peer, transfer, delay=self.retransmit_interval_in_sec, )
+
+    def _resend_writerequest_task(self, peer, transfer):
+        if transfer.released or not self.retransmit_enabled or transfer.block_number != Transfer.NONE:
+            return
+
+        attempts_are_over = transfer.attempt >= self.retransmit_attempt_count
+        if attempts_are_over:
+            return
+
+        resend_needed = time.time() - transfer.updated >= self.retransmit_interval_in_sec
+        if resend_needed:
+            transfer.attempt += 1
+
+            logger.debug(f'Re-writerequest. '
+                         f'Attempt: {transfer.attempt + 1}/{self.retransmit_attempt_count} for peer: {peer}')
+
+            self.send_writerequest(peer, transfer)
+
+        self.community.register_anonymous_task('eva_resend_writerequest', self._resend_writerequest_task, peer,
+                                               transfer, delay=self.retransmit_interval_in_sec, )
 
     def _schedule_terminate(self, container, peer, transfer):
         if not self.terminate_by_timeout_enabled:
@@ -618,3 +632,7 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
 
         self.community.register_anonymous_task('eva_resend_acknowledge', self._resend_acknowledge_task, peer,
                                                transfer, delay=self.retransmit_interval_in_sec, )
+
+    def _is_simultaneously_served_transfers_limit_exceeded(self) -> bool:
+        transfers_count = len(self.incoming) + len(self.outgoing)
+        return transfers_count >= self.max_simultaneous_transfers
