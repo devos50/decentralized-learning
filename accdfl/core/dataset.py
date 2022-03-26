@@ -86,3 +86,10 @@ class Dataset:
             batch_size=self.batch_size,
             shuffle=True
         ))
+
+    def get_validation_iterator(self):
+        return iter(torch.utils.data.DataLoader(
+            self.train_set,
+            batch_size=self.batch_size,
+            shuffle=True
+        ))

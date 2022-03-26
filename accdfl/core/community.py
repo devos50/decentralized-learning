@@ -259,19 +259,17 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
             self.round += 1
             ensure_future(self.participate_in_round())
 
-    async def compute_accuracy(self, max_items=-1):
+    async def compute_accuracy(self):
         """
         Compute the accuracy/loss of the current model.
         """
         self.logger.info("Computing accuracy of model")
         self.model.eval()
         correct = example_number = total_loss = num_batches = 0
-        train = torch.utils.data.DataLoader(self.dataset.dataset, 100)
+        train = self.dataset.get_validation_iterator()
         with torch.no_grad():
             cur_item = 0
             for data, target in train:
-                if max_items != -1 and cur_item == max_items:
-                    break
                 data, target = Variable(data), Variable(target)
                 output = self.model.forward(data)
                 loss = F.nll_loss(output, target)
