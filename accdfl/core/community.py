@@ -104,7 +104,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         self.logger.info("Setting up experiment with %d participants and sample size %d (I am participant %d)" %
                          (len(self.participants), self.sample_size, self.get_participant_index()))
 
-        self.dataset = Dataset(os.path.join(os.environ["HOME"], "dfl-data"), os.path.join(os.environ["HOME"], "dfl-data-validation"), parameters["batch_size"],
+        self.dataset = Dataset(os.path.join(os.environ["HOME"], "dfl-data"), parameters["batch_size"],
                                self.total_samples_per_class, len(self.participants), self.get_participant_index())
         self.optimizer = SGDOptimizer(self.model, parameters["learning_rate"], parameters["momentum"])
 
