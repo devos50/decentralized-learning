@@ -252,11 +252,12 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         blk, _ = await self.self_sign_block(b"global_model", transaction=tx)
         self.send_aggregated_model(avg_model, blk)
 
+        self.incoming_local_models.pop(self.round, None)
+        self.round_deferred = Future()
+
         self.logger.info("Round %d done", self.round)
         if self.round_complete_callback:
             await self.round_complete_callback(self.round)
-        self.incoming_local_models.pop(self.round, None)
-        self.round_deferred = Future()
 
         # Should I participate in the next round again?
         if self.sample_size == 1 and self.is_participant_for_round(self.round + 1):
