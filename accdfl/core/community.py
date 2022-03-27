@@ -514,7 +514,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                                  len(self.incoming_local_models[self.round]), self.sample_size - 1)
                 if len(self.incoming_local_models[self.round]) == self.sample_size - 1 and not self.round_deferred.done():
                     self.round_deferred.set_result(None)
-            elif json_data["round"] > self.round and self.is_participant_for_round(json_data["round"] + 1):
+            elif json_data["round"] > self.round and self.is_participant_for_round(json_data["round"]):
                 self.logger.info("Received a local model from peer %s for future round %d",
                                  result.peer, json_data["round"])
                 # It is possible that we receive a model for a later round while we are still in an earlier round.
