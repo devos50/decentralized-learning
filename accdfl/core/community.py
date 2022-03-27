@@ -263,7 +263,10 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         if self.sample_size > 1:
             self.logger.info("Participant %d waiting for models from other peers for round %d",
                              self.get_participant_index(), self.round)
-            await self.round_deferred
+            if (self.round not in self.incoming_local_models) or \
+                    (self.round in self.incoming_local_models and
+                     len(self.incoming_local_models[self.round]) < self.sample_size - 1):
+                await self.round_deferred
             self.logger.info("Participant %d received %d model(s) from other peers for round %d - starting to average",
                              self.get_participant_index(), len(self.incoming_local_models[self.round]), self.round)
 
