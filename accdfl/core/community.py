@@ -192,7 +192,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
             response = {"round": self.round, "type": "aggregated_model"}
             self.eva_send_binary(peer, json.dumps(response).encode(), serialize_model(model))
 
-    async def share_local_model(self):
+    async def send_local_model(self):
         """
         Send the global model to the other participants in the current round.
         """
@@ -206,11 +206,20 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                 continue
 
             response = {"round": self.round, "type": "local_model"}
-            if self.model_send_delay is not None:
-                await sleep(random.randint(0, self.model_send_delay) / 1000)
-            self.logger.info("Participant %d sending round %d local model to peer %s",
-                             self.get_participant_index(), self.round, peer)
-            self.eva_send_binary(peer, json.dumps(response).encode(), serialize_model(self.model))
+
+            for attempt in range(1, 6):
+                if self.model_send_delay is not None:
+                    await sleep(random.randint(0, self.model_send_delay) / 1000)
+                self.logger.info("Participant %d sending round %d local model to peer %s (attempt %d)",
+                                 self.get_participant_index(), self.round, peer, attempt)
+                try:
+                    # TODO this logic is sequential - optimize by having multiple outgoing transfers at once
+                    res = await self.eva_send_binary(peer, json.dumps(response).encode(), serialize_model(self.model))
+                    self.logger.info("Local model successfully sent to peer %s", peer)
+                    break
+                except Exception as exc:
+                    self.logger.exception("Exception when sending model to peer %d", peer)
+                attempt += 1
 
     async def participate_in_round(self):
         """
@@ -228,7 +237,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         epoch_done = await self.train()
 
         # Send the updated model to the other participants in the current round
-        await self.share_local_model()
+        await self.send_local_model()
 
         avg_model = self.model
         if self.sample_size > 1:
