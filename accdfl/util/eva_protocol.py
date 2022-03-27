@@ -27,11 +27,12 @@
 #
 #     def on_error(self, peer, exception):
 #         logger.error(f'Error has been occurred: {exception}')
-
 import logging
 import math
 import time
+from asyncio import Future
 from collections import defaultdict, deque
+from dataclasses import dataclass
 from enum import Enum, auto
 from random import randint
 from types import SimpleNamespace
@@ -144,7 +145,7 @@ class EVAProtocolMixin:
         self._eva_register_message_handler(Data, self.on_eva_data)
         self._eva_register_message_handler(Error, self.on_eva_error)
 
-    def eva_send_binary(self, peer, info_binary, data_binary, nonce=None):
+    def eva_send_binary(self, peer, info_binary, data_binary, nonce=None) -> Future:
         """Send a big binary data.
 
         Due to ipv8 specifics, we can use only one socket port per one peer.
@@ -168,7 +169,7 @@ class EVAProtocolMixin:
                 try to send less rather than more.
             nonce: a unique number for identifying the session. If not specified, generated randomly
         """
-        self.eva_protocol.send_binary(peer, info_binary, data_binary, nonce)
+        return self.eva_protocol.send_binary(peer, info_binary, data_binary, nonce)
 
     def eva_register_receive_callback(self, callback):
         """Register callback that will be invoked when a data receiving is complete.
@@ -241,11 +242,12 @@ class Transfer:  # pylint: disable=too-many-instance-attributes
 
     NONE = -1
 
-    def __init__(self, transfer_type, info_binary, data_binary, nonce):
+    def __init__(self, transfer_type, info_binary, data_binary, nonce, future: Optional[Future] = None):
         self.type = transfer_type
         self.info_binary = info_binary
         self.data_binary = data_binary
         self.block_number = Transfer.NONE
+        self.future: Optional[Future] = future
         self.block_count = 0
         self.attempt = 0
         self.nonce = nonce
@@ -264,6 +266,14 @@ class Transfer:  # pylint: disable=too-many-instance-attributes
             f'Type: {self.type}. Info: {self.info_binary}. Block: {self.block_number}({self.block_count}). '
             f'Window size: {self.window_size}. Updated: {self.updated}'
         )
+
+
+@dataclass
+class TransferResult:
+    peer: Peer
+    info: bytes
+    data: bytes
+    nonce: int
 
 
 class TransferException(Exception):
@@ -339,31 +349,36 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
             f'Binary size limit: {binary_size_limit}.'
         )
 
-    def send_binary(self, peer, info_binary, data_binary, nonce=None):
+    def send_binary(self, peer, info_binary, data_binary, nonce=None) -> Future:
+        future = Future()
         if not data_binary:
-            return
+            future.set_exception(ValueException('The empty data binary passed'))
+            return future
 
         if peer == self.community.my_peer:
-            return
+            future.set_exception(ValueException('The receiver can not be equal to the sender'))
+            return future
 
         if nonce is None:
             nonce = randint(0, MAX_U64)
 
         need_to_schedule = peer in self.outgoing or self._is_simultaneously_served_transfers_limit_exceeded()
         if need_to_schedule:
-            scheduled_transfer = SimpleNamespace(info_binary=info_binary, data_binary=data_binary, nonce=nonce)
+            scheduled_transfer = SimpleNamespace(info_binary=info_binary, data_binary=data_binary, nonce=nonce,
+                                                 future=future)
             self.scheduled[peer].append(scheduled_transfer)
-            return
+            return future
 
-        self.start_outgoing_transfer(peer, info_binary, data_binary, nonce)
+        self.start_outgoing_transfer(peer, info_binary, data_binary, nonce, future)
+        return future
 
-    def start_outgoing_transfer(self, peer, info_binary, data_binary, nonce):
-        transfer = Transfer(TransferType.OUTGOING, info_binary, b'', nonce)
+    def start_outgoing_transfer(self, peer, info_binary, data_binary, nonce, future):
+        transfer = Transfer(TransferType.OUTGOING, info_binary, b'', nonce, future)
 
         data_size = len(data_binary)
         if data_size > self.binary_size_limit:
             message = f'Current data size limit({self.binary_size_limit}) has been exceeded'
-            self._notify_error(peer, SizeException(message, transfer))
+            self._notify_error(peer, SizeException(message, transfer), future)
             return
 
         transfer.block_count = math.ceil(data_size / self.block_size)
@@ -493,29 +508,38 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
 
         EVAProtocol.terminate(self.outgoing, peer, transfer)
 
-        self._notify_error(peer, TransferException(message, transfer))
+        self._notify_error(peer, TransferException(message, transfer), transfer.future)
         self.send_scheduled()
 
     def finish_incoming_transfer(self, peer, transfer):
-        data = transfer.data_binary
-        info = transfer.info_binary
-        nonce = transfer.nonce
+        result = TransferResult(
+            peer=peer,
+            info=transfer.info_binary,
+            data=transfer.data_binary,
+            nonce=transfer.nonce
+        )
 
         EVAProtocol.terminate(self.incoming, peer, transfer)
 
         for callback in self.receive_callbacks:
-            callback(peer, info, data, nonce)
+            callback(result)
 
     def finish_outgoing_transfer(self, peer, transfer):
         logger.debug("Finishing outgoing transfer with peer %s", peer)
-        data = transfer.data_binary
-        info = transfer.info_binary
-        nonce = transfer.nonce
+        result = TransferResult(
+            peer=peer,
+            info=transfer.info_binary,
+            data=transfer.data_binary,
+            nonce=transfer.nonce
+        )
 
         EVAProtocol.terminate(self.outgoing, peer, transfer)
 
+        if transfer.future:
+            transfer.future.set_result(result)
+
         for callback in self.send_complete_callbacks:
-            callback(peer, info, data, nonce)
+            callback(result)
 
         self.send_scheduled()
 
@@ -535,7 +559,8 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
             transfer = self.scheduled[peer].popleft()
 
             logger.debug(f'Scheduled send: {transfer.info_binary}')
-            self.start_outgoing_transfer(peer, transfer.info_binary, transfer.data_binary, transfer.nonce)
+            self.start_outgoing_transfer(peer, transfer.info_binary, transfer.data_binary, transfer.nonce,
+                                         transfer.future)
 
     @staticmethod
     def terminate(container, peer, transfer):
@@ -548,11 +573,12 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
         if transfer:
             self.terminate(self.incoming, peer, transfer)
         self.community.eva_send_message(peer, Error(e.message.encode('utf-8')))
-        self._notify_error(peer, e)
+        self._notify_error(peer, e, transfer.future)
 
-    def _notify_error(self, peer, exception):
+    def _notify_error(self, peer, exception, future: Optional[Future] = None):
         logger.warning(f'Exception.Peer hash {peer}: "{exception}"')
-
+        if future:
+            future.set_exception(exception)
         for callback in self.error_callbacks:
             callback(peer, exception)
 
@@ -603,7 +629,8 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
             return
 
         EVAProtocol.terminate(container, peer, transfer)
-        self._notify_error(peer, TimeoutException(f'Terminated by timeout. Timeout is: {timeout} sec', transfer))
+        self._notify_error(peer, TimeoutException(f'Terminated by timeout. Timeout is: {timeout} sec', transfer),
+                           transfer.future)
 
     def _schedule_resend_acknowledge(self, peer, transfer):
         if not self.retransmit_enabled:

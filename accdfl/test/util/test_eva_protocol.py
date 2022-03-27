@@ -3,6 +3,7 @@ import collections
 import logging
 import os
 import random
+from asyncio import AbstractEventLoop, Future
 from collections import defaultdict
 from itertools import permutations
 from types import SimpleNamespace
@@ -23,12 +24,14 @@ from accdfl.util.eva_protocol import (
     Transfer,
     TransferException,
     TransferLimitException,
+    TransferResult,
     TransferType,
+    ValueException,
     WriteRequest,
 )
 
 # fmt: off
-# pylint: disable=redefined-outer-name, protected-access
+# pylint: disable=redefined-outer-name, protected-access, attribute-defined-outside-init
 
 PYTEST_TIMEOUT_IN_SEC = 60
 
@@ -39,13 +42,13 @@ TEST_START_MESSAGE_ID = 100
 
 
 def create_transfer(block_count: int = 0, updated: int = 0) -> Transfer:
-    transfer = Transfer(TransferType.INCOMING, b'', b'', 0)
+    transfer = Transfer(TransferType.INCOMING, b'', b'', 0, Mock())
     transfer.updated = updated
     transfer.block_count = block_count
     return transfer
 
 
-async def drain_loop(loop):
+async def drain_loop(loop: AbstractEventLoop):
     """Cool asyncio magic brewed by Vadim"""
     while True:
         if not loop._ready or not loop._scheduled:  # pylint: disable=protected-access
@@ -76,13 +79,13 @@ class MockCommunity(EVAProtocolMixin, Community):  # pylint: disable=too-many-an
         self.eva_register_send_complete_callback(self.on_send_complete)
         self.eva_register_error_callback(self.on_error)
 
-    def on_receive(self, peer, info, data, nonce):
-        self.most_recent_received_data = info, data, nonce
-        self.received_data[peer].append(self.most_recent_received_data)
+    def on_receive(self, result: TransferResult):
+        self.most_recent_received_data = result.info, result.data, result.nonce
+        self.received_data[result.peer].append(self.most_recent_received_data)
 
-    def on_send_complete(self, peer, info, data, nonce):
-        self.most_recent_sent_data = info, data, nonce
-        self.sent_data[peer].append(self.most_recent_sent_data)
+    def on_send_complete(self, result: TransferResult):
+        self.most_recent_sent_data = result.info, result.data, result.nonce
+        self.sent_data[result.peer].append(self.most_recent_sent_data)
 
     def on_error(self, peer, exception):
         self.most_recent_received_exception = exception
@@ -105,10 +108,11 @@ class TestEVA(TestBase):
         assert len(self.overlay(1).received_data[self.peer(0)]) == 1
 
     async def test_self_send(self):
-        self.overlay(0).eva_send_binary(self.peer(0), b'test1', b'1234')
+        future: Future = self.overlay(0).eva_send_binary(self.peer(0), b'test1', b'1234')
 
         await drain_loop(asyncio.get_event_loop())
 
+        assert isinstance(future.exception(), ValueException)
         assert not self.overlay(0).most_recent_received_data
         assert len(self.overlay(0).sent_data[self.peer(1)]) == 0
 
@@ -124,16 +128,10 @@ class TestEVA(TestBase):
         assert len(self.overlay(1).received_data[self.peer(0)]) == 1
 
     async def test_zero_transfer(self):
-        self.overlay(0).eva_send_binary(self.peer(1), b'', b'')
+        future: Future = self.overlay(0).eva_send_binary(self.peer(1), b'', b'')
 
         await drain_loop(asyncio.get_event_loop())
-
-        assert self.overlay(1).most_recent_received_data is None
-        assert len(self.overlay(0).eva_protocol.outgoing) == 0
-        assert len(self.overlay(1).eva_protocol.incoming) == 0
-
-        assert len(self.overlay(0).sent_data[self.peer(1)]) == 0
-        assert len(self.overlay(1).received_data[self.peer(0)]) == 0
+        assert isinstance(future.exception(), ValueException)
 
     @pytest.mark.timeout(PYTEST_TIMEOUT_IN_SEC)
     async def test_one_megabyte_transfer(self):
@@ -219,11 +217,11 @@ class TestEVA(TestBase):
         # test on a sender side
         self.overlay(2).eva_protocol.binary_size_limit = 4
 
-        self.overlay(2).eva_send_binary(self.peer(0), b'info', b'12345')
+        future: Future = self.overlay(2).eva_send_binary(self.peer(0), b'info', b'12345')
 
         await drain_loop(asyncio.get_event_loop())
 
-        assert isinstance(self.overlay(2).most_recent_received_exception, SizeException)
+        assert isinstance(future.exception(), SizeException)
         assert not self.overlay(2).eva_protocol.outgoing
         assert not self.overlay(0).eva_protocol.incoming
         assert len(self.overlay(0).received_data[self.peer(1)]) == 0
@@ -587,22 +585,23 @@ def test_is_simultaneously_served_transfers_limit_exceeded(eva: EVAProtocol):
     assert eva._is_simultaneously_served_transfers_limit_exceeded()
 
 
-def test_send_binary_with_transfers_limit(eva: EVAProtocol):
+@pytest.mark.asyncio
+async def test_send_binary_with_transfers_limit(eva: EVAProtocol):
     # Test that in case `max_simultaneous_transfers` limit exceeded, call of
     # `send_binary` function will lead to schedule a transfer
     eva.max_simultaneous_transfers = 2
-
-    eva.send_binary(peer=Mock(), info_binary=b'info', data_binary=b'data')
+    assert eva.send_binary(peer=Mock(), info_binary=b'info', data_binary=b'data')
     assert not eva.scheduled
 
-    eva.send_binary(peer=Mock(), info_binary=b'info', data_binary=b'data')
+    assert eva.send_binary(peer=Mock(), info_binary=b'info', data_binary=b'data')
     assert not eva.scheduled
 
-    eva.send_binary(peer=Mock(), info_binary=b'info', data_binary=b'data')
+    assert eva.send_binary(peer=Mock(), info_binary=b'info', data_binary=b'data')
     assert eva._is_simultaneously_served_transfers_limit_exceeded()
     assert eva.scheduled
 
 
+@pytest.mark.asyncio
 async def test_on_write_request_with_transfers_limit(eva: EVAProtocol):
     # Test that in case of exceeded incoming transfers limit, TransferLimitException
     # will be returned

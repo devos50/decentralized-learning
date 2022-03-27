@@ -23,7 +23,7 @@ from accdfl.core.model.linear import LinearModel
 from accdfl.core.optimizer.sgd import SGDOptimizer
 from accdfl.core.payloads import DataRequest, DataNotFoundResponse
 from accdfl.trustchain.community import TrustChainCommunity
-from accdfl.util.eva_protocol import EVAProtocolMixin
+from accdfl.util.eva_protocol import EVAProtocolMixin, TransferResult
 from ipv8.lazy_community import lazy_wrapper
 from ipv8.messaging.payload_headers import BinMemberAuthenticationPayload, GlobalTimeDistributionPayload
 from ipv8.util import fail
@@ -434,9 +434,9 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
 
         return self.verify_model_training(old_model, Tensor(datas), torch.LongTensor(targets), new_model)
 
-    def on_receive(self, peer, binary_info, binary_data, nonce):
-        self.logger.info(f'Data has been received from peer {peer}: {binary_info}')
-        json_data = json.loads(binary_info.decode())
+    def on_receive(self, result: TransferResult):
+        self.logger.info(f'Data has been received from peer {result.peer}: {result.info}')
+        json_data = json.loads(result.info.decode())
         if "request_id" in json_data:
             # We received this data in response to an earlier request
             if not self.request_cache.has("datarequest", json_data["request_id"]):
@@ -445,16 +445,16 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
             cache = self.request_cache.get("datarequest", json_data["request_id"])
             request_type = DataType(json_data["type"])
             if request_type == DataType.TRAIN_DATA:
-                cache.request_future.set_result((json_data["target"], binary_data))
+                cache.request_future.set_result((json_data["target"], result.data))
             elif request_type == DataType.MODEL:
-                cache.request_future.set_result(binary_data)
+                cache.request_future.set_result(result.data)
         elif json_data["type"] == "aggregated_model":
             # This response is the aggregated model of another participant.
             if not self.is_participant_for_round(json_data["round"] + 1):
                 self.logger.warning("Received model from peer %s for round %d but we are not a participant "
-                                    "in that round", peer, json_data["round"])
+                                    "in that round", result.peer, json_data["round"])
 
-            incoming_model = unserialize_model(binary_data)
+            incoming_model = unserialize_model(result.data)
             if json_data["round"] not in self.incoming_aggregated_models:
                 self.incoming_aggregated_models[json_data["round"]] = []
             self.incoming_aggregated_models[json_data["round"]].append(incoming_model)
@@ -464,9 +464,9 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                 ensure_future(self.participate_in_round())
         elif json_data["type"] == "local_model":
             # This response is the local model of another participant.
-            self.logger.info("Received local model for round %d from peer %s", json_data["round"], peer)
+            self.logger.info("Received local model for round %d from peer %s", json_data["round"], result.peer)
             if json_data["round"] == self.round:
-                incoming_model = unserialize_model(binary_data)
+                incoming_model = unserialize_model(result.data)
                 if json_data["round"] not in self.incoming_local_models:
                     self.incoming_local_models[json_data["round"]] = []
                 self.incoming_local_models[json_data["round"]].append(incoming_model)
@@ -477,8 +477,8 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
             else:
                 self.logger.warning("Received a model for a round that we are currently not in (%d)", json_data["round"])
 
-    def on_send_complete(self, peer, binary_info, binary_data, nonce):
-        self.logger.info(f'Outgoing transfer to peer {peer} has completed: {binary_info}')
+    def on_send_complete(self, result: TransferResult):
+        self.logger.info(f'Outgoing transfer to peer {result.peer} has completed: {result.info}')
 
     def on_error(self, peer, exception):
         self.logger.error(f'An error has occurred in transfer to peer {peer}: {exception}')
