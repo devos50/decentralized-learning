@@ -202,7 +202,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                     self.logger.info("Aggregated model of round %d successfully sent to peer %s", self.round, peer)
                     break
                 except Exception as exc:
-                    self.logger.exception("Exception when sending aggregated model to peer %d", peer)
+                    self.logger.exception("Exception when sending aggregated model to peer %s", peer)
                 attempt += 1
 
     async def send_local_model(self):
@@ -231,7 +231,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                     self.logger.info("Local model successfully sent to peer %s", peer)
                     break
                 except Exception as exc:
-                    self.logger.exception("Exception when sending model to peer %d", peer)
+                    self.logger.exception("Exception when sending model to peer %s", peer)
                 attempt += 1
 
     async def participate_in_round(self):
