@@ -251,6 +251,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         # TODO there can be inconsistencies in the models received - assume for now they are all the same
         if self.round > 1:
             self.model = random.choice(self.incoming_aggregated_models[self.round - 1])
+            self.optimizer = SGDOptimizer(self.model, self.parameters["learning_rate"], self.parameters["momentum"])
             self.incoming_aggregated_models.pop(self.round - 1, None)
 
         # Train
