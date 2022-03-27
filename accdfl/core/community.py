@@ -36,6 +36,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         super().__init__(*args, **kwargs)
         self.eva_init(retransmit_attempt_count=10, retransmit_interval_in_sec=1, timeout_interval_in_sec=10)
         self.is_active = False
+        self.is_participating_in_round = False
         self.data_store = DataStore()
         self.model_store = ModelStore()
         self.compute_accuracy_after_averaging = False
@@ -145,7 +146,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
 
         # Record the individual model update
         tx = {"round": self.round, "old_model": old_model_hash, "new_model": new_model_hash}
-        await self.self_sign_block(b"model_update", transaction=tx)
+        #await self.self_sign_block(b"model_update", transaction=tx)
 
         # Are we at the end of the epoch?
         res = it_has_next(self.dataset.iterator)
@@ -169,7 +170,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                     c1.add_(w * p1)
             return center_model
 
-    def send_aggregated_model(self, model, block):
+    async def send_aggregated_model(self, model):
         """
         Send the global model update to the participants of the next round.
         """
@@ -188,9 +189,21 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                 continue
 
             # TODO do something with the TrustChain block
-            self.logger.info("Sending aggregated model to %s", peer)
             response = {"round": self.round, "type": "aggregated_model"}
-            self.eva_send_binary(peer, json.dumps(response).encode(), serialize_model(model))
+
+            for attempt in range(1, 6):
+                if self.model_send_delay is not None:
+                    await sleep(random.randint(0, self.model_send_delay) / 1000)
+                self.logger.info("Participant %d sending round %d aggregated model to peer %s (attempt %d)",
+                                 self.get_participant_index(), self.round, peer, attempt)
+                try:
+                    # TODO this logic is sequential - optimize by having multiple outgoing transfers at once
+                    res = await self.eva_send_binary(peer, json.dumps(response).encode(), serialize_model(model))
+                    self.logger.info("Aggregated model of round %d successfully sent to peer %s", self.round, peer)
+                    break
+                except Exception as exc:
+                    self.logger.exception("Exception when sending aggregated model to peer %d", peer)
+                attempt += 1
 
     async def send_local_model(self):
         """
@@ -225,6 +238,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         """
         Complete a round of training and model aggregation.
         """
+        self.is_participating_in_round = True
         self.logger.info("Participant %d starts participating in round %d", self.get_participant_index(), self.round)
 
         # It can happen that this node is still computing the accuracy of the model produced by the previous round
@@ -232,6 +246,12 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         if self.is_computing_accuracy:
             self.logger.info("Waiting for accuracy computation to finish")
             await self.compute_accuracy_deferred
+
+        # Adopt the aggregated model sent by other nodes
+        # TODO there can be inconsistencies in the models received - assume for now they are all the same
+        if self.round > 1:
+            self.model = random.choice(self.incoming_aggregated_models[self.round - 1])
+            self.incoming_aggregated_models.pop(self.round - 1, None)
 
         # Train
         epoch_done = await self.train()
@@ -244,8 +264,8 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
             self.logger.info("Participant %d waiting for models from other peers for round %d",
                              self.get_participant_index(), self.round)
             await self.round_deferred
-            self.logger.info("Received %d models from other peers for round %d - starting to average",
-                             len(self.incoming_local_models[self.round]), self.round)
+            self.logger.info("Participant %d received %d model(s) from other peers for round %d - starting to average",
+                             self.get_participant_index(), len(self.incoming_local_models[self.round]), self.round)
 
             # Average your model with those of the other participants
             avg_model = self.average_models(self.incoming_local_models[self.round] + [self.model])
@@ -258,20 +278,30 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         # TODO optimistic aggregation
         new_model_hash = hexlify(hashlib.md5(serialize_model(avg_model)).digest()).decode()
         tx = {"round": self.round, "new_model": new_model_hash}
-        blk, _ = await self.self_sign_block(b"global_model", transaction=tx)
-        self.send_aggregated_model(avg_model, blk)
+        #blk, _ = await self.self_sign_block(b"global_model", transaction=tx)
+        await self.send_aggregated_model(avg_model)
 
         self.incoming_local_models.pop(self.round, None)
         self.round_deferred = Future()
 
-        self.logger.info("Round %d done", self.round)
+        self.logger.info("Participant %d finished round %d", self.get_participant_index(), self.round)
         if self.round_complete_callback:
             await self.round_complete_callback(self.round)
+        self.is_participating_in_round = False
 
         # Should I participate in the next round again?
         if self.sample_size == 1 and self.is_participant_for_round(self.round + 1):
             self.round += 1
             ensure_future(self.participate_in_round())
+
+        # Check if there is a future round in which we participate and for which we have received all models.
+        # If so, start participating in that round.
+        for round_nr in self.incoming_aggregated_models:
+            if round_nr < self.round:
+                continue
+            if len(self.incoming_aggregated_models[round_nr]) == self.sample_size:
+                self.round = round_nr + 1
+                ensure_future(self.participate_in_round())
 
     async def compute_accuracy(self):
         """
@@ -460,14 +490,15 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         elif json_data["type"] == "aggregated_model":
             # This response is the aggregated model of another participant.
             if not self.is_participant_for_round(json_data["round"] + 1):
-                self.logger.warning("Received model from peer %s for round %d but we are not a participant "
-                                    "in that round", result.peer, json_data["round"])
+                self.logger.warning("Received aggregated model from peer %s for round %d but we are not a participant "
+                                    "in that round", result.peer, json_data["round"] + 1)
 
+            self.logger.info("Received aggregated model from peer %s for round %d", result.peer, json_data["round"])
             incoming_model = unserialize_model(result.data)
             if json_data["round"] not in self.incoming_aggregated_models:
                 self.incoming_aggregated_models[json_data["round"]] = []
             self.incoming_aggregated_models[json_data["round"]].append(incoming_model)
-            if len(self.incoming_aggregated_models[json_data["round"]]) == self.sample_size:
+            if len(self.incoming_aggregated_models[json_data["round"]]) == self.sample_size and not self.is_participating_in_round:
                 # Perform this round
                 self.round = json_data["round"] + 1
                 ensure_future(self.participate_in_round())
@@ -483,8 +514,17 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                                  len(self.incoming_local_models[self.round]), self.sample_size - 1)
                 if len(self.incoming_local_models[self.round]) == self.sample_size - 1 and not self.round_deferred.done():
                     self.round_deferred.set_result(None)
+            elif json_data["round"] > self.round and self.is_participant_for_round(json_data["round"] + 1):
+                self.logger.info("Received a local model from peer %s for future round %d",
+                                 result.peer, json_data["round"])
+                # It is possible that we receive a model for a later round while we are still in an earlier round.
+                if json_data["round"] not in self.incoming_local_models:
+                    self.incoming_local_models[json_data["round"]] = []
+                incoming_model = unserialize_model(result.data)
+                self.incoming_local_models[json_data["round"]].append(incoming_model)
             else:
-                self.logger.warning("Received a model for a round that we are currently not in (%d)", json_data["round"])
+                self.logger.warning("Received a local model for a round that is not relevant for us (%d)",
+                                    json_data["round"])
 
     def on_send_complete(self, result: TransferResult):
         self.logger.info(f'Outgoing transfer to peer {result.peer} has completed: {result.info}')
