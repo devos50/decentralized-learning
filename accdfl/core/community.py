@@ -191,7 +191,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
             # TODO do something with the TrustChain block
             response = {"round": self.round, "type": "aggregated_model"}
 
-            for attempt in range(1, 6):
+            for attempt in range(1, 21):
                 if self.model_send_delay is not None:
                     await sleep(random.randint(0, self.model_send_delay) / 1000)
                 self.logger.info("Participant %d sending round %d aggregated model to peer %s (attempt %d)",
@@ -220,7 +220,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
 
             response = {"round": self.round, "type": "local_model"}
 
-            for attempt in range(1, 6):
+            for attempt in range(1, 21):
                 if self.model_send_delay is not None:
                     await sleep(random.randint(0, self.model_send_delay) / 1000)
                 self.logger.info("Participant %d sending round %d local model to peer %s (attempt %d)",
