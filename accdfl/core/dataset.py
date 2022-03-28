@@ -1,7 +1,7 @@
 import logging
 import math
 from random import Random
-from typing import Dict
+from typing import Dict, List, Tuple
 
 import torch
 
@@ -10,14 +10,14 @@ from torchvision import datasets, transforms
 
 class Dataset:
 
-    def __init__(self, data_dir, batch_size, total_samples_per_class: int,
-                 total_participants: int, participant_index: int):
+    def __init__(self, data_dir, parameters: Dict, participant_index: int):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.train_set = None
         self.validation_set = None
         self.data_dir = data_dir
-        self.batch_size = batch_size
-        self.total_participants = total_participants
+        self.parameters = parameters
+        self.batch_size = parameters["batch_size"]
+        self.total_participants = len(parameters["participants"])
         self.participant_index = participant_index
         transform = transforms.Compose([
             transforms.ToTensor(),
@@ -31,21 +31,73 @@ class Dataset:
         self.iterator = None
         self.validation_iterator = None
 
-        self.partition_dataset([total_samples_per_class] * 10)
+        self.partition_dataset()
 
-    def partition_dataset(self, total_samples_per_class):
+    def get_ranges(self) -> List[Tuple[int, int]]:
+        rand = Random()
+        rand.seed(1337)
+        remaining_classes = [n for n in self.parameters["nodes_per_class"]]
+        local_samples_per_class = [int(t / n) for t, n in zip(self.parameters["samples_per_class"], self.parameters["nodes_per_class"])]
+
+        # Sample without putting the previous samples back
+        # in the bag until empty, to guarantee coverage
+        # of all classes with few nodes or rare classes
+        def sampler_gen(remaining_classes, k):
+            while sum(remaining_classes) > 0:
+                choices = []
+                max_class = max(remaining_classes)
+                while len(choices) < k:
+                    for c in range(10):
+                        if remaining_classes[c] >= max_class:
+                            choices.append(c)
+                    max_class -= 1
+
+                s = rand.sample(choices, k)
+                for c in s:
+                    remaining_classes[c] -= 1
+                yield s
+
+        def classes():
+            samples = next(sampler)
+            classes = [0. for c in range(10)]
+            for i in range(self.parameters["local_classes"]):
+                classes[samples[i]] = 1.
+            return classes
+
+        sampler = sampler_gen(remaining_classes, self.parameters["local_classes"])
+        nodes = [{"classes": classes()} for _ in range(len(self.parameters["participants"]))]
+        multiples = [0 for _ in range(10)]
+        for n in nodes:
+            for c in range(10):
+                multiples[c] += n["classes"][c]
+
+        logging.info('assign_classes: classes represented times {}'.format(multiples))
+
+        # save [start, end[ for each class of every node where:
+        # 'start' is the inclusive start index
+        # 'end' is the exclusive end index
+        start = [0 for i in range(10)]
+        for n in nodes:
+            end = [start[c] + int(n["classes"][c] * local_samples_per_class[c])
+                   for c in range(10)]
+            n['samples'] = [(start[c], end[c]) for c in range(10)]
+            start = end
+
+        return nodes[self.participant_index]["samples"]
+
+    def partition_dataset(self) -> None:
+        # Generate the ranges of samples for this particular node
+        ranges = self.get_ranges()
+
         # Partition the dataset, based on the participant index
         # TODO assume iid distribution + hard-coded values
-        samples_per_class_per_node = [t / self.total_participants for t in total_samples_per_class]
+        samples_per_class_per_node = [t // self.total_participants for t in self.parameters["samples_per_class"]]
         rand = Random()
         rand.seed(1337)
 
-        logging.info('partition: split the dataset per class (samples per class: %s)', total_samples_per_class)
+        logging.info('partition: split the dataset per class (samples per class: %s)', samples_per_class_per_node)
         indexes = {x: [] for x in range(10)}
-        if type(self.dataset.targets) != torch.Tensor:
-            targets = torch.tensor(self.dataset.targets)
-        else:
-            targets = self.dataset.targets
+        targets = self.dataset.targets
         for x in indexes:
             c = (targets.clone().detach() == x).nonzero()
             indexes[x] = c.view(len(c)).tolist()
@@ -71,8 +123,6 @@ class Dataset:
         # Sampling examples for each node now simply corresponds to extracting
         # the assigned range of examples for that node.
         self.logger.info('partition: sampling examples for each node')
-        ranges = [[int(samples_per_class_per_node[cls_ind] * self.participant_index),
-                   int(samples_per_class_per_node[cls_ind] * (self.participant_index + 1))] for cls_ind in range(10)]
         partition = []
         for c in range(10):
             start, end = tuple(ranges[c])

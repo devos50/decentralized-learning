@@ -1,4 +1,4 @@
-from asyncio import gather, sleep, Future
+from asyncio import gather, Future
 from binascii import hexlify
 
 from accdfl.core.community import DFLCommunity
@@ -7,9 +7,13 @@ from ipv8.test.base import TestBase
 from ipv8.test.mocking.ipv8 import MockIPv8
 
 
-class TestDFLCommunity(TestBase):
+class TestDFLCommunityBase(TestBase):
     NUM_NODES = 2
     NUM_ROUNDS = 2
+    LOCAL_CLASSES = 10
+    TOTAL_SAMPLES_PER_CLASS = 6
+    SAMPLES_PER_CLASS = [TOTAL_SAMPLES_PER_CLASS] * 10
+    NODES_PER_CLASS = [NUM_NODES] * 10
 
     def create_node(self, *args, **kwargs):
         return MockIPv8("curve25519", self.overlay_class, *args, **kwargs)
@@ -17,7 +21,6 @@ class TestDFLCommunity(TestBase):
     def setUp(self):
         super().setUp()
         self.batch_size = 1
-        self.total_samples_per_class = 6
 
         self.initialize(DFLCommunity, self.NUM_NODES, working_directory=":memory:")
 
@@ -29,10 +32,17 @@ class TestDFLCommunity(TestBase):
             "participants": [hexlify(node.my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
             "rounds": self.NUM_ROUNDS,
             "sample_size": self.NUM_NODES,
+
+            # These parameters are not available in a deployed environment - only for experimental purposes.
+            "samples_per_class": self.SAMPLES_PER_CLASS,
+            "local_classes": self.LOCAL_CLASSES,
+            "nodes_per_class": self.NODES_PER_CLASS,
         }
         for node in self.nodes:
-            node.overlay.total_samples_per_class = self.total_samples_per_class
             node.overlay.setup(experiment_data)
+
+
+class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
 
     async def test_train(self):
         """
@@ -112,7 +122,7 @@ class TestDFLCommunity(TestBase):
         """
         Test training for an entire epoch.
         """
-        steps_in_epoch = int((self.total_samples_per_class * 10) / len(self.nodes) / self.batch_size)
+        steps_in_epoch = int((self.TOTAL_SAMPLES_PER_CLASS * 10) / len(self.nodes) / self.batch_size)
         for _ in range(steps_in_epoch - 1):
             assert not await self.nodes[0].overlay.train()
         assert await self.nodes[0].overlay.train()
@@ -121,6 +131,17 @@ class TestDFLCommunity(TestBase):
         stats = self.nodes[0].overlay.dataset.get_statistics()
         assert stats
         assert "total_samples" in stats
-        assert stats["total_samples"] == self.total_samples_per_class * 10 / len(self.nodes)
+        assert stats["total_samples"] == self.TOTAL_SAMPLES_PER_CLASS * 10 / len(self.nodes)
         assert "samples_per_class" in stats
-        assert all(n == self.total_samples_per_class / len(self.nodes) for n in stats["samples_per_class"])
+        assert all(n == self.TOTAL_SAMPLES_PER_CLASS / len(self.nodes) for n in stats["samples_per_class"])
+
+
+class TestDFLCommunityTwoNodesNonIID(TestDFLCommunityBase):
+    LOCAL_CLASSES = 5
+    NODES_PER_CLASS = [1] * 10
+
+    def test_get_non_iid_dataset_statistics(self):
+        stats = self.nodes[0].overlay.dataset.get_statistics()
+        assert stats
+        assert "total_samples" in stats
+        assert sum(stats["samples_per_class"]) == self.TOTAL_SAMPLES_PER_CLASS * 5

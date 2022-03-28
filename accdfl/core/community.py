@@ -42,7 +42,6 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         self.compute_accuracy_after_averaging = False
         self.compute_accuracy_after_epoch = False
         self.model_performances = []
-        self.total_samples_per_class = 5000
         self.model_send_delay = None
         self.round_complete_callback = None
         self.parameters = None
@@ -98,6 +97,8 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         return self.get_participant_index() in self.get_participants_for_round(round)
 
     def setup(self, parameters):
+        assert len(parameters["participants"]) * parameters["local_classes"] == sum(parameters["nodes_per_class"])
+
         self.parameters = parameters
         self.sample_size = parameters["sample_size"]
         self.model = LinearModel(28 * 28)  # For MNIST
@@ -105,8 +106,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         self.logger.info("Setting up experiment with %d participants and sample size %d (I am participant %d)" %
                          (len(self.participants), self.sample_size, self.get_participant_index()))
 
-        self.dataset = Dataset(os.path.join(os.environ["HOME"], "dfl-data"), parameters["batch_size"],
-                               self.total_samples_per_class, len(self.participants), self.get_participant_index())
+        self.dataset = Dataset(os.path.join(os.environ["HOME"], "dfl-data"), parameters, self.get_participant_index())
         self.optimizer = SGDOptimizer(self.model, parameters["learning_rate"], parameters["momentum"])
 
     async def train(self) -> bool:
