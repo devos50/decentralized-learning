@@ -1,6 +1,7 @@
 import logging
 import math
 from random import Random
+from typing import Dict
 
 import torch
 
@@ -97,3 +98,12 @@ class Dataset:
             batch_size=self.batch_size,
             shuffle=True
         ))
+
+    def get_statistics(self) -> Dict:
+        samples_per_class = [0] * 10
+        for data, target in self.train_set:
+            samples_per_class[target] += 1
+        return {
+            "total_samples": len(self.train_set),
+            "samples_per_class": samples_per_class
+        }

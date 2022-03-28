@@ -17,7 +17,7 @@ class TestDFLCommunity(TestBase):
     def setUp(self):
         super().setUp()
         self.batch_size = 1
-        self.total_samples_per_class = 2
+        self.total_samples_per_class = 6
 
         self.initialize(DFLCommunity, self.NUM_NODES, working_directory=":memory:")
 
@@ -116,3 +116,11 @@ class TestDFLCommunity(TestBase):
         for _ in range(steps_in_epoch - 1):
             assert not await self.nodes[0].overlay.train()
         assert await self.nodes[0].overlay.train()
+
+    def test_get_iid_dataset_statistics(self):
+        stats = self.nodes[0].overlay.dataset.get_statistics()
+        assert stats
+        assert "total_samples" in stats
+        assert stats["total_samples"] == self.total_samples_per_class * 10 / len(self.nodes)
+        assert "samples_per_class" in stats
+        assert all(n == self.total_samples_per_class / len(self.nodes) for n in stats["samples_per_class"])
