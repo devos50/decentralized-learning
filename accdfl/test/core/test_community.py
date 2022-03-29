@@ -1,6 +1,8 @@
 from asyncio import gather, Future
 from binascii import hexlify
 
+import pytest
+
 from accdfl.core.community import DFLCommunity
 
 from ipv8.test.base import TestBase
@@ -14,6 +16,8 @@ class TestDFLCommunityBase(TestBase):
     TOTAL_SAMPLES_PER_CLASS = 6
     SAMPLES_PER_CLASS = [TOTAL_SAMPLES_PER_CLASS] * 10
     NODES_PER_CLASS = [NUM_NODES] * 10
+    DATASET = "mnist"
+    MODEL = "linear"
 
     def create_node(self, *args, **kwargs):
         return MockIPv8("curve25519", self.overlay_class, *args, **kwargs)
@@ -37,8 +41,8 @@ class TestDFLCommunityBase(TestBase):
             "samples_per_class": self.SAMPLES_PER_CLASS,
             "local_classes": self.LOCAL_CLASSES,
             "nodes_per_class": self.NODES_PER_CLASS,
-            "dataset": "mnist",
-            "model": "linear",
+            "dataset": self.DATASET,
+            "model": self.MODEL,
         }
         for node in self.nodes:
             node.overlay.setup(experiment_data)
@@ -147,3 +151,36 @@ class TestDFLCommunityTwoNodesNonIID(TestDFLCommunityBase):
         assert stats
         assert "total_samples" in stats
         assert sum(stats["samples_per_class"]) == self.TOTAL_SAMPLES_PER_CLASS * 5
+
+
+class TestDFLCommunityTwoNodesCIFAR10(TestDFLCommunityBase):
+    DATASET = "cifar10"
+    MODEL = "gnlenet"
+
+    @pytest.mark.timeout(5)
+    async def test_single_round(self):
+        """
+        Test whether a single round of training can be completed successfully.
+        """
+        assert len(self.nodes[0].overlay.get_participants_for_round(1)) == self.NUM_NODES
+        assert self.nodes[0].overlay.is_participant_for_round(1)
+        await gather(*[node.overlay.participate_in_round() for node in self.nodes])
+
+    async def test_multiple_round(self):
+        """
+        Test multiple rounds of training.
+        """
+        round_2_completed = []
+        round_2_completed_deferred = Future()
+
+        async def on_round_complete(round_nr):
+            if round_nr == 2:
+                round_2_completed.append(True)
+                if len(round_2_completed) == self.NUM_NODES:
+                    round_2_completed_deferred.set_result(None)
+
+        for node in self.nodes:
+            node.overlay.round_complete_callback = on_round_complete
+            node.overlay.start()
+
+        await round_2_completed_deferred

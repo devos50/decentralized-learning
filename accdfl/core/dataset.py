@@ -19,15 +19,29 @@ class Dataset:
         self.batch_size = parameters["batch_size"]
         self.total_participants = len(parameters["participants"])
         self.participant_index = participant_index
-        transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0.1307,), (0.3081,))
-        ])
-        self.dataset = datasets.MNIST(
-            self.data_dir,
-            train=True,
-            download=True,
-            transform=transform)
+
+        if parameters["dataset"] == "mnist":
+            transform = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize((0.1307,), (0.3081,))
+            ])
+            self.dataset = datasets.MNIST(
+                self.data_dir,
+                train=True,
+                download=True,
+                transform=transform)
+        elif parameters["dataset"] == "cifar10":
+            transform = transforms.Compose([
+                # transforms.Pad(4),
+                # RandomHorizontalFlip(random=rand), # Reimplemented to be able to use a deterministic seed
+                # RandomCrop(32, random=rand),       # Reimplemented to be able to use a deterministic seed
+                transforms.ToTensor()])
+            self.dataset = datasets.CIFAR10(
+                self.data_dir,
+                train=True,
+                download=True,
+                transform=transform)
+
         self.iterator = None
         self.validation_iterator = None
 
@@ -97,7 +111,11 @@ class Dataset:
 
         logging.info('partition: split the dataset per class (samples per class: %s)', samples_per_class_per_node)
         indexes = {x: [] for x in range(10)}
-        targets = self.dataset.targets
+
+        if type(self.dataset.targets) != torch.Tensor:
+            targets = torch.tensor(self.dataset.targets)
+        else:
+            targets = self.dataset.targets
         for x in indexes:
             c = (targets.clone().detach() == x).nonzero()
             indexes[x] = c.view(len(c)).tolist()

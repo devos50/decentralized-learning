@@ -15,6 +15,8 @@ def create_model(dataset: str, model_type: str):
         return LinearModel(28 * 28)
     elif dataset == "mnist" and model_type == "gnlenet":
         return GNLeNet(input_channel=1, output=10, model_input=(24, 24))
+    elif dataset == "cifar10" and model_type == "gnlenet":
+        return GNLeNet(input_channel=3, output=10, model_input=(32, 32))
 
 
 def unserialize_model(serialized_model: bytes, dataset: str, model_type: str) -> torch.nn.Module:
