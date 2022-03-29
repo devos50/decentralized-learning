@@ -38,9 +38,6 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         self.is_participating_in_round = False
         self.data_store = DataStore()
         self.model_store = ModelStore()
-        self.compute_accuracy_after_averaging = False
-        self.compute_accuracy_after_epoch = False
-        self.model_performances = []
         self.model_send_delay = None
         self.round_complete_callback = None
         self.parameters = None
