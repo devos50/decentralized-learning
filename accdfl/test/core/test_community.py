@@ -87,7 +87,7 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
         round_2_completed = []
         round_2_completed_deferred = Future()
 
-        async def on_round_complete(round_nr):
+        async def on_round_complete(round_nr, _):
             if round_nr == 2:
                 round_2_completed.append(True)
                 if len(round_2_completed) == self.NUM_NODES:
@@ -105,7 +105,7 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
         """
         round_2_completed_deferred = Future()
 
-        async def on_round_complete(round_nr):
+        async def on_round_complete(round_nr, _):
             if round_nr == 2:
                 round_2_completed_deferred.set_result(None)
 
@@ -173,7 +173,7 @@ class TestDFLCommunityTwoNodesCIFAR10(TestDFLCommunityBase):
         round_2_completed = []
         round_2_completed_deferred = Future()
 
-        async def on_round_complete(round_nr):
+        async def on_round_complete(round_nr, _):
             if round_nr == 2:
                 round_2_completed.append(True)
                 if len(round_2_completed) == self.NUM_NODES:

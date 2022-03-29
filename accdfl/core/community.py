@@ -286,7 +286,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
 
         self.logger.info("Participant %d finished round %d", self.get_participant_index(), self.round)
         if self.round_complete_callback:
-            await self.round_complete_callback(self.round)
+            await self.round_complete_callback(self.round, epoch_done)
         self.is_participating_in_round = False
 
         # Should I participate in the next round again?
