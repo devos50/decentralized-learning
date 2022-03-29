@@ -15,11 +15,10 @@ from torch.autograd import Variable
 
 from accdfl.core.blocks import ModelUpdateBlock
 from accdfl.core.caches import DataRequestCache
-from accdfl.core.model import serialize_model, unserialize_model
+from accdfl.core.model import serialize_model, unserialize_model, create_model
 from accdfl.core.stores import DataStore, ModelStore, DataType
 from accdfl.core.dataset import Dataset
 from accdfl.core.listeners import ModelUpdateBlockListener
-from accdfl.core.model.linear import LinearModel
 from accdfl.core.optimizer.sgd import SGDOptimizer
 from accdfl.core.payloads import DataRequest, DataNotFoundResponse
 from accdfl.trustchain.community import TrustChainCommunity
@@ -101,7 +100,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
 
         self.parameters = parameters
         self.sample_size = parameters["sample_size"]
-        self.model = LinearModel(28 * 28)  # For MNIST
+        self.model = create_model(parameters["dataset"], parameters["model"])
         self.participants = parameters["participants"]
         self.logger.info("Setting up experiment with %d participants and sample size %d (I am participant %d)" %
                          (len(self.participants), self.sample_size, self.get_participant_index()))
@@ -469,11 +468,11 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
 
         # Fetch the model
         old_model_serialized = await self.request_data(other_peer, block.old_model, type=DataType.MODEL)
-        old_model = unserialize_model(old_model_serialized)
+        old_model = unserialize_model(old_model_serialized, self.parameters["dataset"], self.parameters["model"])
 
         # TODO optimize this so we only compare the hash (avoid pulling in the new model)
         new_model_serialized = await self.request_data(other_peer, block.new_model, type=DataType.MODEL)
-        new_model = unserialize_model(new_model_serialized)
+        new_model = unserialize_model(new_model_serialized, self.parameters["dataset"], self.parameters["model"])
 
         return self.verify_model_training(old_model, Tensor(datas), torch.LongTensor(targets), new_model)
 
@@ -498,7 +497,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                                     "in that round", result.peer, json_data["round"] + 1)
 
             self.logger.info("Received aggregated model from peer %s for round %d", result.peer, json_data["round"])
-            incoming_model = unserialize_model(result.data)
+            incoming_model = unserialize_model(result.data, self.parameters["dataset"], self.parameters["model"])
             if json_data["round"] not in self.incoming_aggregated_models:
                 self.incoming_aggregated_models[json_data["round"]] = []
             self.incoming_aggregated_models[json_data["round"]].append(incoming_model)
@@ -510,7 +509,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
             # This response is the local model of another participant.
             self.logger.info("Received local model for round %d from peer %s", json_data["round"], result.peer)
             if json_data["round"] == self.round:
-                incoming_model = unserialize_model(result.data)
+                incoming_model = unserialize_model(result.data, self.parameters["dataset"], self.parameters["model"])
                 if json_data["round"] not in self.incoming_local_models:
                     self.incoming_local_models[json_data["round"]] = []
                 self.incoming_local_models[json_data["round"]].append(incoming_model)
@@ -524,7 +523,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                 # It is possible that we receive a model for a later round while we are still in an earlier round.
                 if json_data["round"] not in self.incoming_local_models:
                     self.incoming_local_models[json_data["round"]] = []
-                incoming_model = unserialize_model(result.data)
+                incoming_model = unserialize_model(result.data, self.parameters["dataset"], self.parameters["model"])
                 self.incoming_local_models[json_data["round"]].append(incoming_model)
             else:
                 self.logger.warning("Received a local model for a round that is not relevant for us (%d)",

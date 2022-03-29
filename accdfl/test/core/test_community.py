@@ -37,6 +37,8 @@ class TestDFLCommunityBase(TestBase):
             "samples_per_class": self.SAMPLES_PER_CLASS,
             "local_classes": self.LOCAL_CLASSES,
             "nodes_per_class": self.NODES_PER_CLASS,
+            "dataset": "mnist",
+            "model": "linear",
         }
         for node in self.nodes:
             node.overlay.setup(experiment_data)
