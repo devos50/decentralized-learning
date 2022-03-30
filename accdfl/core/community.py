@@ -6,6 +6,7 @@ import os
 import random
 from asyncio import Future, sleep, ensure_future
 from binascii import unhexlify, hexlify
+from enum import Enum
 from typing import Optional, Dict, List
 
 import torch
@@ -15,12 +16,14 @@ from torch.autograd import Variable
 
 from accdfl.core.blocks import ModelUpdateBlock
 from accdfl.core.caches import DataRequestCache
-from accdfl.core.model import serialize_model, unserialize_model, create_model
+from accdfl.core.model import serialize_model, unserialize_model, create_model, ModelType
 from accdfl.core.stores import DataStore, ModelStore, DataType
 from accdfl.core.dataset import Dataset
 from accdfl.core.listeners import ModelUpdateBlockListener
 from accdfl.core.optimizer.sgd import SGDOptimizer
 from accdfl.core.payloads import DataRequest, DataNotFoundResponse
+from accdfl.core.torrent_download_manager import TorrentDownloadManager
+from accdfl.test.util.network_utils import NetworkUtils
 from accdfl.trustchain.community import TrustChainCommunity
 from accdfl.util.eva_protocol import EVAProtocolMixin, TransferResult
 from ipv8.lazy_community import lazy_wrapper
@@ -28,12 +31,16 @@ from ipv8.messaging.payload_headers import BinMemberAuthenticationPayload, Globa
 from ipv8.util import fail
 
 
+class TransmissionMethod(Enum):
+    EVA = 0
+    LIBTORRENT = 1
+
+
 class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
     community_id = unhexlify('d5889074c1e4c60423cdb6e9307ba0ca5695ead7')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.eva_init(retransmit_attempt_count=10, retransmit_interval_in_sec=1, timeout_interval_in_sec=10)
         self.is_active = False
         self.is_participating_in_round = False
         self.data_store = DataStore()
@@ -54,9 +61,12 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         self.is_computing_accuracy = False
         self.compute_accuracy_deferred = None
 
-        self.eva_register_receive_callback(self.on_receive)
-        self.eva_register_send_complete_callback(self.on_send_complete)
-        self.eva_register_error_callback(self.on_error)
+        # Model exchange parameters
+        self.data_dir = None
+        self.transmission_method = TransmissionMethod.EVA
+        self.eva_max_retry_attempts = 20
+        self.lt_listen_port = NetworkUtils().get_random_free_port()
+        self.torrent_download_manager: Optional[TorrentDownloadManager] = None
 
         self.model_update_block_listener = ModelUpdateBlockListener()
         self.add_listener(self.model_update_block_listener, [b"model_update"])
@@ -92,10 +102,11 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
     def is_participant_for_round(self, round) -> bool:
         return self.get_participant_index() in self.get_participants_for_round(round)
 
-    def setup(self, parameters):
+    def setup(self, parameters: Dict, data_dir: str, transmission_method: TransmissionMethod = TransmissionMethod.EVA):
         assert len(parameters["participants"]) * parameters["local_classes"] == sum(parameters["nodes_per_class"])
 
         self.parameters = parameters
+        self.data_dir = data_dir
         self.sample_size = parameters["sample_size"]
         self.model = create_model(parameters["dataset"], parameters["model"])
         self.participants = parameters["participants"]
@@ -104,6 +115,19 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
 
         self.dataset = Dataset(os.path.join(os.environ["HOME"], "dfl-data"), parameters, self.get_participant_index())
         self.optimizer = SGDOptimizer(self.model, parameters["learning_rate"], parameters["momentum"])
+
+        # Setup the model transmission
+        self.transmission_method = transmission_method
+        if self.transmission_method == TransmissionMethod.EVA:
+            self.logger.info("Setting up EVA protocol")
+            self.eva_init(retransmit_attempt_count=10, retransmit_interval_in_sec=1, timeout_interval_in_sec=10)
+            self.eva_register_receive_callback(self.on_receive)
+            self.eva_register_send_complete_callback(self.on_send_complete)
+            self.eva_register_error_callback(self.on_error)
+        else:
+            self.logger.info("Setting up libtorrent transmission engine")
+            self.torrent_download_manager = TorrentDownloadManager(self.data_dir, self.get_participant_index())
+            self.torrent_download_manager.start(self.lt_listen_port)
 
     async def train(self) -> bool:
         """
@@ -187,7 +211,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
             # TODO do something with the TrustChain block
             response = {"round": self.round, "type": "aggregated_model"}
 
-            for attempt in range(1, 21):
+            for attempt in range(1, self.eva_max_retry_attempts + 1):
                 if self.model_send_delay is not None:
                     await sleep(random.randint(0, self.model_send_delay) / 1000)
                 self.logger.info("Participant %d sending round %d aggregated model to peer %s (attempt %d)",
@@ -214,21 +238,36 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                 self.logger.warning("Peer object of participant %d not available - not sending local model", participant_ind)
                 continue
 
-            response = {"round": self.round, "type": "local_model"}
+            if self.transmission_method == TransmissionMethod.EVA:
+                await self.eva_send_local_model(peer)
+            elif self.transmission_method == TransmissionMethod.LIBTORRENT:
+                await self.lt_send_local_model(peer)
 
-            for attempt in range(1, 21):
-                if self.model_send_delay is not None:
-                    await sleep(random.randint(0, self.model_send_delay) / 1000)
-                self.logger.info("Participant %d sending round %d local model to peer %s (attempt %d)",
-                                 self.get_participant_index(), self.round, peer, attempt)
-                try:
-                    # TODO this logic is sequential - optimize by having multiple outgoing transfers at once
-                    res = await self.eva_send_binary(peer, json.dumps(response).encode(), serialize_model(self.model))
-                    self.logger.info("Local model successfully sent to peer %s", peer)
-                    break
-                except Exception as exc:
-                    self.logger.exception("Exception when sending model to peer %s", peer)
-                attempt += 1
+    async def eva_send_local_model(self, peer):
+        response = {"round": self.round, "type": "local_model"}
+
+        for attempt in range(1, self.eva_max_retry_attempts + 1):
+            if self.model_send_delay is not None:
+                await sleep(random.randint(0, self.model_send_delay) / 1000)
+            self.logger.info("Participant %d sending round %d local model to peer %s (attempt %d)",
+                             self.get_participant_index(), self.round, peer, attempt)
+            try:
+                # TODO this logic is sequential - optimize by having multiple outgoing transfers at once
+                res = await self.eva_send_binary(peer, json.dumps(response).encode(), serialize_model(self.model))
+                self.logger.info("Local model successfully sent to peer %s", peer)
+                break
+            except Exception as exc:
+                self.logger.exception("Exception when sending model to peer %s", peer)
+            attempt += 1
+
+    async def lt_send_local_model(self, peer):
+        # We should start seeding this model
+        if not self.torrent_download_manager.is_seeding(self.round, ModelType.LOCAL):
+            await self.torrent_download_manager.seed(self.round, ModelType.LOCAL, self.model)
+
+        self.logger.error("DONE1234")
+
+        # TODO send the torrent info to the peer
 
     async def participate_in_round(self):
         """

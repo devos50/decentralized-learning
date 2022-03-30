@@ -3,7 +3,7 @@ from binascii import hexlify
 
 import pytest
 
-from accdfl.core.community import DFLCommunity
+from accdfl.core.community import DFLCommunity, TransmissionMethod
 
 from ipv8.test.base import TestBase
 from ipv8.test.mocking.ipv8 import MockIPv8
@@ -18,6 +18,7 @@ class TestDFLCommunityBase(TestBase):
     NODES_PER_CLASS = [NUM_NODES] * 10
     DATASET = "mnist"
     MODEL = "linear"
+    TRANSMISSION_METHOD = TransmissionMethod.EVA
 
     def create_node(self, *args, **kwargs):
         return MockIPv8("curve25519", self.overlay_class, *args, **kwargs)
@@ -45,7 +46,7 @@ class TestDFLCommunityBase(TestBase):
             "model": self.MODEL,
         }
         for node in self.nodes:
-            node.overlay.setup(experiment_data)
+            node.overlay.setup(experiment_data, self.temporary_directory(), transmission_method=self.TRANSMISSION_METHOD)
 
 
 class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
@@ -184,3 +185,16 @@ class TestDFLCommunityTwoNodesCIFAR10(TestDFLCommunityBase):
             node.overlay.start()
 
         await round_2_completed_deferred
+
+
+class TestDFLCommunityTwoNodesLibtorrent(TestDFLCommunityBase):
+    TRANSMISSION_METHOD = TransmissionMethod.LIBTORRENT
+
+    @pytest.mark.timeout(5)
+    async def test_single_round(self):
+        """
+        Test whether a single round of training can be completed successfully.
+        """
+        assert len(self.nodes[0].overlay.get_participants_for_round(1)) == self.NUM_NODES
+        assert self.nodes[0].overlay.is_participant_for_round(1)
+        await gather(*[node.overlay.participate_in_round() for node in self.nodes])

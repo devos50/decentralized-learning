@@ -1,9 +1,15 @@
 import pickle
+from enum import Enum
 
 import torch
 
 from accdfl.core.model.linear import LinearModel
 from accdfl.core.model.gn_lenet import GNLeNet
+
+
+class ModelType(Enum):
+    LOCAL = 0
+    AGGREGATED = 1
 
 
 def serialize_model(model: torch.nn.Module) -> bytes:

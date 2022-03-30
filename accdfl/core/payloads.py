@@ -11,3 +11,11 @@ class DataRequest:
 @dataclass(msg_id=11)
 class DataNotFoundResponse:
     request_id: int
+
+
+@dataclass(msg_id=12)
+class ModelTorrent:
+    round: int
+    model_type: int
+    lt_port: int
+    torrent: bytes  # Torrent in bencoded form
