@@ -93,6 +93,8 @@ class TorrentDownloadManager:
         }
 
         download = self.session.add_torrent(download_torrent_info)
+        download.auto_managed(False)
+        download.resume()
         self.model_downloads[(participant_index, round, model_type)] = download
         try:
             await sleep(1)
