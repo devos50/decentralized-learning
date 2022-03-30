@@ -28,7 +28,8 @@ class TorrentDownloadManager:
             "enable_upnp": False,
             "enable_dht": False,
             "enable_lsd": False,
-            "enable_natpmp": False
+            "enable_natpmp": False,
+            "allow_multiple_connections_per_ip": True
         }
         self.session = lt.session(settings)
 
@@ -103,9 +104,9 @@ class TorrentDownloadManager:
             s = download.status()
             state_str = ['queued', 'checking', 'downloading metadata',
                          'downloading', 'finished', 'seeding', 'allocating', 'checking fastresume']
-            self.logger.debug('\r%.2f%% complete (down: %.1f kb/s up: %.1f kB/s peers: %d) %s' % \
-                  (s.progress * 100, s.download_rate / 1000, s.upload_rate / 1000, \
-                   s.num_peers, state_str[s.state]))
+            self.logger.debug('%.2f%% complete (down: %.1f kb/s up: %.1f kB/s peers: %d) %s' %
+                              (s.progress * 100, s.download_rate / 1000, s.upload_rate / 1000,
+                               s.num_peers, state_str[s.state]))
             if s.state == 4 or s.state == 5:
                 # The download seems to be finished
                 model_name = "%d_%d_%s" % (self.participant_index, round, "local" if model_type == ModelType.LOCAL else "aggregated")
