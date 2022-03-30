@@ -336,6 +336,9 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         elif model_type == ModelType.AGGREGATED:
             self.received_aggregated_model(participant, model_round, serialized_model)
 
+        # Stop the download
+        self.torrent_download_manager.stop_download(participant, model_round, model_type)
+
     async def participate_in_round(self):
         """
         Complete a round of training and model aggregation.

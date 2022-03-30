@@ -114,3 +114,13 @@ class TorrentDownloadManager:
                     serialized_model = model_file.read()
                 return participant_index, round, model_type, serialized_model
             await sleep(0.2)
+
+    def stop_download(self, participant_index: int, round: int, model_type: ModelType):
+        if (participant_index, round, model_type) not in self.model_downloads:
+            return
+
+        self.logger.info("Stopping download of %s model of participant %d for round %d",
+                         "local" if model_type == ModelType.LOCAL else "aggregated", participant_index, round)
+        download = self.model_downloads[(participant_index, round, model_type)]
+        self.session.remove_torrent(download)
+        self.model_downloads.pop((participant_index, round, model_type), None)
