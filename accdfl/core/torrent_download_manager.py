@@ -35,6 +35,7 @@ class TorrentDownloadManager(TaskManager):
             "min_reconnect_time": 1,
         }
         self.session = lt.session(settings)
+        self.session.set_alert_mask(lt.alert.category_t.all_categories)
 
     def _task_process_alerts(self):
         for alert in self.session.pop_alerts():
