@@ -21,7 +21,7 @@ from accdfl.core.stores import DataStore, ModelStore, DataType
 from accdfl.core.dataset import Dataset
 from accdfl.core.listeners import ModelUpdateBlockListener
 from accdfl.core.optimizer.sgd import SGDOptimizer
-from accdfl.core.payloads import DataRequest, DataNotFoundResponse
+from accdfl.core.payloads import DataRequest, DataNotFoundResponse, ModelTorrent
 from accdfl.core.torrent_download_manager import TorrentDownloadManager
 from accdfl.test.util.network_utils import NetworkUtils
 from accdfl.trustchain.community import TrustChainCommunity
@@ -73,6 +73,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
 
         self.add_message_handler(DataRequest, self.on_data_request)
         self.add_message_handler(DataNotFoundResponse, self.on_data_not_found_response)
+        self.add_message_handler(ModelTorrent, self.on_model_torrent)
 
         self.logger.info("The ADFL community started with public key: %s",
                          hexlify(self.my_peer.public_key.key_to_bin()).decode())
@@ -87,12 +88,15 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         if self.is_participant_for_round(self.round):
             ensure_future(self.participate_in_round())
         else:
-            self.logger.info("Participant %d won't participate in round %d", self.get_participant_index(), self.round)
+            self.logger.info("Participant %d won't participate in round %d", self.get_my_participant_index(), self.round)
 
-    def get_participant_index(self):
+    def get_participant_index(self, public_key: bytes) -> int:
         if not self.participants:
             return -1
-        return self.participants.index(hexlify(self.my_peer.public_key.key_to_bin()).decode())
+        return self.participants.index(hexlify(public_key).decode())
+
+    def get_my_participant_index(self):
+        return self.get_participant_index(self.my_peer.public_key.key_to_bin())
 
     def get_participants_for_round(self, round):
         rand = random.Random(round)
@@ -100,7 +104,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         return rand.sample(participant_indices, self.sample_size)
 
     def is_participant_for_round(self, round) -> bool:
-        return self.get_participant_index() in self.get_participants_for_round(round)
+        return self.get_my_participant_index() in self.get_participants_for_round(round)
 
     def setup(self, parameters: Dict, data_dir: str, transmission_method: TransmissionMethod = TransmissionMethod.EVA):
         assert len(parameters["participants"]) * parameters["local_classes"] == sum(parameters["nodes_per_class"])
@@ -111,9 +115,9 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         self.model = create_model(parameters["dataset"], parameters["model"])
         self.participants = parameters["participants"]
         self.logger.info("Setting up experiment with %d participants and sample size %d (I am participant %d)" %
-                         (len(self.participants), self.sample_size, self.get_participant_index()))
+                         (len(self.participants), self.sample_size, self.get_my_participant_index()))
 
-        self.dataset = Dataset(os.path.join(os.environ["HOME"], "dfl-data"), parameters, self.get_participant_index())
+        self.dataset = Dataset(os.path.join(os.environ["HOME"], "dfl-data"), parameters, self.get_my_participant_index())
         self.optimizer = SGDOptimizer(self.model, parameters["learning_rate"], parameters["momentum"])
 
         # Setup the model transmission
@@ -126,7 +130,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
             self.eva_register_error_callback(self.on_error)
         else:
             self.logger.info("Setting up libtorrent transmission engine")
-            self.torrent_download_manager = TorrentDownloadManager(self.data_dir, self.get_participant_index())
+            self.torrent_download_manager = TorrentDownloadManager(self.data_dir, self.get_my_participant_index())
             self.torrent_download_manager.start(self.lt_listen_port)
 
     async def train(self) -> bool:
@@ -196,7 +200,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         """
         participants_next_round = self.get_participants_for_round(self.round + 1)
         for participant_ind in participants_next_round:
-            if participant_ind == self.get_participant_index():
+            if participant_ind == self.get_my_participant_index():
                 if self.round not in self.incoming_aggregated_models:
                     self.incoming_aggregated_models[self.round] = []
                 self.incoming_aggregated_models[self.round].append(model)
@@ -215,7 +219,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                 if self.model_send_delay is not None:
                     await sleep(random.randint(0, self.model_send_delay) / 1000)
                 self.logger.info("Participant %d sending round %d aggregated model to peer %s (attempt %d)",
-                                 self.get_participant_index(), self.round, peer, attempt)
+                                 self.get_my_participant_index(), self.round, peer, attempt)
                 try:
                     # TODO this logic is sequential - optimize by having multiple outgoing transfers at once
                     res = await self.eva_send_binary(peer, json.dumps(response).encode(), serialize_model(model))
@@ -230,7 +234,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         Send the global model to the other participants in the current round.
         """
         for participant_ind in self.get_participants_for_round(self.round):
-            if participant_ind == self.get_participant_index():
+            if participant_ind == self.get_my_participant_index():
                 continue
             participant_pk = unhexlify(self.participants[participant_ind])
             peer = self.get_peer_by_pk(participant_pk)
@@ -250,7 +254,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
             if self.model_send_delay is not None:
                 await sleep(random.randint(0, self.model_send_delay) / 1000)
             self.logger.info("Participant %d sending round %d local model to peer %s (attempt %d)",
-                             self.get_participant_index(), self.round, peer, attempt)
+                             self.get_my_participant_index(), self.round, peer, attempt)
             try:
                 # TODO this logic is sequential - optimize by having multiple outgoing transfers at once
                 res = await self.eva_send_binary(peer, json.dumps(response).encode(), serialize_model(self.model))
@@ -265,16 +269,47 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         if not self.torrent_download_manager.is_seeding(self.round, ModelType.LOCAL):
             await self.torrent_download_manager.seed(self.round, ModelType.LOCAL, self.model)
 
-        self.logger.error("DONE1234")
+        # Send the torrent info to the peer
+        # TODO should we have an ack here to improve reliability?
+        global_time = self.claim_global_time()
+        auth = BinMemberAuthenticationPayload(self.my_peer.public_key.key_to_bin())
+        bencoded_torrent = self.torrent_download_manager.get_torrent_info(
+            self.get_my_participant_index(), self.round, ModelType.LOCAL)
+        payload = ModelTorrent(self.round, ModelType.LOCAL.value, self.lt_listen_port, bencoded_torrent)
+        dist = GlobalTimeDistributionPayload(global_time)
+        packet = self._ez_pack(self._prefix, ModelTorrent.msg_id, [auth, dist, payload])
+        self.endpoint.send(peer.address, packet)
 
-        # TODO send the torrent info to the peer
+    @lazy_wrapper(GlobalTimeDistributionPayload, ModelTorrent)
+    def on_model_torrent(self, peer, dist, payload):
+        # TODO add checks if we should start downloading this model
+        participant_index = self.get_participant_index(peer.public_key.key_to_bin())
+        if participant_index == -1:
+            self.logger.warning("Received model torrent from peer %s that is not a participant", peer)
+            return
+
+        if self.transmission_method != TransmissionMethod.LIBTORRENT:
+            self.logger.warning("This peer received a model update but we are not using "
+                                "libtorrent as transmission engine")
+            return
+
+        self.logger.info("Received model torrent from participant %d for round %d (model type: %d)",
+                         participant_index, payload.round, payload.model_type)
+        model_type = ModelType(payload.model_type)
+        if self.torrent_download_manager.is_downloading(participant_index, payload.round, model_type):
+            self.logger.warning("We are already downloading model with type %d from participant %d for round %d",
+                                payload.model_type, participant_index, payload.round)
+            return
+
+        # Start to download the torrent
+        self.torrent_download_manager.download(participant_index, payload.round, model_type, payload.torrent)
 
     async def participate_in_round(self):
         """
         Complete a round of training and model aggregation.
         """
         self.is_participating_in_round = True
-        self.logger.info("Participant %d starts participating in round %d", self.get_participant_index(), self.round)
+        self.logger.info("Participant %d starts participating in round %d", self.get_my_participant_index(), self.round)
 
         # It can happen that this node is still computing the accuracy of the model produced by the previous round
         # when starting the next round. If so, we wait until this accuracy computation is done.
@@ -298,13 +333,13 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         avg_model = self.model
         if self.sample_size > 1:
             self.logger.info("Participant %d waiting for models from other peers for round %d",
-                             self.get_participant_index(), self.round)
+                             self.get_my_participant_index(), self.round)
             if (self.round not in self.incoming_local_models) or \
                     (self.round in self.incoming_local_models and
                      len(self.incoming_local_models[self.round]) < self.sample_size - 1):
                 await self.round_deferred
             self.logger.info("Participant %d received %d model(s) from other peers for round %d - starting to average",
-                             self.get_participant_index(), len(self.incoming_local_models[self.round]), self.round)
+                             self.get_my_participant_index(), len(self.incoming_local_models[self.round]), self.round)
 
             # Average your model with those of the other participants
             avg_model = self.average_models(self.incoming_local_models[self.round] + [self.model])
@@ -323,7 +358,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         self.incoming_local_models.pop(self.round, None)
         self.round_deferred = Future()
 
-        self.logger.info("Participant %d finished round %d", self.get_participant_index(), self.round)
+        self.logger.info("Participant %d finished round %d", self.get_my_participant_index(), self.round)
         if self.round_complete_callback:
             await self.round_complete_callback(self.round, epoch_done)
         self.is_participating_in_round = False
