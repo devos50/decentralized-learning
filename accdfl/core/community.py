@@ -62,6 +62,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         self.compute_accuracy_deferred = None
 
         # Model exchange parameters
+        self.is_local_test = False  # To make sure that the libtorrent connect_peer works
         self.data_dir = None
         self.transmission_method = TransmissionMethod.EVA
         self.eva_max_retry_attempts = 20
@@ -321,9 +322,10 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
             return
 
         # Start to download the torrent
-        ensure_future(
-            self.torrent_download_manager.download(participant_index, payload.round, model_type, payload.torrent))\
-            .add_done_callback(self.on_model_download_finished)
+        other_peer_lt_address = (peer.address[0] if not self.is_local_test else "127.0.0.1", payload.lt_port)
+
+        task_name = "download_%d_%d_%d" % (participant_index, payload.round, model_type.value)
+        self.register_task(task_name, self.torrent_download_manager.download, participant_index, payload.round, model_type, payload.torrent, other_peer_lt_address).add_done_callback(self.on_model_download_finished)
 
     def on_model_download_finished(self, task):
         participant, model_round, model_type, serialized_model = task.result()

@@ -46,6 +46,7 @@ class TestDFLCommunityBase(TestBase):
             "model": self.MODEL,
         }
         for node in self.nodes:
+            node.overlay.is_local_test = True
             node.overlay.setup(experiment_data, self.temporary_directory(), transmission_method=self.TRANSMISSION_METHOD)
 
 
