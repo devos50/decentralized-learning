@@ -31,7 +31,8 @@ class TorrentDownloadManager(TaskManager):
             "enable_dht": False,
             "enable_lsd": False,
             "enable_natpmp": False,
-            "allow_multiple_connections_per_ip": True
+            "allow_multiple_connections_per_ip": True,
+            "min_reconnect_time": 1,
         }
         self.session = lt.session(settings)
         self.session.set_alert_mask(lt.alert.category_t.all_categories)
