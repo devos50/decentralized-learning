@@ -35,11 +35,10 @@ class TorrentDownloadManager(TaskManager):
             "min_reconnect_time": 1,
         }
         self.session = lt.session(settings)
-        self.session.set_alert_mask(lt.alert.category_t.all_categories)
 
     def _task_process_alerts(self):
         for alert in self.session.pop_alerts():
-            self.logger.debug(alert)
+            self.logger.debug("(alert) %s", alert)
 
     def start(self, listen_port: int) -> None:
         self.logger.info("Starting libtorrent session, listening on port %d", listen_port)
