@@ -217,6 +217,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
             if self.transmission_method == TransmissionMethod.EVA:
                 await self.eva_send_aggregated_model(model, peer)
             elif self.transmission_method == TransmissionMethod.LIBTORRENT:
+                await sleep(random.random() / 4)  # Make sure we are not sending the torrents at exactly the same time
                 await self.lt_send_aggregated_model(model, peer)
 
     async def eva_send_aggregated_model(self, model, peer):
@@ -260,6 +261,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
             if self.transmission_method == TransmissionMethod.EVA:
                 await self.eva_send_local_model(peer)
             elif self.transmission_method == TransmissionMethod.LIBTORRENT:
+                await sleep(random.random() / 4)  # Make sure we are not sending the torrents at exactly the same time
                 await self.lt_send_local_model(peer)
 
     async def eva_send_local_model(self, peer):
