@@ -314,7 +314,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
 
         model_type = ModelType(payload.model_type)
         self.logger.info("Received %s model torrent from participant %d for round %d",
-                         "local" if payload.model_type == ModelType.LOCAL else "aggregated",
+                         "local" if model_type == ModelType.LOCAL else "aggregated",
                          participant_index, payload.round)
         if self.torrent_download_manager.is_downloading(participant_index, payload.round, model_type):
             self.logger.warning("We are already downloading model with type %d from participant %d for round %d",
