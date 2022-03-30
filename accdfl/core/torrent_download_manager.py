@@ -9,15 +9,17 @@ import torch.nn as nn
 
 from accdfl.core.model import ModelType, serialize_model
 from accdfl.util.torrent_utils import create_torrent_file
+from ipv8.taskmanager import TaskManager
 from ipv8.util import succeed, fail
 
 
-class TorrentDownloadManager:
+class TorrentDownloadManager(TaskManager):
     """
     This manager manages the libtorrent model seeding and downloading.
     """
 
     def __init__(self, data_dir: str, participant_index: int):
+        super().__init__()
         self.data_dir = data_dir
         self.participant_index = participant_index
         self.logger = logging.getLogger(__name__)
@@ -32,10 +34,16 @@ class TorrentDownloadManager:
             "allow_multiple_connections_per_ip": True
         }
         self.session = lt.session(settings)
+        self.session.set_alert_mask(lt.alert.category_t.all_categories)
+
+    def _task_process_alerts(self):
+        for alert in self.session.pop_alerts():
+            self.logger.debug(alert)
 
     def start(self, listen_port: int) -> None:
         self.logger.info("Starting libtorrent session, listening on port %d", listen_port)
         self.session.listen_on(listen_port, listen_port + 5)
+        self.register_task("process_alerts", self._task_process_alerts, interval=1)
 
     def get_torrent_info(self, participant_index: int, round: int, model_type: ModelType) -> Optional[bytes]:
         if (participant_index, round, model_type) in self.model_torrents:
