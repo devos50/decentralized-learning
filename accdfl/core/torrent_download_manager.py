@@ -84,6 +84,8 @@ class TorrentDownloadManager(TaskManager):
             "save_path": self.data_dir
         }
         upload = self.session.add_torrent(seed_torrent_info)
+        upload.auto_managed(False)
+        upload.resume()
         self.model_downloads[(self.participant_index, round, model_type)] = upload
         for _ in range(100):
             await sleep(0.1)
