@@ -98,7 +98,6 @@ class TorrentDownloadManager:
             await sleep(1)
         except CancelledError:
             self.logger.warning("Ignoring cancellation of download task")
-        download.connect_peer(other_peer_lt_address)
 
         while True:
             s = download.status()
@@ -107,6 +106,7 @@ class TorrentDownloadManager:
             self.logger.debug('%.2f%% complete (down: %.1f kb/s up: %.1f kB/s peers: %d) %s' %
                               (s.progress * 100, s.download_rate / 1000, s.upload_rate / 1000,
                                s.num_peers, state_str[s.state]))
+            download.connect_peer(other_peer_lt_address)
             if s.state == 4 or s.state == 5:
                 # The download seems to be finished - wait until we have the file in disk
                 model_name = "%d_%d_%s" % (
@@ -122,7 +122,10 @@ class TorrentDownloadManager:
                 with open(model_file_path, "rb") as model_file:
                     serialized_model = model_file.read()
                 return participant_index, round, model_type, serialized_model
-            await sleep(0.2)
+            try:
+                await sleep(0.2)
+            except CancelledError:
+                pass
 
     def stop_download(self, participant_index: int, round: int, model_type: ModelType):
         if (participant_index, round, model_type) not in self.model_downloads:
