@@ -108,9 +108,18 @@ class TorrentDownloadManager:
                               (s.progress * 100, s.download_rate / 1000, s.upload_rate / 1000,
                                s.num_peers, state_str[s.state]))
             if s.state == 4 or s.state == 5:
-                # The download seems to be finished
-                model_name = "%d_%d_%s" % (self.participant_index, round, "local" if model_type == ModelType.LOCAL else "aggregated")
-                with open(os.path.join(self.data_dir, model_name), "rb") as model_file:
+                # The download seems to be finished - wait until we have the file in disk
+                model_name = "%d_%d_%s" % (
+                self.participant_index, round, "local" if model_type == ModelType.LOCAL else "aggregated")
+                model_file_path = os.path.join(self.data_dir, model_name)
+                attempt = 1
+                while not os.path.exists(model_file_path):
+                    if attempt == 20:
+                        self.logger.error("Download file not found after 20 retries!")
+                        return None
+                    await sleep(0.1)
+
+                with open(model_file_path, "rb") as model_file:
                     serialized_model = model_file.read()
                 return participant_index, round, model_type, serialized_model
             await sleep(0.2)
