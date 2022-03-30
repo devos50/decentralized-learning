@@ -75,7 +75,7 @@ class TorrentDownloadManager:
 
         return fail(RuntimeError("Torrent not seeding after 10 seconds!"))
 
-    def download(self, participant_index: int, round: int, model_type: ModelType, bencoded_torrent: bytes):
+    async def download(self, participant_index: int, round: int, model_type: ModelType, bencoded_torrent: bytes):
         self.model_torrents[(participant_index, round, model_type)] = bencoded_torrent
         torrent_info = lt.torrent_info(lt.bdecode(bencoded_torrent))
         download_torrent_info = {
@@ -84,6 +84,19 @@ class TorrentDownloadManager:
         }
 
         download = self.session.add_torrent(download_torrent_info)
-        self.logger.error(download)
         self.model_downloads[(participant_index, round, model_type)] = download
-        return download
+
+        while True:
+            s = download.status()
+            # state_str = ['queued', 'checking', 'downloading metadata',
+            #              'downloading', 'finished', 'seeding', 'allocating', 'checking fastresume']
+            # self.logger.error('\r%.2f%% complete (down: %.1f kb/s up: %.1f kB/s peers: %d) %s' % \
+            #       (s.progress * 100, s.download_rate / 1000, s.upload_rate / 1000, \
+            #        s.num_peers, state_str[s.state]))
+            if s.state == 4 or s.state == 5:
+                # The download seems to be finished
+                model_name = "%d_%d_%s" % (self.participant_index, round, "local" if model_type == ModelType.LOCAL else "aggregated")
+                with open(os.path.join(self.data_dir, model_name), "rb") as model_file:
+                    serialized_model = model_file.read()
+                return participant_index, round, model_type, serialized_model
+            await sleep(0.2)

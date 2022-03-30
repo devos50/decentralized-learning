@@ -213,21 +213,35 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                 continue
 
             # TODO do something with the TrustChain block
-            response = {"round": self.round, "type": "aggregated_model"}
+            if self.transmission_method == TransmissionMethod.EVA:
+                await self.eva_send_aggregated_model(model, peer)
+            elif self.transmission_method == TransmissionMethod.LIBTORRENT:
+                await self.lt_send_aggregated_model(model, peer)
 
-            for attempt in range(1, self.eva_max_retry_attempts + 1):
-                if self.model_send_delay is not None:
-                    await sleep(random.randint(0, self.model_send_delay) / 1000)
-                self.logger.info("Participant %d sending round %d aggregated model to peer %s (attempt %d)",
-                                 self.get_my_participant_index(), self.round, peer, attempt)
-                try:
-                    # TODO this logic is sequential - optimize by having multiple outgoing transfers at once
-                    res = await self.eva_send_binary(peer, json.dumps(response).encode(), serialize_model(model))
-                    self.logger.info("Aggregated model of round %d successfully sent to peer %s", self.round, peer)
-                    break
-                except Exception as exc:
-                    self.logger.exception("Exception when sending aggregated model to peer %s", peer)
-                attempt += 1
+    async def eva_send_aggregated_model(self, model, peer):
+        response = {"round": self.round, "type": "aggregated_model"}
+
+        for attempt in range(1, self.eva_max_retry_attempts + 1):
+            if self.model_send_delay is not None:
+                await sleep(random.randint(0, self.model_send_delay) / 1000)
+            self.logger.info("Participant %d sending round %d aggregated model to peer %s (attempt %d)",
+                             self.get_my_participant_index(), self.round, peer, attempt)
+            try:
+                # TODO this logic is sequential - optimize by having multiple outgoing transfers at once
+                res = await self.eva_send_binary(peer, json.dumps(response).encode(), serialize_model(model))
+                self.logger.info("Aggregated model of round %d successfully sent to peer %s", self.round, peer)
+                break
+            except Exception:
+                self.logger.exception("Exception when sending aggregated model to peer %s", peer)
+            attempt += 1
+
+    async def lt_send_aggregated_model(self, model, peer):
+        if not self.torrent_download_manager.is_seeding(self.round, ModelType.AGGREGATED):
+            await self.torrent_download_manager.seed(self.round, ModelType.AGGREGATED, model)
+
+        bencoded_torrent = self.torrent_download_manager.get_torrent_info(
+            self.get_my_participant_index(), self.round, ModelType.AGGREGATED)
+        self.send_model_torrent(peer, self.round, ModelType.AGGREGATED, bencoded_torrent)
 
     async def send_local_model(self):
         """
@@ -265,23 +279,27 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
             attempt += 1
 
     async def lt_send_local_model(self, peer):
-        # We should start seeding this model
+        # We should start seeding this local model
         if not self.torrent_download_manager.is_seeding(self.round, ModelType.LOCAL):
             await self.torrent_download_manager.seed(self.round, ModelType.LOCAL, self.model)
 
+        bencoded_torrent = self.torrent_download_manager.get_torrent_info(
+            self.get_my_participant_index(), self.round, ModelType.LOCAL)
+        self.send_model_torrent(peer, self.round, ModelType.LOCAL, bencoded_torrent)
+
+    def send_model_torrent(self, peer, round: int, model_type: ModelType, bencoded_torrent: bytes):
         # Send the torrent info to the peer
         # TODO should we have an ack here to improve reliability?
         global_time = self.claim_global_time()
         auth = BinMemberAuthenticationPayload(self.my_peer.public_key.key_to_bin())
-        bencoded_torrent = self.torrent_download_manager.get_torrent_info(
-            self.get_my_participant_index(), self.round, ModelType.LOCAL)
-        payload = ModelTorrent(self.round, ModelType.LOCAL.value, self.lt_listen_port, bencoded_torrent)
+
+        payload = ModelTorrent(round, model_type.value, self.lt_listen_port, bencoded_torrent)
         dist = GlobalTimeDistributionPayload(global_time)
         packet = self._ez_pack(self._prefix, ModelTorrent.msg_id, [auth, dist, payload])
         self.endpoint.send(peer.address, packet)
 
     @lazy_wrapper(GlobalTimeDistributionPayload, ModelTorrent)
-    def on_model_torrent(self, peer, dist, payload):
+    async def on_model_torrent(self, peer, dist, payload):
         # TODO add checks if we should start downloading this model
         participant_index = self.get_participant_index(peer.public_key.key_to_bin())
         if participant_index == -1:
@@ -293,16 +311,28 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                                 "libtorrent as transmission engine")
             return
 
-        self.logger.info("Received model torrent from participant %d for round %d (model type: %d)",
-                         participant_index, payload.round, payload.model_type)
         model_type = ModelType(payload.model_type)
+        self.logger.info("Received %s model torrent from participant %d for round %d",
+                         "local" if payload.model_type == ModelType.LOCAL else "aggregated",
+                         participant_index, payload.round)
         if self.torrent_download_manager.is_downloading(participant_index, payload.round, model_type):
             self.logger.warning("We are already downloading model with type %d from participant %d for round %d",
-                                payload.model_type, participant_index, payload.round)
+                                "local" if model_type == ModelType.LOCAL else "aggregated", participant_index, payload.round)
             return
 
         # Start to download the torrent
-        self.torrent_download_manager.download(participant_index, payload.round, model_type, payload.torrent)
+        ensure_future(
+            self.torrent_download_manager.download(participant_index, payload.round, model_type, payload.torrent))\
+            .add_done_callback(self.on_model_download_finished)
+
+    def on_model_download_finished(self, task):
+        participant, model_round, model_type, serialized_model = task.result()
+        self.logger.info("%s model download from participant %d for round %d finished",
+                         "Local" if model_type == ModelType.LOCAL else "Aggregated", participant, model_round)
+        if model_type == ModelType.LOCAL:
+            self.received_local_model(participant, model_round, serialized_model)
+        elif model_type == ModelType.AGGREGATED:
+            self.received_aggregated_model(participant, model_round, serialized_model)
 
     async def participate_in_round(self):
         """
@@ -547,6 +577,44 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
 
         return self.verify_model_training(old_model, Tensor(datas), torch.LongTensor(targets), new_model)
 
+    def received_local_model(self, participant: int, model_round: int, serialized_model: bytes) -> None:
+        self.logger.info("Received local model for round %d from participant %d", model_round, participant)
+        if model_round == self.round:
+            incoming_model = unserialize_model(serialized_model, self.parameters["dataset"], self.parameters["model"])
+            if model_round not in self.incoming_local_models:
+                self.incoming_local_models[model_round] = []
+            self.incoming_local_models[model_round].append(incoming_model)
+            self.logger.info("Received expected local model (now have %d/%d)",
+                             len(self.incoming_local_models[self.round]), self.sample_size - 1)
+            if len(self.incoming_local_models[self.round]) == self.sample_size - 1 and not self.round_deferred.done():
+                self.round_deferred.set_result(None)
+        elif model_round > self.round and self.is_participant_for_round(model_round):
+            self.logger.info("Received a local model from participant %d for future round %d",
+                             participant, model_round)
+            # It is possible that we receive a model for a later round while we are still in an earlier round.
+            if model_round not in self.incoming_local_models:
+                self.incoming_local_models[model_round] = []
+            incoming_model = unserialize_model(serialized_model, self.parameters["dataset"], self.parameters["model"])
+            self.incoming_local_models[model_round].append(incoming_model)
+        else:
+            self.logger.warning("Received a local model for a round that is not relevant for us (%d)", model_round)
+
+    def received_aggregated_model(self, participant: int, model_round: int, serialized_model: bytes) -> None:
+        if not self.is_participant_for_round(model_round + 1):
+            self.logger.warning("Received aggregated model from participant %d for round %d but we are not a "
+                                "participant in that round", participant, model_round + 1)
+
+        self.logger.info("Received aggregated model for round %d from participant %d", model_round, participant)
+        incoming_model = unserialize_model(serialized_model, self.parameters["dataset"], self.parameters["model"])
+        if model_round not in self.incoming_aggregated_models:
+            self.incoming_aggregated_models[model_round] = []
+        self.incoming_aggregated_models[model_round].append(incoming_model)
+        if len(self.incoming_aggregated_models[
+                   model_round]) == self.sample_size and not self.is_participating_in_round:
+            # Perform this round
+            self.round = model_round + 1
+            ensure_future(self.participate_in_round())
+
     def on_receive(self, result: TransferResult):
         self.logger.info(f'Data has been received from peer {result.peer}: {result.info}')
         json_data = json.loads(result.info.decode())
@@ -562,43 +630,11 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
             elif request_type == DataType.MODEL:
                 cache.request_future.set_result(result.data)
         elif json_data["type"] == "aggregated_model":
-            # This response is the aggregated model of another participant.
-            if not self.is_participant_for_round(json_data["round"] + 1):
-                self.logger.warning("Received aggregated model from peer %s for round %d but we are not a participant "
-                                    "in that round", result.peer, json_data["round"] + 1)
-
-            self.logger.info("Received aggregated model from peer %s for round %d", result.peer, json_data["round"])
-            incoming_model = unserialize_model(result.data, self.parameters["dataset"], self.parameters["model"])
-            if json_data["round"] not in self.incoming_aggregated_models:
-                self.incoming_aggregated_models[json_data["round"]] = []
-            self.incoming_aggregated_models[json_data["round"]].append(incoming_model)
-            if len(self.incoming_aggregated_models[json_data["round"]]) == self.sample_size and not self.is_participating_in_round:
-                # Perform this round
-                self.round = json_data["round"] + 1
-                ensure_future(self.participate_in_round())
+            participant = self.get_participant_index(result.peer.public_key.key_to_bin())
+            self.received_aggregated_model(participant, json_data["round"], result.data)
         elif json_data["type"] == "local_model":
-            # This response is the local model of another participant.
-            self.logger.info("Received local model for round %d from peer %s", json_data["round"], result.peer)
-            if json_data["round"] == self.round:
-                incoming_model = unserialize_model(result.data, self.parameters["dataset"], self.parameters["model"])
-                if json_data["round"] not in self.incoming_local_models:
-                    self.incoming_local_models[json_data["round"]] = []
-                self.incoming_local_models[json_data["round"]].append(incoming_model)
-                self.logger.info("Received expected local model (now have %d/%d)",
-                                 len(self.incoming_local_models[self.round]), self.sample_size - 1)
-                if len(self.incoming_local_models[self.round]) == self.sample_size - 1 and not self.round_deferred.done():
-                    self.round_deferred.set_result(None)
-            elif json_data["round"] > self.round and self.is_participant_for_round(json_data["round"]):
-                self.logger.info("Received a local model from peer %s for future round %d",
-                                 result.peer, json_data["round"])
-                # It is possible that we receive a model for a later round while we are still in an earlier round.
-                if json_data["round"] not in self.incoming_local_models:
-                    self.incoming_local_models[json_data["round"]] = []
-                incoming_model = unserialize_model(result.data, self.parameters["dataset"], self.parameters["model"])
-                self.incoming_local_models[json_data["round"]].append(incoming_model)
-            else:
-                self.logger.warning("Received a local model for a round that is not relevant for us (%d)",
-                                    json_data["round"])
+            participant = self.get_participant_index(result.peer.public_key.key_to_bin())
+            self.received_local_model(participant, json_data["round"], result.data)
 
     def on_send_complete(self, result: TransferResult):
         self.logger.info(f'Outgoing transfer to peer {result.peer} has completed: {result.info}')
