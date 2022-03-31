@@ -570,10 +570,12 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
         container.pop(peer, None)
 
     def _incoming_error(self, peer: Peer, transfer: Optional[Transfer], e: TransferException):
+        future = None
         if transfer:
             self.terminate(self.incoming, peer, transfer)
+            future = transfer.future
         self.community.eva_send_message(peer, Error(e.message.encode('utf-8')))
-        self._notify_error(peer, e, transfer.future)
+        self._notify_error(peer, e, future)
 
     def _notify_error(self, peer, exception, future: Optional[Future] = None):
         logger.warning(f'Exception.Peer hash {peer}: "{exception}"')
