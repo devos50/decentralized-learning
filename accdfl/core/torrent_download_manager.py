@@ -25,6 +25,7 @@ class TorrentDownloadManager(TaskManager):
         self.logger = logging.getLogger(__name__)
         self.model_downloads = {}
         self.model_torrents = {}
+        self.trackers = []
 
         settings = {
             "enable_upnp": False,
@@ -35,7 +36,7 @@ class TorrentDownloadManager(TaskManager):
             "min_reconnect_time": 1,
         }
         self.session = lt.session(settings)
-        self.session.set_alert_mask(lt.alert.category_t.all_categories)
+        #self.session.set_alert_mask(lt.alert.category_t.all_categories)
 
     def _task_process_alerts(self):
         for alert in self.session.pop_alerts():
@@ -75,7 +76,7 @@ class TorrentDownloadManager(TaskManager):
             model_file.write(serialize_model(model))
 
         # Create a torrent and start seeding the model
-        bencoded_torrent = create_torrent_file(model_file_path)
+        bencoded_torrent = create_torrent_file(model_file_path, trackers=self.trackers)
         self.model_torrents[(self.participant_index, round, model_type)] = bencoded_torrent
         torrent = lt.bdecode(bencoded_torrent)
         torrent_info = lt.torrent_info(torrent)
@@ -84,12 +85,14 @@ class TorrentDownloadManager(TaskManager):
             "save_path": self.data_dir
         }
         upload = self.session.add_torrent(seed_torrent_info)
-        upload.auto_managed(False)
-        upload.resume()
+        #upload.auto_managed(False)
+        #upload.resume()
         self.model_downloads[(self.participant_index, round, model_type)] = upload
         for _ in range(100):
             await sleep(0.1)
             if upload.status().state == 5:
+                self.logger.info("Torrent seeding!")
+                upload.force_reannounce()
                 return succeed(None)
 
         return fail(RuntimeError("Torrent not seeding after 10 seconds!"))
@@ -119,7 +122,10 @@ class TorrentDownloadManager(TaskManager):
             self.logger.debug('%.2f%% complete (down: %.1f kb/s up: %.1f kB/s peers: %d) %s' %
                               (s.progress * 100, s.download_rate / 1000, s.upload_rate / 1000,
                                s.num_peers, state_str[s.state]))
-            download.connect_peer(other_peer_lt_address)
+
+            if not list(torrent_info.trackers()):
+                self.logger.debug("No trackers available - will try to connect to seeder manually")
+                download.connect_peer(other_peer_lt_address)
             if s.state == 4 or s.state == 5:
                 # The download seems to be finished - wait until we have the file in disk
                 model_name = "%d_%d_%s" % (

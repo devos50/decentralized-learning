@@ -4,6 +4,8 @@ from binascii import hexlify
 import pytest
 
 from accdfl.core.community import DFLCommunity, TransmissionMethod
+from accdfl.test.util.network_utils import NetworkUtils
+from accdfl.test.util.torrent_http_tracker import TorrentHTTPTracker
 
 from ipv8.test.base import TestBase
 from ipv8.test.mocking.ipv8 import MockIPv8
@@ -203,7 +205,7 @@ class TestDFLCommunityTwoNodesLibtorrent(TestDFLCommunityBase):
     @pytest.mark.timeout(15)
     async def test_multiple_rounds(self):
         """
-        Test multiple rounds of training.
+        Test multiple rounds of training with the libtorrent transmission engine.
         """
         round_2_completed = []
         round_2_completed_deferred = Future()
@@ -219,3 +221,27 @@ class TestDFLCommunityTwoNodesLibtorrent(TestDFLCommunityBase):
             node.overlay.start()
 
         await round_2_completed_deferred
+
+
+class TestDFLCommunityTwoNodesLibtorrentTracker(TestDFLCommunityBase):
+    TRANSMISSION_METHOD = TransmissionMethod.LIBTORRENT
+
+    @pytest.mark.timeout(10)
+    async def test_single_round_with_http_tracker(self):
+        """
+        Test whether a single round of training can be completed successfully when using a HTTP tracker.
+        """
+        tracker_port = NetworkUtils().get_random_free_port()
+        http_tracker = TorrentHTTPTracker(tracker_port)
+        await http_tracker.start()
+
+        for node in self.nodes:
+            node.overlay.torrent_download_manager.trackers.append("http://127.0.0.1:%d/announce" % tracker_port)
+
+        assert len(self.nodes[0].overlay.get_participants_for_round(1)) == self.NUM_NODES
+        assert self.nodes[0].overlay.is_participant_for_round(1)
+        await gather(*[node.overlay.participate_in_round() for node in self.nodes])
+
+        assert http_tracker.peers
+
+        await http_tracker.stop()
