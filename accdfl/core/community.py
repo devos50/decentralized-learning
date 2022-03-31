@@ -99,13 +99,20 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
     def get_my_participant_index(self):
         return self.get_participant_index(self.my_peer.public_key.key_to_bin())
 
-    def get_participants_for_round(self, round):
+    def get_participants_for_round(self, round: int) -> List[int]:
         rand = random.Random(round)
         participant_indices = list(range(len(self.participants)))
-        return rand.sample(participant_indices, self.sample_size)
+        return sorted(rand.sample(participant_indices, self.sample_size))
 
-    def is_participant_for_round(self, round) -> bool:
+    def is_participant_for_round(self, round: int) -> bool:
         return self.get_my_participant_index() in self.get_participants_for_round(round)
+
+    def get_round_representative(self, round: int) -> int:
+        # TODO assume that the participant with the lowest ID in the round is the representative
+        return self.get_participants_for_round(round)[0]
+
+    def is_round_representative(self, round: int) -> bool:
+        return self.get_my_participant_index() == self.get_round_representative(round)
 
     def setup(self, parameters: Dict, data_dir: str, transmission_method: TransmissionMethod = TransmissionMethod.EVA):
         assert len(parameters["participants"]) * parameters["local_classes"] == sum(parameters["nodes_per_class"])
@@ -247,22 +254,23 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
 
     async def send_local_model(self):
         """
-        Send the global model to the other participants in the current round.
+        Send the global model to the round representative.
         """
-        for participant_ind in self.get_participants_for_round(self.round):
-            if participant_ind == self.get_my_participant_index():
-                continue
-            participant_pk = unhexlify(self.participants[participant_ind])
-            peer = self.get_peer_by_pk(participant_pk)
-            if not peer:
-                self.logger.warning("Peer object of participant %d not available - not sending local model", participant_ind)
-                continue
+        if self.is_round_representative(self.round):
+            return
 
-            if self.transmission_method == TransmissionMethod.EVA:
-                await self.eva_send_local_model(peer)
-            elif self.transmission_method == TransmissionMethod.LIBTORRENT:
-                await sleep(random.random() / 4)  # Make sure we are not sending the torrents at exactly the same time
-                await self.lt_send_local_model(peer)
+        round_representative = self.get_round_representative(self.round)
+        participant_pk = unhexlify(self.participants[round_representative])
+        peer = self.get_peer_by_pk(participant_pk)
+        if not peer:
+            self.logger.warning("Peer object of round representative %d not available - not sending local model", round_representative)
+            return
+
+        if self.transmission_method == TransmissionMethod.EVA:
+            await self.eva_send_local_model(peer)
+        elif self.transmission_method == TransmissionMethod.LIBTORRENT:
+            await sleep(random.random() / 4)  # Make sure we are not sending the torrents at exactly the same time
+            await self.lt_send_local_model(peer)
 
     async def eva_send_local_model(self, peer):
         response = {"round": self.round, "type": "local_model"}
@@ -277,7 +285,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                 res = await self.eva_send_binary(peer, json.dumps(response).encode(), serialize_model(self.model))
                 self.logger.info("Local model successfully sent to peer %s", peer)
                 break
-            except Exception as exc:
+            except Exception:
                 self.logger.exception("Exception when sending model to peer %s", peer)
             attempt += 1
 
@@ -303,7 +311,6 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
 
     @lazy_wrapper(GlobalTimeDistributionPayload, ModelTorrent)
     async def on_model_torrent(self, peer, dist, payload):
-        # TODO add checks if we should start downloading this model
         participant_index = self.get_participant_index(peer.public_key.key_to_bin())
         if participant_index == -1:
             self.logger.warning("Received model torrent from peer %s that is not a participant", peer)
@@ -364,33 +371,25 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         # Train
         epoch_done = await self.train()
 
-        # Send the updated model to the other participants in the current round
         await self.send_local_model()
 
         avg_model = self.model
         if self.sample_size > 1:
-            self.logger.info("Participant %d waiting for models from other peers for round %d",
-                             self.get_my_participant_index(), self.round)
-            if (self.round not in self.incoming_local_models) or \
-                    (self.round in self.incoming_local_models and
-                     len(self.incoming_local_models[self.round]) < self.sample_size - 1):
+            if self.is_round_representative(self.round) and ((self.round not in self.incoming_local_models) or (self.round in self.incoming_local_models and len(self.incoming_local_models[self.round]) < self.sample_size - 1)):
                 await self.round_deferred
-            self.logger.info("Participant %d received %d model(s) from other peers for round %d - starting to average",
-                             self.get_my_participant_index(), len(self.incoming_local_models[self.round]), self.round)
+                self.logger.info("Round representative %d received %d model(s) from other peers for round %d - "
+                                 "starting to average", self.get_my_participant_index(),
+                                 len(self.incoming_local_models[self.round]), self.round)
 
-            # Average your model with those of the other participants
-            avg_model = self.average_models(self.incoming_local_models[self.round] + [self.model])
-            with torch.no_grad():
-                for p, new_p in zip(self.model.parameters(), avg_model.parameters()):
-                    p.mul_(0.)
-                    p.add_(new_p)
+                # Average your model with those of the other participants
+                avg_model = self.average_models(self.incoming_local_models[self.round] + [self.model])
+                with torch.no_grad():
+                    for p, new_p in zip(self.model.parameters(), avg_model.parameters()):
+                        p.mul_(0.)
+                        p.add_(new_p)
 
-        # Record the global model update
-        # TODO optimistic aggregation
-        new_model_hash = hexlify(hashlib.md5(serialize_model(avg_model)).digest()).decode()
-        tx = {"round": self.round, "new_model": new_model_hash}
-        #blk, _ = await self.self_sign_block(b"global_model", transaction=tx)
-        await self.send_aggregated_model(avg_model)
+        if self.is_round_representative(self.round):
+            await self.send_aggregated_model(avg_model)
 
         self.incoming_local_models.pop(self.round, None)
         self.round_deferred = Future()
@@ -410,7 +409,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         for round_nr in self.incoming_aggregated_models:
             if round_nr < self.round:
                 continue
-            if len(self.incoming_aggregated_models[round_nr]) == self.sample_size:
+            if len(self.incoming_aggregated_models[round_nr]) == 1:
                 self.round = round_nr + 1
                 ensure_future(self.participate_in_round())
 
@@ -587,6 +586,11 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
     def received_local_model(self, participant: int, model_round: int, serialized_model: bytes) -> None:
         self.logger.info("Received local model for round %d from participant %d", model_round, participant)
         if model_round == self.round:
+            if not self.is_round_representative(model_round):
+                self.logger.warning("We received a local model for round %d from participant %d but we are "
+                                    "not the round representative" % model_round, participant)
+                return
+
             incoming_model = unserialize_model(serialized_model, self.parameters["dataset"], self.parameters["model"])
             if model_round not in self.incoming_local_models:
                 self.incoming_local_models[model_round] = []
@@ -616,8 +620,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         if model_round not in self.incoming_aggregated_models:
             self.incoming_aggregated_models[model_round] = []
         self.incoming_aggregated_models[model_round].append(incoming_model)
-        if len(self.incoming_aggregated_models[
-                   model_round]) == self.sample_size and not self.is_participating_in_round:
+        if len(self.incoming_aggregated_models[model_round]) == 1 and not self.is_participating_in_round:
             # Perform this round
             self.round = model_round + 1
             ensure_future(self.participate_in_round())
@@ -644,7 +647,8 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
             self.received_local_model(participant, json_data["round"], result.data)
 
     def on_send_complete(self, result: TransferResult):
-        self.logger.info(f'Outgoing transfer to peer {result.peer} has completed: {result.info}')
+        participant_ind = self.get_participant_index(result.peer.public_key.key_to_bin())
+        self.logger.info(f'Outgoing transfer to participant {participant_ind} has completed: {result.info}')
 
     def on_error(self, peer, exception):
         self.logger.error(f'An error has occurred in transfer to peer {peer}: {exception}')

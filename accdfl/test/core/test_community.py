@@ -84,6 +84,7 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
         assert self.nodes[0].overlay.is_participant_for_round(1)
         await gather(*[node.overlay.participate_in_round() for node in self.nodes])
 
+    @pytest.mark.timeout(10)
     async def test_multiple_round(self):
         """
         Test multiple rounds of training.
