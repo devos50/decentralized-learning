@@ -108,8 +108,8 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         return self.get_my_participant_index() in self.get_participants_for_round(round)
 
     def get_round_representative(self, round: int) -> int:
-        # TODO assume that the participant with the lowest ID in the round is the representative
-        return self.get_participants_for_round(round)[0]
+        rand = random.Random(round)
+        return rand.choice(self.get_participants_for_round(round))
 
     def is_round_representative(self, round: int) -> bool:
         return self.get_my_participant_index() == self.get_round_representative(round)
