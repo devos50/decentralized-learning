@@ -202,16 +202,13 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                     c1.add_(w * p1)
             return center_model
 
-    async def send_aggregated_model(self, model):
+    async def send_aggregated_model(self, round, model):
         """
         Send the global model update to the participants of the next round.
         """
-        participants_next_round = self.get_participants_for_round(self.round + 1)
+        participants_next_round = self.get_participants_for_round(round + 1)
         for participant_ind in participants_next_round:
             if participant_ind == self.get_my_participant_index():
-                if self.round not in self.incoming_aggregated_models:
-                    self.incoming_aggregated_models[self.round] = []
-                self.incoming_aggregated_models[self.round].append(model)
                 continue
 
             participant_pk = unhexlify(self.participants[participant_ind])
@@ -222,21 +219,21 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
 
             # TODO do something with the TrustChain block
             if self.transmission_method == TransmissionMethod.EVA:
-                await self.eva_send_aggregated_model(model, peer)
+                await self.eva_send_aggregated_model(round, model, peer)
             elif self.transmission_method == TransmissionMethod.LIBTORRENT:
                 await sleep(random.random() / 4)  # Make sure we are not sending the torrents at exactly the same time
                 await self.lt_send_aggregated_model(model, peer)
 
-    async def eva_send_aggregated_model(self, model, peer):
-        response = {"round": self.round, "type": "aggregated_model"}
+    async def eva_send_aggregated_model(self, round, model, peer):
+        response = {"round": round, "type": "aggregated_model"}
 
         for attempt in range(1, self.eva_max_retry_attempts + 1):
             self.logger.info("Participant %d sending round %d aggregated model to peer %s (attempt %d)",
-                             self.get_my_participant_index(), self.round, peer, attempt)
+                             self.get_my_participant_index(), round, peer, attempt)
             try:
                 # TODO this logic is sequential - optimize by having multiple outgoing transfers at once
                 res = await self.eva_send_binary(peer, json.dumps(response).encode(), serialize_model(model))
-                self.logger.info("Aggregated model of round %d successfully sent to peer %s", self.round, peer)
+                self.logger.info("Aggregated model of round %d successfully sent to peer %s", round, peer)
                 break
             except Exception:
                 self.logger.exception("Exception when sending aggregated model to peer %s", peer)
@@ -387,7 +384,11 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                         p.add_(new_p)
 
         if self.is_round_representative(self.round):
-            await self.send_aggregated_model(avg_model)
+            if self.round not in self.incoming_aggregated_models:
+                self.incoming_aggregated_models[self.round] = []
+            self.incoming_aggregated_models[self.round].append(avg_model)
+            self.register_task("send_aggregated_model_%d" %
+                               self.round, self.send_aggregated_model, self.round, avg_model)
 
         self.incoming_local_models.pop(self.round, None)
         self.round_deferred = Future()
