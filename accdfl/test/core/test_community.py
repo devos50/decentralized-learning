@@ -1,11 +1,11 @@
-from asyncio import gather, Future, sleep
+from asyncio import gather, Future
 from binascii import hexlify
 
 import pytest
 
 from accdfl.core.community import DFLCommunity, TransmissionMethod
 from accdfl.test.util.network_utils import NetworkUtils
-from accdfl.test.util.torrent_http_tracker import TorrentHTTPTracker
+from accdfl.util.torrent_http_tracker import TorrentHTTPTracker
 
 from ipv8.test.base import TestBase
 from ipv8.test.mocking.ipv8 import MockIPv8
