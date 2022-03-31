@@ -231,8 +231,6 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         response = {"round": self.round, "type": "aggregated_model"}
 
         for attempt in range(1, self.eva_max_retry_attempts + 1):
-            if self.model_send_delay is not None:
-                await sleep(random.randint(0, self.model_send_delay) / 1000)
             self.logger.info("Participant %d sending round %d aggregated model to peer %s (attempt %d)",
                              self.get_my_participant_index(), self.round, peer, attempt)
             try:
