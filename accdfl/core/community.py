@@ -132,7 +132,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         self.transmission_method = transmission_method
         if self.transmission_method == TransmissionMethod.EVA:
             self.logger.info("Setting up EVA protocol")
-            self.eva_init(retransmit_attempt_count=10, retransmit_interval_in_sec=1, timeout_interval_in_sec=10)
+            self.eva_init(window_size_in_blocks=32, retransmit_attempt_count=10, retransmit_interval_in_sec=1, timeout_interval_in_sec=10)
             self.eva_register_receive_callback(self.on_receive)
             self.eva_register_send_complete_callback(self.on_send_complete)
             self.eva_register_error_callback(self.on_error)
