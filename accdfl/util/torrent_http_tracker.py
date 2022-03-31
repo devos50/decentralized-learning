@@ -75,7 +75,6 @@ class TorrentHTTPTracker:
         """
         Return a bencoded dictionary with peers.
         """
-        self.logger.error(request.query)
         if 'info_hash' not in request.query:
             return RESTResponse("infohash argument missing", status=101)
 
@@ -93,8 +92,5 @@ class TorrentHTTPTracker:
             "interval": 5,
             "peers": list(self.peers[infohash].values())
         }
-
-        self.logger.error(response_dict)
-        self.logger.error(bencode(response_dict))
 
         return RESTResponse(bencode(response_dict))
