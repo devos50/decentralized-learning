@@ -61,7 +61,7 @@ class ADFLSimulation:
     def setup_logger(self) -> None:
         root = logging.getLogger()
         root.handlers[0].setFormatter(logging.Formatter("%(asctime)s:%(levelname)s:%(message)s"))
-        root.setLevel(logging.INFO)
+        root.setLevel(logging.WARN)
 
     def ipv8_discover_peers(self) -> None:
         for node_a in self.nodes:
@@ -78,12 +78,17 @@ class ADFLSimulation:
 
         if ind == 0 and round_nr % self.settings.accuracy_logging_interval == 0:
             accuracy, loss = await self.nodes[0].overlays[0].compute_accuracy(include_wait_periods=False)
+            with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
+                out_file.write("%d,%d,%f,%f\n" % (ind, round_nr, accuracy, loss))
 
         if all([n >= self.settings.num_rounds for n in self.peers_rounds_completed]):
             exit(0)
 
     async def start_simulation(self) -> None:
         print("Starting simulation with %d peers..." % self.settings.peers)
+
+        with open(os.path.join(self.data_dir, "accuracies.csv"), "w") as out_file:
+            out_file.write("peer,step,accuracy,loss\n")
 
         # Setup the training process
         experiment_data = {
