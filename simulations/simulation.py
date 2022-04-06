@@ -18,6 +18,11 @@ from simulation.simulation_endpoint import SimulationEndpoint
 
 from simulations.settings import SimulationSettings
 
+import torch
+import torch.nn.functional as F
+
+from torchvision import datasets, transforms
+
 
 class ADFLSimulation:
     """
@@ -70,6 +75,10 @@ class ADFLSimulation:
 
     async def on_round_complete(self, ind, round_nr):
         self.peers_rounds_completed[ind] = round_nr
+
+        if ind == 0 and round_nr % self.settings.accuracy_logging_interval == 0:
+            accuracy, loss = await self.nodes[0].overlays[0].compute_accuracy(include_wait_periods=False)
+
         if all([n >= self.settings.num_rounds for n in self.peers_rounds_completed]):
             exit(0)
 
@@ -79,8 +88,8 @@ class ADFLSimulation:
         # Setup the training process
         experiment_data = {
             "classes": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
-            "learning_rate": 0.1,
-            "momentum": 0.0,
+            "learning_rate": self.settings.learning_rate,
+            "momentum": self.settings.momentum,
             "batch_size": self.settings.batch_size,
             "participants": [hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
             "rounds": self.settings.num_rounds,

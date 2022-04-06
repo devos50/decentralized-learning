@@ -30,6 +30,11 @@ class Dataset:
                 train=True,
                 download=True,
                 transform=transform)
+            self.test_dataset = datasets.MNIST(
+                self.data_dir,
+                train=False,
+                download=True,
+                transform=transform)
         elif parameters["dataset"] == "cifar10":
             transform = transforms.Compose([
                 # transforms.Pad(4),
@@ -41,9 +46,16 @@ class Dataset:
                 train=True,
                 download=True,
                 transform=transform)
+            self.test_dataset = datasets.CIFAR10(
+                self.data_dir,
+                train=False,
+                download=True,
+                transform=transform)
 
         self.iterator = None
         self.validation_iterator = None
+        self.test_iterator = None
+        self.reset_test_iterator()
 
         self.partition_dataset()
 
@@ -147,6 +159,7 @@ class Dataset:
             partition.extend(shuffled[c][start:end])
 
         self.train_set = [self.dataset[i] for i in partition]
+        # TODO the validation set is currently the same as the training set!
         self.validation_set = [self.dataset[i] for i in partition]
         self.reset_train_iterator()
         self.reset_validation_iterator()
@@ -163,6 +176,13 @@ class Dataset:
     def reset_validation_iterator(self):
         self.validation_iterator = iter(torch.utils.data.DataLoader(
             self.validation_set,
+            batch_size=self.batch_size,
+            shuffle=True
+        ))
+
+    def reset_test_iterator(self):
+        self.test_iterator = iter(torch.utils.data.DataLoader(
+            self.test_dataset,
             batch_size=self.batch_size,
             shuffle=True
         ))

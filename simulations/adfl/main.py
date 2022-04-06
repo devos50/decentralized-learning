@@ -16,8 +16,6 @@ class BasicADFLSimulation(ADFLSimulation):
 
 if __name__ == "__main__":
     settings = SimulationSettings()
-    settings.peers = 2
-    settings.duration = 20
     simulation = BasicADFLSimulation(settings)
     ensure_future(simulation.run())
 

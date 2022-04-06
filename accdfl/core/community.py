@@ -142,14 +142,10 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
             self.torrent_download_manager = TorrentDownloadManager(self.data_dir, self.get_my_participant_index())
             self.torrent_download_manager.start(self.lt_listen_port)
 
-    async def train(self) -> bool:
+    def train(self) -> bool:
         """
         Train the model on a batch. Return a boolean that indicates whether the epoch is completed.
         """
-        old_model_serialized = serialize_model(self.model)
-        old_model_hash = hexlify(hashlib.md5(old_model_serialized).digest()).decode()
-        self.model_store.add(old_model_serialized)
-
         def it_has_next(iterable):
             try:
                 first = next(iterable)
@@ -157,13 +153,8 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                 return None
             return itertools.chain([first], iterable)
 
-        hashes = []
         data, target = self.dataset.iterator.__next__()
         self.model.train()
-        for ddata, dtarget in zip(data, target):
-            h = hashlib.md5(b"%d" % hash(ddata))
-            hashes.append(hexlify(h.digest()).decode())
-            self.data_store.add(ddata, dtarget)
         data, target = Variable(data), Variable(target)
         self.optimizer.optimizer.zero_grad()
         self.logger.info('d-sgd.next node forward propagation')
@@ -172,14 +163,6 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         self.logger.info('d-sgd.next node backward propagation')
         loss.backward()
         self.optimizer.optimizer.step()
-
-        new_model_serialized = serialize_model(self.model)
-        new_model_hash = hexlify(hashlib.md5(new_model_serialized).digest()).decode()
-        self.model_store.add(new_model_serialized)
-
-        # Record the individual model update
-        tx = {"round": self.round, "old_model": old_model_hash, "new_model": new_model_hash}
-        #await self.self_sign_block(b"model_update", transaction=tx)
 
         # Are we at the end of the epoch?
         res = it_has_next(self.dataset.iterator)
@@ -379,7 +362,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
             self.incoming_aggregated_models.pop(self.round - 1, None)
 
         # Train
-        epoch_done = await self.train()
+        epoch_done = self.train()
 
         await self.send_local_model()
 
@@ -401,7 +384,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         if self.is_round_representative(self.round):
             if self.round not in self.incoming_aggregated_models:
                 self.incoming_aggregated_models[self.round] = []
-            self.incoming_aggregated_models[self.round].append(avg_model)
+            self.incoming_aggregated_models[self.round].append(copy.deepcopy(avg_model))
             self.register_task("send_aggregated_model_%d" %
                                self.round, self.send_aggregated_model, self.round, avg_model)
 
@@ -427,34 +410,33 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                 self.round = round_nr + 1
                 ensure_future(self.participate_in_round())
 
-    async def compute_accuracy(self):
+    async def compute_accuracy(self, include_wait_periods=True):
         """
         Compute the accuracy/loss of the current model.
+        Optionally, one can provide a custom iterator to compute the accuracy on a custom dataset.
         """
         self.logger.info("Computing accuracy of model")
         self.is_computing_accuracy = True
         self.compute_accuracy_deferred = Future()
         correct = example_number = total_loss = num_batches = 0
+        copied_model = copy.deepcopy(self.model)
+        copied_model.eval()
+
         with torch.no_grad():
-            copied_model = self.model.copy()
-            copied_model.eval()
-            cur_item = 0
-            for data, target in self.dataset.validation_iterator:
-                data, target = Variable(data), Variable(target)
+            for data, target in self.dataset.test_iterator:
                 output = copied_model.forward(data)
-                loss = F.nll_loss(output, target)
-                total_loss += loss.item()
-                num_batches += 1.0
-                _, predicted = torch.max(output.data, 1)
-                correct += (predicted == target).sum().item()
+                total_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
+                pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
+                correct += pred.eq(target.view_as(pred)).sum().item()
                 example_number += target.size(0)
-                cur_item += 1
-                await sleep(0.001)
+                num_batches += 1
+                if include_wait_periods:
+                    await sleep(0.001)
 
         accuracy = float(correct) / float(example_number)
         loss = total_loss / float(example_number)
         self.logger.info("Finished computing accuracy of model (accuracy: %f, loss: %f)", accuracy, loss)
-        self.dataset.reset_validation_iterator()
+        self.dataset.reset_test_iterator()
         self.is_computing_accuracy = False
         self.compute_accuracy_deferred.set_result(None)
         return accuracy, loss

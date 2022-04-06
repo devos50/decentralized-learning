@@ -125,7 +125,7 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
         """
         Test computing the accuracy of a model.
         """
-        await self.nodes[0].overlay.train()
+        self.nodes[0].overlay.train()
         accuracy, loss = await self.nodes[0].overlay.compute_accuracy()
         assert accuracy > 0
 
