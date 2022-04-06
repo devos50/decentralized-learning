@@ -215,7 +215,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
             participant_pk = unhexlify(self.participants[participant_ind])
             peer = self.get_peer_by_pk(participant_pk)
             if not peer:
-                self.logger.warning("Peer object of participant %d not available - not sending aggregated model", participant_ind)
+                self.logger.warning("Peer object of participant %d not available - not sending aggregated model for round %d", participant_ind, round)
                 continue
 
             # TODO do something with the TrustChain block
@@ -229,12 +229,15 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         response = {"round": round, "type": "aggregated_model"}
 
         for attempt in range(1, self.eva_max_retry_attempts + 1):
-            self.logger.info("Participant %d sending round %d aggregated model to peer %s (attempt %d)",
-                             self.get_my_participant_index(), round, peer, attempt)
+            self.logger.info("Participant %d sending round %d aggregated model to participant %d (attempt %d)",
+                             self.get_my_participant_index(), round,
+                             self.get_participant_index(peer.public_key.key_to_bin()), attempt)
             try:
                 # TODO this logic is sequential - optimize by having multiple outgoing transfers at once
                 res = await self.eva_send_binary(peer, json.dumps(response).encode(), serialize_model(model))
-                self.logger.info("Aggregated model of round %d successfully sent to peer %s", round, peer)
+                self.logger.info("Participant %d successfully sent aggregated model of round %d to participant %s",
+                                 self.get_my_participant_index(), round,
+                                 self.get_participant_index(peer.public_key.key_to_bin()))
                 break
             except Exception:
                 self.logger.exception("Exception when sending aggregated model to peer %s", peer)
@@ -274,12 +277,14 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         for attempt in range(1, self.eva_max_retry_attempts + 1):
             if self.model_send_delay is not None:
                 await sleep(random.randint(0, self.model_send_delay) / 1000)
-            self.logger.info("Participant %d sending round %d local model to peer %s (attempt %d)",
-                             self.get_my_participant_index(), self.round, peer, attempt)
+            self.logger.info("Participant %d sending round %d local model to participant %d (attempt %d)",
+                             self.get_my_participant_index(), self.round,
+                             self.get_participant_index(peer.public_key.key_to_bin()), attempt)
             try:
                 # TODO this logic is sequential - optimize by having multiple outgoing transfers at once
                 res = await self.eva_send_binary(peer, json.dumps(response).encode(), serialize_model(self.model))
-                self.logger.info("Local model successfully sent to peer %s", peer)
+                self.logger.info("Local model successfully sent to participant %d",
+                                 self.get_participant_index(peer.public_key.key_to_bin()))
                 break
             except Exception:
                 self.logger.exception("Exception when sending model to peer %s", peer)
@@ -416,7 +421,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         # Check if there is a future round in which we participate and for which we have received all models.
         # If so, start participating in that round.
         for round_nr in self.incoming_aggregated_models:
-            if round_nr < self.round:
+            if round_nr < self.round or not self.is_participant_for_round(round_nr + 1):
                 continue
             if len(self.incoming_aggregated_models[round_nr]) == 1:
                 self.round = round_nr + 1
@@ -609,15 +614,17 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
             if len(self.incoming_local_models[self.round]) == self.sample_size - 1 and not self.round_deferred.done():
                 self.round_deferred.set_result(None)
         elif model_round > self.round and self.is_participant_for_round(model_round):
-            self.logger.info("Received a local model from participant %d for future round %d",
-                             participant, model_round)
+            self.logger.info("Participant %d received a local model from participant %d for future round %d",
+                             self.get_my_participant_index(), participant, model_round)
             # It is possible that we receive a model for a later round while we are still in an earlier round.
             if model_round not in self.incoming_local_models:
                 self.incoming_local_models[model_round] = []
             incoming_model = unserialize_model(serialized_model, self.parameters["dataset"], self.parameters["model"])
             self.incoming_local_models[model_round].append(incoming_model)
         else:
-            self.logger.warning("Received a local model for a round that is not relevant for us (%d)", model_round)
+            self.logger.warning("Participant %d received a local model from participant %d for a round (%d) that is "
+                                "not relevant for us (we're in round %d)",
+                                self.get_my_participant_index(), participant, model_round, self.round)
 
     def received_aggregated_model(self, participant: int, model_round: int, serialized_model: bytes) -> None:
         if not self.is_participant_for_round(model_round + 1):
@@ -635,7 +642,9 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
             ensure_future(self.participate_in_round())
 
     def on_receive(self, result: TransferResult):
-        self.logger.info(f'Data has been received from peer {result.peer}: {result.info}')
+        participant_index = self.get_participant_index(result.peer.public_key.key_to_bin())
+        self.logger.info(f'Participant {self.get_my_participant_index()} received data from participant '
+                         f'{participant_index}: {result.info.decode()}')
         json_data = json.loads(result.info.decode())
         if "request_id" in json_data:
             # We received this data in response to an earlier request
@@ -657,7 +666,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
 
     def on_send_complete(self, result: TransferResult):
         participant_ind = self.get_participant_index(result.peer.public_key.key_to_bin())
-        self.logger.info(f'Outgoing transfer to participant {participant_ind} has completed: {result.info}')
+        self.logger.info(f'Outgoing transfer to participant {participant_ind} has completed: {result.info.decode()}')
 
     def on_error(self, peer, exception):
         self.logger.error(f'An error has occurred in transfer to peer {peer}: {exception}')
