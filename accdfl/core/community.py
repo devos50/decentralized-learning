@@ -343,6 +343,15 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         # Stop the download
         #self.torrent_download_manager.stop_download(participant, model_round, model_type)
 
+    def adopt_model(self, new_model):
+        """
+        Replace the parameters of the current model with those of a new model.
+        """
+        with torch.no_grad():
+            for p, new_p in zip(self.model.parameters(), new_model.parameters()):
+                p.mul_(0.)
+                p.add_(new_p)
+
     async def participate_in_round(self):
         """
         Complete a round of training and model aggregation.
@@ -359,8 +368,8 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         # Adopt the aggregated model sent by other nodes
         # TODO there can be inconsistencies in the models received - assume for now they are all the same
         if self.round > 1:
-            self.model = random.choice(self.incoming_aggregated_models[self.round - 1])
-            self.optimizer = SGDOptimizer(self.model, self.parameters["learning_rate"], self.parameters["momentum"])
+            # Replace the current model with the received aggregated model
+            self.adopt_model(random.choice(self.incoming_aggregated_models[self.round - 1]))
             self.incoming_aggregated_models.pop(self.round - 1, None)
 
         # Train
