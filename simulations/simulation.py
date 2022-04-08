@@ -8,20 +8,14 @@ from binascii import hexlify
 
 import yappi
 
-from accdfl.core.community import DFLCommunity, TransmissionMethod
-
 from ipv8.configuration import ConfigBuilder
 from ipv8_service import IPv8
 
 from simulation.discrete_loop import DiscreteLoop
 from simulation.simulation_endpoint import SimulationEndpoint
+from simulations.community import SimulatedDFLCommunity
 
 from simulations.settings import SimulationSettings
-
-import torch
-import torch.nn.functional as F
-
-from torchvision import datasets, transforms
 
 
 class ADFLSimulation:
@@ -49,7 +43,7 @@ class ADFLSimulation:
                 print("Created %d peers..." % peer_id)
             endpoint = SimulationEndpoint()
             instance = IPv8(self.get_ipv8_builder(peer_id).finalize(), endpoint_override=endpoint,
-                            extra_communities={'DFLCommunity': DFLCommunity})
+                            extra_communities={'SimulatedDFLCommunity': SimulatedDFLCommunity})
             await instance.start()
             self.nodes.append(instance)
 
@@ -61,7 +55,7 @@ class ADFLSimulation:
     def setup_logger(self) -> None:
         root = logging.getLogger()
         root.handlers[0].setFormatter(logging.Formatter("%(asctime)s:%(levelname)s:%(message)s"))
-        root.setLevel(logging.WARN)
+        root.setLevel(logging.INFO)
 
     def ipv8_discover_peers(self) -> None:
         for node_a in self.nodes:
@@ -86,6 +80,10 @@ class ADFLSimulation:
 
     async def start_simulation(self) -> None:
         print("Starting simulation with %d peers..." % self.settings.peers)
+
+        # Inject our nodes array in the Simulated DFL community
+        for node in self.nodes:
+            node.overlays[0].nodes = self.nodes
 
         with open(os.path.join(self.data_dir, "accuracies.csv"), "w") as out_file:
             out_file.write("peer,step,accuracy,loss\n")
