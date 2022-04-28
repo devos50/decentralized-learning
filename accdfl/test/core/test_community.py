@@ -1,3 +1,4 @@
+from asyncio import sleep
 from binascii import hexlify
 
 from accdfl.core.community import DFLCommunity, TransmissionMethod
@@ -51,8 +52,9 @@ class TestDFLCommunityBase(TestBase):
 
 class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
 
-    def test_train(self):
+    async def test_round(self):
         """
-        Test one model train step by one node.
+        Test one round of the protocol.
         """
-        self.nodes[0].overlay.model_manager.train()
+        self.nodes[0].overlay.start()
+        await sleep(2)

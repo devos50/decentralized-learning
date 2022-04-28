@@ -4,13 +4,15 @@ import logging
 import os
 from asyncio import get_event_loop
 from concurrent.futures import ProcessPoolExecutor
+from typing import Dict, Optional, List
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 
 
-from accdfl.core.evaluator import Evaluator, setup_evaluator, evaluate_accuracy
+from accdfl.core.evaluator import setup_evaluator, evaluate_accuracy
 
 
 class ModelManager:
@@ -23,11 +25,35 @@ class ModelManager:
         self.dataset = dataset
         self.optimizer = optimizer
         self.epoch = 1
+        self.parameters = parameters
         self.logger = logging.getLogger(self.__class__.__name__)
         self.acc_check_executor = ProcessPoolExecutor(initializer=setup_evaluator,
                                                       initargs=(
                                                       os.path.join(os.environ["HOME"], "dfl-data"), parameters,),
                                                       max_workers=1)
+
+        # Keeps track of the incoming trained models as aggregator
+        self.incoming_trained_models: Dict[int, Dict[bytes, nn.Module]] = {}
+
+    def process_incoming_trained_model(self, peer_pk: bytes, round: int, incoming_model: nn.Module):
+        if round in self.incoming_trained_models and peer_pk in self.incoming_trained_models[round]:
+            # We already processed this model
+            return
+
+        if round not in self.incoming_trained_models:
+            self.incoming_trained_models[round] = {}
+        self.incoming_trained_models[round][peer_pk] = incoming_model
+
+    def has_enough_trained_models_of_round(self, round: int) -> bool:
+        if round not in self.incoming_trained_models:
+            return False
+        return len(self.incoming_trained_models[round]) == self.parameters["sample_size"]
+
+    def average_trained_models_of_round(self, round: int) -> Optional[nn.Module]:
+        if round not in self.incoming_trained_models:
+            return None
+        models = [model for _, model in self.incoming_trained_models[round]]
+        return self.average_models(models)
 
     def train(self) -> bool:
         """
@@ -63,7 +89,7 @@ class ModelManager:
             return False
 
     @staticmethod
-    def average_models(models):
+    def average_models(models: List[nn.Module]) -> nn.Module:
         with torch.no_grad():
             weights = [float(1. / len(models)) for _ in range(len(models))]
             center_model = copy.deepcopy(models[0])
