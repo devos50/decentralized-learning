@@ -3,7 +3,7 @@ import json
 import os
 from asyncio import Future, ensure_future
 from binascii import unhexlify, hexlify
-from typing import Optional, Dict, List
+from typing import Optional, Dict
 
 from accdfl.core import TransmissionMethod
 from accdfl.core.model import serialize_model, unserialize_model, create_model
@@ -29,7 +29,7 @@ class DFLCommunity(EVAProtocolMixin, Community):
         self.model_send_delay = None
         self.round_complete_callback = None
         self.parameters = None
-        self.round = 0  # TODO Not sure if this should be a class variable - in practice a node can be active in multiple nodes at the same time
+        self.round = 0
         self.sample_size = None
         self.did_setup = False
 
@@ -56,10 +56,10 @@ class DFLCommunity(EVAProtocolMixin, Community):
         self.is_active = True
 
         # Start the process
-        if self.sample_manager.is_participant_in_round(self.my_id, self.round):
+        if self.sample_manager.is_participant_in_round(self.my_id, 1):
             self.register_task("round_1", self.execute_round, 1)
         else:
-            self.logger.info("Participant %s won't participate in round %d", self.peer_manager.get_my_short_id(), self.round)
+            self.logger.info("Participant %s won't participate in round 1", self.peer_manager.get_my_short_id())
 
     def setup(self, parameters: Dict, data_dir: str, transmission_method: TransmissionMethod = TransmissionMethod.EVA):
         assert len(parameters["participants"]) * parameters["local_classes"] == sum(parameters["nodes_per_class"])
@@ -104,6 +104,7 @@ class DFLCommunity(EVAProtocolMixin, Community):
         """
         Execute a round.
         """
+        self.logger.error("START %d by %s", round, self.peer_manager.get_my_short_id())
         if round < 1:
             raise RuntimeError("Round number %d invalid!" % round)
 
@@ -117,29 +118,36 @@ class DFLCommunity(EVAProtocolMixin, Community):
         self.round = round
         self.is_participating_in_round = True
         sample_ids = [self.peer_manager.get_short_id(peer_id) for peer_id in self.sample_manager.get_sample_for_round(self.round)]
-        aggregator_ids = [self.peer_manager.get_short_id(peer_id) for peer_id in self.sample_manager.get_aggregators_for_round(self.round)]
-        self.logger.info("Participant %s starts participating in round %d (sample: %s, aggregators: %s)",
+        aggregator_ids = [self.peer_manager.get_short_id(peer_id) for peer_id in self.sample_manager.get_aggregators_for_round(self.round + 1)]
+        self.logger.info("Participant %s starts participating in round %d (sample: %s, aggregators for next round: %s)",
                          self.peer_manager.get_my_short_id(), self.round, sample_ids, aggregator_ids)
 
-        # 1. Train the model
-        self.model_manager.train()
+        # 1. If we are a participant in the current round, train the model and send them to the aggregators
+        if self.sample_manager.is_participant_in_round(self.my_id, self.round):
+            # 1.1. Train the model
+            self.model_manager.train()
 
-        # 2. Send the model to the aggregators of the next round
-        await self.send_model_to_aggregators()
+            # 2.1. Send the model to the aggregators of the next round
+            await self.send_trained_model_to_aggregators()
 
         # 3. If we are an aggregator in the current round, wait for models of the previous round
-        if self.sample_manager.is_aggregator_in_round(self.my_id, self.round + 1) and \
-                not self.model_manager.has_enough_trained_models_of_round(self.round):
-            self.aggregation_deferred = Future()
-            self.logger.info("Aggregator %s start to wait for trained models of round %d",
-                             self.peer_manager.get_my_short_id(), self.round)
-            await asyncio.wait_for(self.aggregation_deferred, timeout=5.0)
+        if self.sample_manager.is_aggregator_in_round(self.my_id, self.round + 1):
+            if not self.model_manager.has_enough_trained_models_of_round(self.round):
+                self.logger.info("Aggregator %s start to wait for trained models of round %d",
+                                 self.peer_manager.get_my_short_id(), self.round)
+                await asyncio.wait_for(self.aggregation_deferred, timeout=5.0)
+                self.aggregation_deferred = Future()
 
             # 3.1. Aggregate these models
+            self.logger.info("Aggregator %s will average the models of round %d",
+                             self.peer_manager.get_my_short_id(), self.round)
             avg_model = self.model_manager.average_trained_models_of_round(self.round)
             self.model_manager.adopt_model(avg_model)
 
-            # 3.2. Distribute them to the non-aggregator nodes in the sample.
+            # 3.2. Remove these models from the model manager (they are not needed anymore)
+            self.model_manager.remove_trained_models_of_round(self.round)
+
+            # 3.3. Distribute them to the non-aggregator nodes in the sample.
             this_round_participants = self.sample_manager.get_sample_for_round(self.round + 1)
             this_round_aggregators = self.sample_manager.get_aggregators_for_round(self.round + 1)
             for peer_pk in [p for p in this_round_participants if p not in this_round_aggregators]:
@@ -160,7 +168,10 @@ class DFLCommunity(EVAProtocolMixin, Community):
         if self.sample_manager.is_aggregator_in_round(self.my_id, self.round + 1):
             self.register_task("round_%d" % (self.round + 1), self.execute_round, self.round + 1)
 
-    async def send_model_to_aggregators(self):
+    async def send_trained_model_to_aggregators(self) -> None:
+        """
+        Send the current model to the aggregators of the current round.
+        """
         aggregators = self.sample_manager.get_aggregators_for_round(self.round + 1)
         aggregator_ids = [self.peer_manager.get_short_id(aggregator) for aggregator in aggregators]
         self.logger.info("Participant %s sending trained model of round %d to %d aggregators: %s",
@@ -226,9 +237,10 @@ class DFLCommunity(EVAProtocolMixin, Community):
                                 self.peer_manager.get_my_short_id(), model_round + 1)
             return
 
-        # If we aren't participating in a round yet, start doing so
-        if not self.is_participating_in_round and self.round < model_round:
-            self.register_task("round_%d" % model_round, self.execute_round, model_round)
+        # If we aren't participating in a round yet, start doing so since we are expected to act as aggregator
+        task_name = "round_%d" % model_round
+        if not self.is_participating_in_round and self.round < model_round and not self.is_pending_task_active(task_name):
+            self.register_task(task_name, self.execute_round, model_round)
 
         # Process the model
         incoming_model = unserialize_model(serialized_model, self.parameters["dataset"], self.parameters["model"])
@@ -248,14 +260,15 @@ class DFLCommunity(EVAProtocolMixin, Community):
         self.logger.info("Participant %s received aggregated model of round %d from aggregator %s",
                          self.peer_manager.get_my_short_id(), model_round, peer_id)
 
-        # Check if the peer that sent us the trained model is indeed an aggregator in this round.
+        # Check if the peer that sent us the aggregated model is indeed an aggregator in this round.
         if not self.sample_manager.is_aggregator_in_round(peer_pk, model_round + 1):
             self.logger.warning("Participant %s is not an aggregator in round %d", peer_id, model_round + 1)
             return
 
         # Check if we are a participant in this round.
-        if not self.sample_manager.is_participant_in_round(self.my_id, model_round):
-            self.logger.warning("We are not a participant in round %d", model_round)
+        if not self.sample_manager.is_participant_in_round(self.my_id, model_round + 1):
+            self.logger.warning("Participant %s is not a participant in round %d",
+                                self.peer_manager.get_my_short_id(), model_round)
             return
 
         # If this is the first time we receive an aggregated model for this round, adopt the model and start

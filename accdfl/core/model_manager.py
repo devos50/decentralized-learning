@@ -55,6 +55,9 @@ class ModelManager:
         models = [model for model in self.incoming_trained_models[round].values()]
         return self.average_models(models)
 
+    def remove_trained_models_of_round(self, round: int) -> None:
+        self.incoming_trained_models.pop(round)
+
     def train(self) -> bool:
         """
         Train the model on a batch. Return a boolean that indicates whether the epoch is completed.
