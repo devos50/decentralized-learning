@@ -13,7 +13,6 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 
 from accdfl.core.model import serialize_model, unserialize_model, create_model
-from accdfl.core.stores import DataStore, ModelStore
 from accdfl.core.dataset import Dataset
 from accdfl.core.optimizer.sgd import SGDOptimizer
 from accdfl.util.eva_protocol import EVAProtocolMixin, TransferResult
@@ -31,8 +30,6 @@ class DFLCommunity(EVAProtocolMixin, Community):
         super().__init__(*args, **kwargs)
         self.is_active = False
         self.is_participating_in_round = False
-        self.data_store = DataStore()
-        self.model_store = ModelStore()
         self.model_send_delay = None
         self.round_complete_callback = None
         self.parameters = None
