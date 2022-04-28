@@ -1,4 +1,4 @@
-from asyncio import Future
+from asyncio import Future, sleep
 from binascii import hexlify
 
 import pytest
@@ -54,7 +54,7 @@ class TestDFLCommunityBase(TestBase):
     async def wait_for_round_completed(self, node, round):
         round_completed_deferred = Future()
 
-        async def on_round_complete(round_nr):
+        def on_round_complete(round_nr):
             if round_nr >= round:
                 round_completed_deferred.set_result(None)
 
@@ -81,10 +81,15 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
     async def test_single_round(self):
         for node in self.nodes:
             node.overlay.start()
-
         await self.wait_for_round_completed(self.nodes[0], 1)
 
-    @pytest.mark.timeout(10)
-    async def test_wait_for_aggregated_models(self):
-        aggregator = self.nodes[0] if self.nodes[0].overlay.my_id in self.nodes[0].overlay.sample_manager.get_aggregators_for_round(1) else self.nodes[1]
-        await aggregator.overlay.aggregation_deferred
+    @pytest.mark.timeout(5)
+    async def test_multiple_rounds(self):
+        for node in self.nodes:
+            node.overlay.start()
+        await self.wait_for_round_completed(self.nodes[0], 5)
+
+    # @pytest.mark.timeout(5)
+    # async def test_wait_for_aggregated_models(self):
+    #     aggregator = self.nodes[0] if self.nodes[0].overlay.my_id in self.nodes[0].overlay.sample_manager.get_aggregators_for_round(1) else self.nodes[1]
+    #     await aggregator.overlay.aggregation_deferred
