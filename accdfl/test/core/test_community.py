@@ -1,5 +1,7 @@
-from asyncio import sleep
+from asyncio import Future
 from binascii import hexlify
+
+import pytest
 
 from accdfl.core.community import DFLCommunity, TransmissionMethod
 
@@ -49,12 +51,40 @@ class TestDFLCommunityBase(TestBase):
             node.overlay.is_local_test = True
             node.overlay.setup(experiment_data, self.temporary_directory(), transmission_method=self.TRANSMISSION_METHOD)
 
+    async def wait_for_round_completed(self, node, round):
+        round_completed_deferred = Future()
+
+        async def on_round_complete(round_nr):
+            if round_nr >= round:
+                round_completed_deferred.set_result(None)
+
+        node.overlay.round_complete_callback = on_round_complete
+        await round_completed_deferred
+
 
 class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
 
-    async def test_round(self):
-        """
-        Test one round of the protocol.
-        """
-        self.nodes[0].overlay.start()
-        await sleep(2)
+    async def test_start_invalid_round(self):
+        with pytest.raises(RuntimeError):
+            await self.nodes[0].overlay.execute_round(0)
+
+        self.nodes[0].overlay.is_participating_in_round = True
+        with pytest.raises(RuntimeError):
+            await self.nodes[0].overlay.execute_round(1)
+
+        self.nodes[0].overlay.is_participating_in_round = False
+        self.nodes[0].overlay.round = 1
+        with pytest.raises(RuntimeError):
+            await self.nodes[0].overlay.execute_round(1)
+
+    @pytest.mark.timeout(5)
+    async def test_single_round(self):
+        for node in self.nodes:
+            node.overlay.start()
+
+        await self.wait_for_round_completed(self.nodes[0], 1)
+
+    @pytest.mark.timeout(10)
+    async def test_wait_for_aggregated_models(self):
+        aggregator = self.nodes[0] if self.nodes[0].overlay.my_id in self.nodes[0].overlay.sample_manager.get_aggregators_for_round(1) else self.nodes[1]
+        await aggregator.overlay.aggregation_deferred

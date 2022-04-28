@@ -52,7 +52,7 @@ class ModelManager:
     def average_trained_models_of_round(self, round: int) -> Optional[nn.Module]:
         if round not in self.incoming_trained_models:
             return None
-        models = [model for _, model in self.incoming_trained_models[round]]
+        models = [model for model in self.incoming_trained_models[round].values()]
         return self.average_models(models)
 
     def train(self) -> bool:

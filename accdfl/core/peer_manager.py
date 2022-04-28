@@ -35,8 +35,8 @@ class PeerManager:
         """
         Return a short description of your public key
         """
-        return hexlify(self.my_pk).decode()[:-6]
+        return hexlify(self.my_pk).decode()[-8:]
 
     @staticmethod
     def get_short_id(peer_pk: bytes) -> str:
-        return hexlify(peer_pk).decode()[:-6]
+        return hexlify(peer_pk).decode()[-8:]
