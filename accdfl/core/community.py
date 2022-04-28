@@ -1,6 +1,4 @@
 import copy
-import hashlib
-import io
 import itertools
 import json
 import os
@@ -12,32 +10,21 @@ from typing import Optional, Dict, List
 
 import torch
 import torch.nn.functional as F
-from torch import Tensor
 from torch.autograd import Variable
 
-from accdfl.core.blocks import ModelUpdateBlock
-from accdfl.core.caches import DataRequestCache
-from accdfl.core.model import serialize_model, unserialize_model, create_model, ModelType
-from accdfl.core.stores import DataStore, ModelStore, DataType
+from accdfl.core.model import serialize_model, unserialize_model, create_model
+from accdfl.core.stores import DataStore, ModelStore
 from accdfl.core.dataset import Dataset
-from accdfl.core.listeners import ModelUpdateBlockListener
 from accdfl.core.optimizer.sgd import SGDOptimizer
-from accdfl.core.payloads import DataRequest, DataNotFoundResponse, ModelTorrent
-from accdfl.core.torrent_download_manager import TorrentDownloadManager
-from accdfl.test.util.network_utils import NetworkUtils
-from accdfl.trustchain.community import TrustChainCommunity
 from accdfl.util.eva_protocol import EVAProtocolMixin, TransferResult
-from ipv8.lazy_community import lazy_wrapper
-from ipv8.messaging.payload_headers import BinMemberAuthenticationPayload, GlobalTimeDistributionPayload
-from ipv8.util import fail
+from ipv8.community import Community
 
 
 class TransmissionMethod(Enum):
     EVA = 0
-    LIBTORRENT = 1
 
 
-class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
+class DFLCommunity(EVAProtocolMixin, Community):
     community_id = unhexlify('d5889074c1e4c60423cdb6e9307ba0ca5695ead7')
 
     def __init__(self, *args, **kwargs):
@@ -63,21 +50,11 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         self.compute_accuracy_deferred = None
 
         # Model exchange parameters
-        self.is_local_test = False  # To make sure that the libtorrent connect_peer works
         self.data_dir = None
         self.transmission_method = TransmissionMethod.EVA
         self.eva_max_retry_attempts = 20
-        self.lt_listen_port = NetworkUtils().get_random_free_port()
-        self.torrent_download_manager: Optional[TorrentDownloadManager] = None
 
-        self.model_update_block_listener = ModelUpdateBlockListener()
-        self.add_listener(self.model_update_block_listener, [b"model_update"])
-
-        self.add_message_handler(DataRequest, self.on_data_request)
-        self.add_message_handler(DataNotFoundResponse, self.on_data_not_found_response)
-        self.add_message_handler(ModelTorrent, self.on_model_torrent)
-
-        self.logger.info("The ADFL community started with public key: %s",
+        self.logger.info("The DFL community started with public key: %s",
                          hexlify(self.my_peer.public_key.key_to_bin()).decode())
 
     def start(self):
@@ -137,10 +114,6 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
             self.eva_register_receive_callback(self.on_receive)
             self.eva_register_send_complete_callback(self.on_send_complete)
             self.eva_register_error_callback(self.on_error)
-        else:
-            self.logger.info("Setting up libtorrent transmission engine")
-            self.torrent_download_manager = TorrentDownloadManager(self.data_dir, self.get_my_participant_index())
-            self.torrent_download_manager.start(self.lt_listen_port)
 
     def train(self) -> bool:
         """
@@ -201,12 +174,8 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                 self.logger.warning("Peer object of participant %d not available - not sending aggregated model for round %d", participant_ind, round)
                 continue
 
-            # TODO do something with the TrustChain block
             if self.transmission_method == TransmissionMethod.EVA:
                 await self.eva_send_aggregated_model(round, model, peer)
-            elif self.transmission_method == TransmissionMethod.LIBTORRENT:
-                await sleep(random.random() / 4)  # Make sure we are not sending the torrents at exactly the same time
-                await self.lt_send_aggregated_model(model, peer)
 
     async def eva_send_aggregated_model(self, round, model, peer):
         response = {"round": round, "type": "aggregated_model"}
@@ -226,14 +195,6 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                 self.logger.exception("Exception when sending aggregated model to peer %s", peer)
             attempt += 1
 
-    async def lt_send_aggregated_model(self, model, peer):
-        if not self.torrent_download_manager.is_seeding(self.round, ModelType.AGGREGATED):
-            await self.torrent_download_manager.seed(self.round, ModelType.AGGREGATED, model)
-
-        bencoded_torrent = self.torrent_download_manager.get_torrent_info(
-            self.get_my_participant_index(), self.round, ModelType.AGGREGATED)
-        self.send_model_torrent(peer, self.round, ModelType.AGGREGATED, bencoded_torrent)
-
     async def send_local_model(self):
         """
         Send the global model to the round representative.
@@ -250,9 +211,6 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
 
         if self.transmission_method == TransmissionMethod.EVA:
             await self.eva_send_local_model(peer)
-        elif self.transmission_method == TransmissionMethod.LIBTORRENT:
-            await sleep(random.random() / 4)  # Make sure we are not sending the torrents at exactly the same time
-            await self.lt_send_local_model(peer)
 
     async def eva_send_local_model(self, peer):
         response = {"round": self.round, "type": "local_model"}
@@ -272,65 +230,6 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
             except Exception:
                 self.logger.exception("Exception when sending model to peer %s", peer)
             attempt += 1
-
-    async def lt_send_local_model(self, peer):
-        # We should start seeding this local model
-        if not self.torrent_download_manager.is_seeding(self.round, ModelType.LOCAL):
-            await self.torrent_download_manager.seed(self.round, ModelType.LOCAL, self.model)
-
-        bencoded_torrent = self.torrent_download_manager.get_torrent_info(
-            self.get_my_participant_index(), self.round, ModelType.LOCAL)
-        self.send_model_torrent(peer, self.round, ModelType.LOCAL, bencoded_torrent)
-
-    def send_model_torrent(self, peer, round: int, model_type: ModelType, bencoded_torrent: bytes):
-        # Send the torrent info to the peer
-        # TODO should we have an ack here to improve reliability?
-        global_time = self.claim_global_time()
-        auth = BinMemberAuthenticationPayload(self.my_peer.public_key.key_to_bin())
-
-        payload = ModelTorrent(round, model_type.value, self.lt_listen_port, bencoded_torrent)
-        dist = GlobalTimeDistributionPayload(global_time)
-        packet = self._ez_pack(self._prefix, ModelTorrent.msg_id, [auth, dist, payload])
-        self.endpoint.send(peer.address, packet)
-
-    @lazy_wrapper(GlobalTimeDistributionPayload, ModelTorrent)
-    async def on_model_torrent(self, peer, dist, payload):
-        participant_index = self.get_participant_index(peer.public_key.key_to_bin())
-        if participant_index == -1:
-            self.logger.warning("Received model torrent from peer %s that is not a participant", peer)
-            return
-
-        if self.transmission_method != TransmissionMethod.LIBTORRENT:
-            self.logger.warning("This peer received a model update but we are not using "
-                                "libtorrent as transmission engine")
-            return
-
-        model_type = ModelType(payload.model_type)
-        self.logger.info("Received %s model torrent from participant %d for round %d",
-                         "local" if model_type == ModelType.LOCAL else "aggregated",
-                         participant_index, payload.round)
-        if self.torrent_download_manager.is_downloading(participant_index, payload.round, model_type):
-            self.logger.warning("We are already downloading model with type %d from participant %d for round %d",
-                                "local" if model_type == ModelType.LOCAL else "aggregated", participant_index, payload.round)
-            return
-
-        # Start to download the torrent
-        other_peer_lt_address = (peer.address[0] if not self.is_local_test else "127.0.0.1", payload.lt_port)
-
-        task_name = "download_%d_%d_%d" % (participant_index, payload.round, model_type.value)
-        self.register_task(task_name, self.torrent_download_manager.download, participant_index, payload.round, model_type, payload.torrent, other_peer_lt_address).add_done_callback(self.on_model_download_finished)
-
-    def on_model_download_finished(self, task):
-        participant, model_round, model_type, serialized_model = task.result()
-        self.logger.info("%s model download from participant %d for round %d finished",
-                         "Local" if model_type == ModelType.LOCAL else "Aggregated", participant, model_round)
-        if model_type == ModelType.LOCAL:
-            self.received_local_model(participant, model_round, serialized_model)
-        elif model_type == ModelType.AGGREGATED:
-            self.received_aggregated_model(participant, model_round, serialized_model)
-
-        # Stop the download
-        #self.torrent_download_manager.stop_download(participant, model_round, model_type)
 
     def adopt_model(self, new_model):
         """
@@ -448,137 +347,6 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
                 return peer
         return None
 
-    async def request_data(self, other_peer, data_hash: bytes, type=DataType.MODEL) -> Optional[bytes]:
-        """
-        Request data from another peer, based on a hash.
-        """
-        request_future = Future()
-        cache = DataRequestCache(self, request_future)
-        self.request_cache.add(cache)
-
-        global_time = self.claim_global_time()
-        auth = BinMemberAuthenticationPayload(self.my_peer.public_key.key_to_bin())
-        payload = DataRequest(cache.number, data_hash, type.value)
-        dist = GlobalTimeDistributionPayload(global_time)
-        packet = self._ez_pack(self._prefix, DataRequest.msg_id, [auth, dist, payload])
-        self.endpoint.send(other_peer.address, packet)
-
-        return await request_future
-
-    @lazy_wrapper(GlobalTimeDistributionPayload, DataRequest)
-    def on_data_request(self, peer, dist, payload):
-        request_type = DataType(payload.request_type)
-        if request_type == DataType.TRAIN_DATA:
-            request_data = self.data_store.get(payload.data_hash)
-            if request_data:
-                # Send the requested data to the requesting peer
-                self.logger.debug("Sending data item with hash %s to peer %s", hexlify(payload.data_hash).decode(), peer)
-                data, target = request_data
-                b = io.BytesIO()
-                torch.save(data, b)
-                b.seek(0)
-                response_data = json.dumps({
-                    "hash": hexlify(payload.data_hash).decode(),
-                    "request_id": payload.request_id,
-                    "type": payload.request_type,
-                    "target": int(target)
-                }).encode()
-                self.eva_send_binary(peer, response_data, b.read())
-            else:
-                self.send_data_not_found_message(peer, payload.data_hash, payload.request_id)
-        elif request_type == DataType.MODEL:
-            request_data = self.model_store.get(payload.data_hash)
-            if request_data:
-                self.logger.debug("Sending model with hash %s to peer %s", hexlify(payload.data_hash).decode(), peer)
-                response_data = json.dumps({
-                    "hash": hexlify(payload.data_hash).decode(),
-                    "request_id": payload.request_id,
-                    "type": payload.request_type
-                }).encode()
-                self.eva_send_binary(peer, response_data, request_data)
-            else:
-                self.send_data_not_found_message(peer, payload.data_hash, payload.request_id)
-
-    def send_data_not_found_message(self, peer, data_hash, request_id):
-        self.logger.warning("Data item %s requested by peer %s not found", hexlify(data_hash).decode(), peer)
-        global_time = self.claim_global_time()
-        auth = BinMemberAuthenticationPayload(self.my_peer.public_key.key_to_bin())
-        payload = DataNotFoundResponse(request_id)
-        dist = GlobalTimeDistributionPayload(global_time)
-        packet = self._ez_pack(self._prefix, DataNotFoundResponse.msg_id, [auth, dist, payload])
-        self.endpoint.send(peer.address, packet)
-
-    @lazy_wrapper(GlobalTimeDistributionPayload, DataNotFoundResponse)
-    def on_data_not_found_response(self, peer, _, payload):
-        if not self.request_cache.has("datarequest", payload.request_id):
-            self.logger.warning("Data request cache with ID %d not found!", payload.request_id)
-
-        cache = self.request_cache.get("datarequest", payload.request_id)
-        cache.received_not_found_response()
-
-    def get_tc_record(self, peer_pk, round):
-        """
-        Look in the database for the record containing information associated with a model update in a particular round.
-        """
-        blocks = self.persistence.get_latest_blocks(peer_pk, limit=-1, block_types=[b"model_update"])
-        for block in blocks:
-            if block.public_key == peer_pk and block.transaction["round"] == round:
-                return block
-        return None
-
-    def verify_model_training(self, old_model, data, target, new_model) -> bool:
-        optimizer = SGDOptimizer(old_model, self.optimizer.learning_rate, self.optimizer.momentum)
-        data, target = Variable(data), Variable(target)
-        optimizer.optimizer.zero_grad()
-        self.logger.info('d-sgd.next node forward propagation')
-        output = old_model.forward(data)
-        loss = F.nll_loss(output, target)
-        self.logger.info('d-sgd.next node backward propagation')
-        loss.backward()
-        optimizer.optimizer.step()
-        return torch.allclose(old_model.state_dict()["fc.weight"], new_model.state_dict()["fc.weight"])
-
-    async def audit(self, other_peer_pk, round):
-        """
-        Audit the actions of another peer in a particular round.
-        """
-        # Get the TrustChain record associated with the other peer and a particular round
-        block: ModelUpdateBlock = self.get_tc_record(other_peer_pk, round)
-        if not block:
-            return fail(RuntimeError("Could not find block associated with round %d" % round))
-
-        # Request all inputs for a particular round
-        other_peer = self.get_peer_by_pk(other_peer_pk)
-        if not other_peer:
-            return fail(RuntimeError("Could not find peer with public key %s" % hexlify(other_peer_pk)))
-
-        datas = []
-        targets = []
-        for input_hash in block.inputs:
-            data = self.data_store.get(input_hash)
-            if not self.data_store.get(input_hash):
-                data = await self.request_data(other_peer, input_hash, type=DataType.TRAIN_DATA)
-                if not data:
-                    return False
-
-            # Convert data elements to Tensors
-            target, data = data
-            b = io.BytesIO(data)
-            data = torch.load(b)
-            self.data_store.add(data, target)
-            datas.append(data.tolist())
-            targets.append(target)
-
-        # Fetch the model
-        old_model_serialized = await self.request_data(other_peer, block.old_model, type=DataType.MODEL)
-        old_model = unserialize_model(old_model_serialized, self.parameters["dataset"], self.parameters["model"])
-
-        # TODO optimize this so we only compare the hash (avoid pulling in the new model)
-        new_model_serialized = await self.request_data(other_peer, block.new_model, type=DataType.MODEL)
-        new_model = unserialize_model(new_model_serialized, self.parameters["dataset"], self.parameters["model"])
-
-        return self.verify_model_training(old_model, Tensor(datas), torch.LongTensor(targets), new_model)
-
     def received_local_model(self, participant: int, model_round: int, serialized_model: bytes) -> None:
         self.logger.info("Received local model for round %d from participant %d", model_round, participant)
         if model_round == self.round:
@@ -628,18 +396,7 @@ class DFLCommunity(EVAProtocolMixin, TrustChainCommunity):
         self.logger.info(f'Participant {self.get_my_participant_index()} received data from participant '
                          f'{participant_index}: {result.info.decode()}')
         json_data = json.loads(result.info.decode())
-        if "request_id" in json_data:
-            # We received this data in response to an earlier request
-            if not self.request_cache.has("datarequest", json_data["request_id"]):
-                self.logger.warning("Data request cache with ID %d not found!", json_data["request_id"])
-
-            cache = self.request_cache.get("datarequest", json_data["request_id"])
-            request_type = DataType(json_data["type"])
-            if request_type == DataType.TRAIN_DATA:
-                cache.request_future.set_result((json_data["target"], result.data))
-            elif request_type == DataType.MODEL:
-                cache.request_future.set_result(result.data)
-        elif json_data["type"] == "aggregated_model":
+        if json_data["type"] == "aggregated_model":
             participant = self.get_participant_index(result.peer.public_key.key_to_bin())
             self.received_aggregated_model(participant, json_data["round"], result.data)
         elif json_data["type"] == "local_model":
