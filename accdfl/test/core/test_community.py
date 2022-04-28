@@ -1,7 +1,4 @@
-from asyncio import gather, Future
 from binascii import hexlify
-
-import pytest
 
 from accdfl.core.community import DFLCommunity, TransmissionMethod
 
@@ -11,6 +8,7 @@ from ipv8.test.mocking.ipv8 import MockIPv8
 
 class TestDFLCommunityBase(TestBase):
     NUM_NODES = 2
+    NUM_AGGREGATORS = 1
     NUM_ROUNDS = 2
     LOCAL_CLASSES = 10
     TOTAL_SAMPLES_PER_CLASS = 6
@@ -37,6 +35,7 @@ class TestDFLCommunityBase(TestBase):
             "participants": [hexlify(node.my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
             "rounds": self.NUM_ROUNDS,
             "sample_size": self.NUM_NODES,
+            "num_aggregators": self.NUM_AGGREGATORS,
 
             # These parameters are not available in a deployed environment - only for experimental purposes.
             "samples_per_class": self.SAMPLES_PER_CLASS,
@@ -56,4 +55,4 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
         """
         Test one model train step by one node.
         """
-        self.nodes[0].overlay.train()
+        self.nodes[0].overlay.model_manager.train()

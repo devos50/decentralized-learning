@@ -1,26 +1,23 @@
 import copy
-import itertools
 import json
 import os
 import random
 from asyncio import Future, sleep, ensure_future
 from binascii import unhexlify, hexlify
-from enum import Enum
 from typing import Optional, Dict, List
 
 import torch
-import torch.nn.functional as F
-from torch.autograd import Variable
 
+from accdfl.core import TransmissionMethod
 from accdfl.core.model import serialize_model, unserialize_model, create_model
-from accdfl.core.dataset import Dataset
+from accdfl.core.dataset import TrainDataset
+from accdfl.core.model_manager import ModelManager
 from accdfl.core.optimizer.sgd import SGDOptimizer
+from accdfl.core.peer_manager import PeerManager
+from accdfl.core.sample_manager import SampleManager
 from accdfl.util.eva_protocol import EVAProtocolMixin, TransferResult
+
 from ipv8.community import Community
-
-
-class TransmissionMethod(Enum):
-    EVA = 0
 
 
 class DFLCommunity(EVAProtocolMixin, Community):
@@ -28,18 +25,20 @@ class DFLCommunity(EVAProtocolMixin, Community):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.my_id = self.my_peer.public_key.key_to_bin()
         self.is_active = False
         self.is_participating_in_round = False
         self.model_send_delay = None
         self.round_complete_callback = None
         self.parameters = None
-        self.model = None
-        self.dataset = None
-        self.optimizer = None
         self.round = 1
-        self.epoch = 1
         self.sample_size = None
-        self.participants: Optional[List[str]] = None
+        self.did_setup = False
+
+        self.peer_manager: PeerManager = PeerManager(self.my_id)
+        self.sample_manager: Optional[SampleManager] = None  # Initialized when the process is setup
+        self.model_manager: Optional[ModelManager] = None    # Initialized when the process is setup
+
         self.round_deferred = Future()
         self.incoming_local_models: Dict[int, List] = {}
         self.incoming_aggregated_models: Dict[int, List] = {}
@@ -58,36 +57,15 @@ class DFLCommunity(EVAProtocolMixin, Community):
         """
         Start to participate in the training process.
         """
+        assert self.did_setup, "Process has not been setup - call setup() first"
+
         self.is_active = True
 
         # Start the process
-        if self.is_participant_for_round(self.round):
+        if self.sample_manager.is_participant_in_round(self.my_id, self.round):
             ensure_future(self.participate_in_round())
         else:
-            self.logger.info("Participant %d won't participate in round %d", self.get_my_participant_index(), self.round)
-
-    def get_participant_index(self, public_key: bytes) -> int:
-        if not self.participants:
-            return -1
-        return self.participants.index(hexlify(public_key).decode())
-
-    def get_my_participant_index(self):
-        return self.get_participant_index(self.my_peer.public_key.key_to_bin())
-
-    def get_participants_for_round(self, round: int) -> List[int]:
-        rand = random.Random(round)
-        participant_indices = list(range(len(self.participants)))
-        return sorted(rand.sample(participant_indices, self.sample_size))
-
-    def is_participant_for_round(self, round: int) -> bool:
-        return self.get_my_participant_index() in self.get_participants_for_round(round)
-
-    def get_round_representative(self, round: int) -> int:
-        rand = random.Random(round)
-        return rand.choice(self.get_participants_for_round(round))
-
-    def is_round_representative(self, round: int) -> bool:
-        return self.get_my_participant_index() == self.get_round_representative(round)
+            self.logger.info("Participant %s won't participate in round %d", self.peer_manager.get_my_short_id(), self.round)
 
     def setup(self, parameters: Dict, data_dir: str, transmission_method: TransmissionMethod = TransmissionMethod.EVA):
         assert len(parameters["participants"]) * parameters["local_classes"] == sum(parameters["nodes_per_class"])
@@ -95,66 +73,31 @@ class DFLCommunity(EVAProtocolMixin, Community):
         self.parameters = parameters
         self.data_dir = data_dir
         self.sample_size = parameters["sample_size"]
-        self.model = create_model(parameters["dataset"], parameters["model"])
-        self.participants = parameters["participants"]
-        self.logger.info("Setting up experiment with %d participants and sample size %d (I am participant %d)" %
-                         (len(self.participants), self.sample_size, self.get_my_participant_index()))
+        self.logger.info("Setting up experiment with %d participants and sample size %d (I am participant %s)" %
+                         (len(parameters["participants"]), self.sample_size, self.peer_manager.get_my_short_id()))
 
-        self.dataset = Dataset(os.path.join(os.environ["HOME"], "dfl-data"), parameters, self.get_my_participant_index())
-        self.optimizer = SGDOptimizer(self.model, parameters["learning_rate"], parameters["momentum"])
+        for participant in parameters["participants"]:
+            self.peer_manager.add_peer(participant)
+        self.sample_manager = SampleManager(self.peer_manager, self.sample_size, parameters["num_aggregators"])
+
+        # Initialize the model
+        participant_index = parameters["participants"].index(hexlify(self.my_id).decode())
+        model = create_model(parameters["dataset"], parameters["model"])
+        dataset = TrainDataset(os.path.join(os.environ["HOME"], "dfl-data"), parameters, participant_index)
+        optimizer = SGDOptimizer(model, parameters["learning_rate"], parameters["momentum"])
+        self.model_manager = ModelManager(model, dataset, optimizer, parameters)
 
         # Setup the model transmission
         self.transmission_method = transmission_method
         if self.transmission_method == TransmissionMethod.EVA:
             self.logger.info("Setting up EVA protocol")
-            self.eva_init(window_size_in_blocks=32, retransmit_attempt_count=10, retransmit_interval_in_sec=1, timeout_interval_in_sec=10)
+            self.eva_init(window_size_in_blocks=32, retransmit_attempt_count=10, retransmit_interval_in_sec=1,
+                          timeout_interval_in_sec=10)
             self.eva_register_receive_callback(self.on_receive)
             self.eva_register_send_complete_callback(self.on_send_complete)
             self.eva_register_error_callback(self.on_error)
 
-    def train(self) -> bool:
-        """
-        Train the model on a batch. Return a boolean that indicates whether the epoch is completed.
-        """
-        def it_has_next(iterable):
-            try:
-                first = next(iterable)
-            except StopIteration:
-                return None
-            return itertools.chain([first], iterable)
-
-        data, target = self.dataset.iterator.__next__()
-        self.model.train()
-        data, target = Variable(data), Variable(target)
-        self.optimizer.optimizer.zero_grad()
-        self.logger.info('d-sgd.next node forward propagation')
-        output = self.model.forward(data)
-        loss = F.nll_loss(output, target)
-        self.logger.info('d-sgd.next node backward propagation')
-        loss.backward()
-        self.optimizer.optimizer.step()
-
-        # Are we at the end of the epoch?
-        res = it_has_next(self.dataset.iterator)
-        if res is None:
-            self.epoch += 1
-            self.logger.info("Epoch done - resetting dataset iterator")
-            self.dataset.reset_train_iterator()
-            return True
-        else:
-            self.dataset.iterator = res
-            return False
-
-    def average_models(self, models):
-        with torch.no_grad():
-            weights = [float(1. / len(models)) for _ in range(len(models))]
-            center_model = copy.deepcopy(models[0])
-            for p in center_model.parameters():
-                p.mul_(0)
-            for m, w in zip(models, weights):
-                for c1, p1 in zip(center_model.parameters(), m.parameters()):
-                    c1.add_(w * p1)
-            return center_model
+        self.did_setup = True
 
     async def send_aggregated_model(self, round, model):
         """
@@ -228,15 +171,6 @@ class DFLCommunity(EVAProtocolMixin, Community):
                 self.logger.exception("Exception when sending model to peer %s", peer)
             attempt += 1
 
-    def adopt_model(self, new_model):
-        """
-        Replace the parameters of the current model with those of a new model.
-        """
-        with torch.no_grad():
-            for p, new_p in zip(self.model.parameters(), new_model.parameters()):
-                p.mul_(0.)
-                p.add_(new_p)
-
     async def participate_in_round(self):
         """
         Complete a round of training and model aggregation.
@@ -305,37 +239,6 @@ class DFLCommunity(EVAProtocolMixin, Community):
             if len(self.incoming_aggregated_models[round_nr]) == 1:
                 self.round = round_nr + 1
                 ensure_future(self.participate_in_round())
-
-    async def compute_accuracy(self, include_wait_periods=True):
-        """
-        Compute the accuracy/loss of the current model.
-        Optionally, one can provide a custom iterator to compute the accuracy on a custom dataset.
-        """
-        self.logger.info("Computing accuracy of model")
-        self.is_computing_accuracy = True
-        self.compute_accuracy_deferred = Future()
-        correct = example_number = total_loss = num_batches = 0
-        copied_model = copy.deepcopy(self.model)
-        copied_model.eval()
-
-        with torch.no_grad():
-            for data, target in self.dataset.test_iterator:
-                output = copied_model.forward(data)
-                total_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
-                pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
-                correct += pred.eq(target.view_as(pred)).sum().item()
-                example_number += target.size(0)
-                num_batches += 1
-                if include_wait_periods:
-                    await sleep(0.001)
-
-        accuracy = float(correct) / float(example_number)
-        loss = total_loss / float(example_number)
-        self.logger.info("Finished computing accuracy of model (accuracy: %f, loss: %f)", accuracy, loss)
-        self.dataset.reset_test_iterator()
-        self.is_computing_accuracy = False
-        self.compute_accuracy_deferred.set_result(None)
-        return accuracy, loss
 
     def get_peer_by_pk(self, target_pk: bytes):
         peers = list(self.get_peers())

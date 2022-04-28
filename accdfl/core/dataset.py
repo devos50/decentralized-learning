@@ -8,7 +8,7 @@ import torch
 from torchvision import datasets, transforms
 
 
-class Dataset:
+class TrainDataset:
 
     def __init__(self, data_dir, parameters: Dict, participant_index: int):
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -54,8 +54,6 @@ class Dataset:
 
         self.iterator = None
         self.validation_iterator = None
-        self.test_iterator = None
-        self.reset_test_iterator()
 
         self.partition_dataset()
 
@@ -180,13 +178,6 @@ class Dataset:
             shuffle=True
         ))
 
-    def reset_test_iterator(self):
-        self.test_iterator = iter(torch.utils.data.DataLoader(
-            self.test_dataset,
-            batch_size=self.batch_size,
-            shuffle=True
-        ))
-
     def get_statistics(self) -> Dict:
         samples_per_class = [0] * 10
         for data, target in self.train_set:
@@ -195,3 +186,43 @@ class Dataset:
             "total_samples": len(self.train_set),
             "samples_per_class": samples_per_class
         }
+
+
+class TestDataset:
+
+    def __init__(self, data_dir, parameters: Dict):
+        self.data_dir = data_dir
+        self.parameters = parameters
+        self.batch_size = parameters["batch_size"]
+        self.iterator = None
+
+        if parameters["dataset"] == "mnist":
+            transform = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize((0.1307,), (0.3081,))
+            ])
+            self.dataset = datasets.MNIST(
+                self.data_dir,
+                train=False,
+                download=True,
+                transform=transform)
+        elif parameters["dataset"] == "cifar10":
+            transform = transforms.Compose([
+                # transforms.Pad(4),
+                # RandomHorizontalFlip(random=rand), # Reimplemented to be able to use a deterministic seed
+                # RandomCrop(32, random=rand),       # Reimplemented to be able to use a deterministic seed
+                transforms.ToTensor()])
+            self.dataset = datasets.CIFAR10(
+                self.data_dir,
+                train=False,
+                download=True,
+                transform=transform)
+
+        self.reset_iterator()
+
+    def reset_iterator(self):
+        self.iterator = iter(torch.utils.data.DataLoader(
+            self.dataset,
+            batch_size=self.batch_size,
+            shuffle=True
+        ))
