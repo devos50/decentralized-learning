@@ -71,12 +71,7 @@ class TestDFLCommunityOneNodes(TestDFLCommunityBase):
         with pytest.raises(RuntimeError):
             await self.nodes[0].overlay.execute_round(0)
 
-        self.nodes[0].overlay.is_participating_in_round = True
-        with pytest.raises(RuntimeError):
-            await self.nodes[0].overlay.execute_round(1)
-
-        self.nodes[0].overlay.is_participating_in_round = False
-        self.nodes[0].overlay.round = 1
+        self.nodes[0].overlay.active_rounds.add(1)
         with pytest.raises(RuntimeError):
             await self.nodes[0].overlay.execute_round(1)
 
@@ -120,7 +115,7 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
         await aggregator.overlay.received_trained_model(other_node.overlay.my_peer, 1, serialized_model)
         await aggregator.overlay.aggregation_deferred
         await sleep(0.1)
-        assert not aggregator.overlay.model_manager.incoming_trained_models
+        assert 1 not in aggregator.overlay.model_manager.incoming_trained_models
 
 
 class TestDFLCommunityFiveNodes(TestDFLCommunityBase):
