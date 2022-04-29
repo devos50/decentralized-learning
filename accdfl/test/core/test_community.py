@@ -62,18 +62,18 @@ class TestDFLCommunityBase(TestBase):
         return round_completed_deferred
 
 
-class TestDFLCommunityOneNodes(TestDFLCommunityBase):
+class TestDFLCommunityOneNode(TestDFLCommunityBase):
     NUM_NODES = 1
     SAMPLE_SIZE = NUM_NODES
     NODES_PER_CLASS = [NUM_NODES] * 10
 
     async def test_start_invalid_round(self):
         with pytest.raises(RuntimeError):
-            await self.nodes[0].overlay.execute_round(0)
+            await self.nodes[0].overlay.participate_in_round(0)
 
-        self.nodes[0].overlay.active_rounds.add(1)
+        self.nodes[0].overlay.participating_in_rounds.add(1)
         with pytest.raises(RuntimeError):
-            await self.nodes[0].overlay.execute_round(1)
+            await self.nodes[0].overlay.participate_in_round(1)
 
     @pytest.mark.timeout(5)
     async def test_single_round(self):
@@ -104,7 +104,7 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
         aggregator, other_node = (self.nodes[0], self.nodes[1]) if self.nodes[0].overlay.my_id in self.nodes[0].overlay.sample_manager.get_aggregators_for_round(2) else (self.nodes[1], self.nodes[0])
         serialized_model = serialize_model(aggregator.overlay.model_manager.model)
 
-        ensure_future(aggregator.overlay.execute_round(1))
+        ensure_future(aggregator.overlay.participate_in_round(1))
         await sleep(0.1)
 
         # Invalid models should be ignored
