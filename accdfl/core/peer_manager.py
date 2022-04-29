@@ -1,3 +1,4 @@
+import logging
 import pickle
 from binascii import hexlify
 from typing import List, Dict, Optional, Tuple
@@ -13,6 +14,7 @@ class PeerManager:
     """
 
     def __init__(self, my_pk: bytes):
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.my_pk = my_pk
         self.peers: List[bytes] = []
         self.last_active: Dict[bytes, int] = {}
@@ -27,6 +29,8 @@ class PeerManager:
         if peer_pk in self.peers:
             return
 
+        self.logger.info("Participant %s adding participant %s to cache",
+                         self.get_my_short_id(), self.get_short_id(peer_pk))
         self.peers.append(peer_pk)
         self.last_active[peer_pk] = round_active
 
@@ -75,5 +79,5 @@ class PeerManager:
         self.node_deltas = [(pk, delta, ttl - 1) for pk, delta, ttl in node_deltas if ttl > 1]
 
     def get_serialized_node_deltas(self) -> bytes:
-        raw_list = [(pk, delta.value(), ttl) for pk, delta, ttl in self.node_deltas]
+        raw_list = [(pk, delta.value, ttl) for pk, delta, ttl in self.node_deltas]
         return pickle.dumps(raw_list)

@@ -22,6 +22,7 @@ class TestDFLCommunityBase(TestBase):
     DATASET = "mnist"
     MODEL = "linear"
     TRANSMISSION_METHOD = TransmissionMethod.EVA
+    ADVERTISE_TTL = 2
 
     def create_node(self, *args, **kwargs):
         return MockIPv8("curve25519", self.overlay_class, *args, **kwargs)
@@ -40,7 +41,7 @@ class TestDFLCommunityBase(TestBase):
             "participants": [hexlify(node.my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
             "sample_size": self.SAMPLE_SIZE,
             "num_aggregators": self.NUM_AGGREGATORS,
-            "advertise_ttl": 2,
+            "advertise_ttl": self.ADVERTISE_TTL,
 
             # These parameters are not available in a deployed environment - only for experimental purposes.
             "target_participants": self.TARGET_NUM_NODES,
@@ -86,7 +87,7 @@ class TestDFLCommunityOneNode(TestDFLCommunityBase):
         await self.wait_for_round_completed(self.nodes[0], 1)
 
 
-class TestDFLCommunityNodeJoining(TestDFLCommunityBase):
+class TestDFLCommunityOneNodeOneJoining(TestDFLCommunityBase):
     NUM_NODES = 1
     TARGET_NUM_NODES = 2
     SAMPLE_SIZE = NUM_NODES
@@ -157,3 +158,32 @@ class TestDFLCommunityFiveNodes(TestDFLCommunityBase):
         for node in self.nodes:
             node.overlay.start()
         await self.wait_for_round_completed(self.nodes[0], 1)
+
+
+class TestDFLCommunityFiveNodesOneJoining(TestDFLCommunityBase):
+    NUM_NODES = 5
+    TARGET_NUM_NODES = 6
+    SAMPLE_SIZE = 1
+    NODES_PER_CLASS = [TARGET_NUM_NODES] * 10
+    ADVERTISE_TTL = 10
+
+    #@pytest.mark.timeout(5)
+    async def test_new_node_joining(self):
+        new_node = self.create_node()
+        self.add_node_to_experiment(new_node)
+        await self.introduce_nodes()
+
+        self.experiment_data["participants"].append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
+        new_node.overlay.setup(self.experiment_data, None, transmission_method=self.TRANSMISSION_METHOD)
+        new_node.overlay.advertise_membership(2)
+
+        # Start all nodes
+        for ind in range(self.NUM_NODES):
+            self.nodes[ind].overlay.start()
+
+        #await self.wait_for_round_completed(self.nodes[0], 5)
+        await sleep(5)
+
+        for node in self.nodes:
+            assert len(node.overlay.peer_manager.peers) == self.TARGET_NUM_NODES
+        assert self.nodes[0].overlay.peer_manager.peer_is_in_node_deltas(new_node.my_peer.public_key.key_to_bin())

@@ -43,7 +43,7 @@ class DFLCommunity(EVAProtocolMixin, Community):
         self.sample_manager: Optional[SampleManager] = None  # Initialized when the process is setup
         self.model_manager: Optional[ModelManager] = None    # Initialized when the process is setup
 
-        self.aggregation_deferred = Future()
+        self.aggregation_deferreds = {}
 
         # Model exchange parameters
         self.data_dir = None
@@ -177,8 +177,9 @@ class DFLCommunity(EVAProtocolMixin, Community):
         if not self.model_manager.has_enough_trained_models_of_round(round):
             self.logger.info("Aggregator %s start to wait for trained models of round %d",
                              self.peer_manager.get_my_short_id(), round)
-            await asyncio.wait_for(self.aggregation_deferred, timeout=5.0)
-            self.aggregation_deferred = Future()
+            self.aggregation_deferreds[round] = Future()
+            await asyncio.wait_for(self.aggregation_deferreds[round], timeout=5.0)
+            self.aggregation_deferreds.pop(round, None)
 
         # 3.1. Aggregate these models
         self.logger.info("Aggregator %s will average the models of round %d",
@@ -248,9 +249,9 @@ class DFLCommunity(EVAProtocolMixin, Community):
                 self.logger.exception("Exception when sending aggregated model to peer %s", peer)
             attempt += 1
 
-    def on_receive(self, result: TransferResult):
-        assert result.peer.public_key.key_to_bin() in self.peer_manager.peers
+    just send the full view of each node in each message
 
+    def on_receive(self, result: TransferResult):
         peer_pk = result.peer.public_key.key_to_bin()
         peer_id = self.peer_manager.get_short_id(peer_pk)
         my_peer_id = self.peer_manager.get_my_short_id()
@@ -300,9 +301,11 @@ class DFLCommunity(EVAProtocolMixin, Community):
         # Do we have enough models to start aggregating the models and send them to the other peers in the sample?
         # TODO integrate the success factor
         if self.model_manager.has_enough_trained_models_of_round(model_round):
-            self.logger.info("Aggregator %s received sufficient trained models of round %d",
-                             self.peer_manager.get_my_short_id(), model_round)
-            self.aggregation_deferred.set_result(None)
+            # It could be that the register_task call above is slower than this logic.
+            if model_round in self.aggregation_deferreds:
+                self.logger.info("Aggregator %s received sufficient trained models of round %d",
+                                 self.peer_manager.get_my_short_id(), model_round)
+                self.aggregation_deferreds[model_round].set_result(None)
 
     def received_aggregated_model(self, peer: Peer, model_round: int, model: nn.Module) -> None:
         if self.shutting_down:
