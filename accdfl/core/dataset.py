@@ -17,7 +17,7 @@ class TrainDataset:
         self.data_dir = data_dir
         self.parameters = parameters
         self.batch_size = parameters["batch_size"]
-        self.total_participants = len(parameters["participants"])
+        self.total_participants = parameters["target_participants"]
         self.participant_index = participant_index
 
         if parameters["dataset"] == "mnist":

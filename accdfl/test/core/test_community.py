@@ -12,12 +12,13 @@ from ipv8.test.mocking.ipv8 import MockIPv8
 
 class TestDFLCommunityBase(TestBase):
     NUM_NODES = 2
+    TARGET_NUM_NODES = NUM_NODES
     SAMPLE_SIZE = NUM_NODES
     NUM_AGGREGATORS = 1
     LOCAL_CLASSES = 10
     TOTAL_SAMPLES_PER_CLASS = 6
     SAMPLES_PER_CLASS = [TOTAL_SAMPLES_PER_CLASS] * 10
-    NODES_PER_CLASS = [NUM_NODES] * 10
+    NODES_PER_CLASS = [TARGET_NUM_NODES] * 10
     DATASET = "mnist"
     MODEL = "linear"
     TRANSMISSION_METHOD = TransmissionMethod.EVA
@@ -31,7 +32,7 @@ class TestDFLCommunityBase(TestBase):
 
         self.initialize(DFLCommunity, self.NUM_NODES)
 
-        experiment_data = {
+        self.experiment_data = {
             "classes": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
             "learning_rate": 0.1,
             "momentum": 0.0,
@@ -41,6 +42,7 @@ class TestDFLCommunityBase(TestBase):
             "num_aggregators": self.NUM_AGGREGATORS,
 
             # These parameters are not available in a deployed environment - only for experimental purposes.
+            "target_participants": self.TARGET_NUM_NODES,
             "samples_per_class": self.SAMPLES_PER_CLASS,
             "local_classes": self.LOCAL_CLASSES,
             "nodes_per_class": self.NODES_PER_CLASS,
@@ -49,7 +51,7 @@ class TestDFLCommunityBase(TestBase):
         }
         for node in self.nodes:
             node.overlay.is_local_test = True
-            node.overlay.setup(experiment_data, None, transmission_method=self.TRANSMISSION_METHOD)
+            node.overlay.setup(self.experiment_data, None, transmission_method=self.TRANSMISSION_METHOD)
 
     def wait_for_round_completed(self, node, round):
         round_completed_deferred = Future()
@@ -64,8 +66,9 @@ class TestDFLCommunityBase(TestBase):
 
 class TestDFLCommunityOneNode(TestDFLCommunityBase):
     NUM_NODES = 1
+    TARGET_NUM_NODES = NUM_NODES
     SAMPLE_SIZE = NUM_NODES
-    NODES_PER_CLASS = [NUM_NODES] * 10
+    NODES_PER_CLASS = [TARGET_NUM_NODES] * 10
 
     async def test_start_invalid_round(self):
         with pytest.raises(RuntimeError):
@@ -80,6 +83,25 @@ class TestDFLCommunityOneNode(TestDFLCommunityBase):
         assert self.nodes[0].overlay.did_setup
         self.nodes[0].overlay.start()
         await self.wait_for_round_completed(self.nodes[0], 1)
+
+
+class TestDFLCommunityNodeJoining(TestDFLCommunityBase):
+    NUM_NODES = 1
+    TARGET_NUM_NODES = 2
+    SAMPLE_SIZE = NUM_NODES
+    NODES_PER_CLASS = [TARGET_NUM_NODES] * 10
+
+    @pytest.mark.timeout(5)
+    async def test_new_node_joining(self):
+        new_node = self.create_node()
+        self.add_node_to_experiment(new_node)
+        await self.introduce_nodes()
+
+        self.experiment_data["participants"].append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
+        new_node.overlay.setup(self.experiment_data, None, transmission_method=self.TRANSMISSION_METHOD)
+        new_node.overlay.advertise_membership(2)
+        await self.deliver_messages()
+        assert len(self.nodes[0].overlay.peer_manager.peers) == 1
 
 
 class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
@@ -120,9 +142,10 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
 
 class TestDFLCommunityFiveNodes(TestDFLCommunityBase):
     NUM_NODES = 5
+    TARGET_NUM_NODES = NUM_NODES
     SAMPLE_SIZE = 3
     NUM_AGGREGATORS = 2
-    NODES_PER_CLASS = [NUM_NODES] * 10
+    NODES_PER_CLASS = [TARGET_NUM_NODES] * 10
     TOTAL_SAMPLES_PER_CLASS = 10
 
     @pytest.mark.timeout(5)

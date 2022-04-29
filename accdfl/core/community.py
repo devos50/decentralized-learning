@@ -10,11 +10,14 @@ from accdfl.core.model import serialize_model, unserialize_model, create_model
 from accdfl.core.dataset import TrainDataset
 from accdfl.core.model_manager import ModelManager
 from accdfl.core.optimizer.sgd import SGDOptimizer
+from accdfl.core.payloads import AdvertiseMembership
 from accdfl.core.peer_manager import PeerManager
 from accdfl.core.sample_manager import SampleManager
 from accdfl.util.eva_protocol import EVAProtocolMixin, TransferResult
 
 from ipv8.community import Community
+from ipv8.lazy_community import lazy_wrapper
+from ipv8.messaging.payload_headers import BinMemberAuthenticationPayload, GlobalTimeDistributionPayload
 from ipv8.types import Peer
 
 
@@ -45,6 +48,8 @@ class DFLCommunity(EVAProtocolMixin, Community):
         self.transmission_method = TransmissionMethod.EVA
         self.eva_max_retry_attempts = 20
 
+        self.add_message_handler(AdvertiseMembership, self.on_membership_advertisement)
+
         self.logger.info("The DFL community started with peer ID: %s", self.peer_manager.get_my_short_id())
 
     def start(self):
@@ -62,12 +67,12 @@ class DFLCommunity(EVAProtocolMixin, Community):
             self.logger.info("Participant %s won't participate in round 1", self.peer_manager.get_my_short_id())
 
     def setup(self, parameters: Dict, data_dir: str, transmission_method: TransmissionMethod = TransmissionMethod.EVA):
-        assert len(parameters["participants"]) * parameters["local_classes"] == sum(parameters["nodes_per_class"])
+        assert parameters["target_participants"] * parameters["local_classes"] == sum(parameters["nodes_per_class"])
 
         self.parameters = parameters
         self.data_dir = data_dir
         self.sample_size = parameters["sample_size"]
-        self.logger.info("Setting up experiment with %d participants and sample size %d (I am participant %s)" %
+        self.logger.info("Setting up experiment with %d initial participants and sample size %d (I am participant %s)" %
                          (len(parameters["participants"]), self.sample_size, self.peer_manager.get_my_short_id()))
 
         for participant in parameters["participants"]:
@@ -99,6 +104,33 @@ class DFLCommunity(EVAProtocolMixin, Community):
             if peer.public_key.key_to_bin() == target_pk:
                 return peer
         return None
+
+    def advertise_membership(self, round: int):
+        """
+        Advertise your (new) membership to the peers in a particular round.
+        """
+        participants_in_sample = self.sample_manager.get_sample_for_round(round)
+        for participant in participants_in_sample:
+            if participant == self.my_id:
+                continue
+            peer = self.get_peer_by_pk(participant)
+            global_time = self.claim_global_time()
+            auth = BinMemberAuthenticationPayload(self.my_peer.public_key.key_to_bin())
+            payload = AdvertiseMembership(round - 1)
+            dist = GlobalTimeDistributionPayload(global_time)
+            packet = self._ez_pack(self._prefix, AdvertiseMembership.msg_id, [auth, dist, payload])
+            self.endpoint.send(peer.address, packet)
+
+    @lazy_wrapper(GlobalTimeDistributionPayload, AdvertiseMembership)
+    def on_membership_advertisement(self, peer, dist, payload):
+        """
+        We received a membership advertisement from a new peer.
+        """
+        # TODO we assume that the peer is allowed to participate
+        peer_id = self.peer_manager.get_short_id(peer.public_key.key_to_bin())
+        self.logger.info("Participant %s adding participant %s to its local peer cache",
+                         self.peer_manager.get_my_short_id(), peer_id)
+        self.peer_manager.add_peer(peer.public_key.key_to_bin(), payload.round)
 
     async def participate_in_round(self, round):
         """
