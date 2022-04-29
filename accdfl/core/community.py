@@ -224,6 +224,7 @@ class DFLCommunity(EVAProtocolMixin, Community):
 
         peer_pk = peer.public_key.key_to_bin()
         peer_id = self.peer_manager.get_short_id(peer_pk)
+        self.peer_manager.update_peer_activity(peer.public_key.key_to_bin(), model_round)
 
         self.logger.info("Participant %s received trained model for round %d from participant %s",
                          self.peer_manager.get_my_short_id(), model_round, peer_id)
@@ -261,6 +262,7 @@ class DFLCommunity(EVAProtocolMixin, Community):
 
         peer_pk = peer.public_key.key_to_bin()
         peer_id = self.peer_manager.get_short_id(peer_pk)
+        self.peer_manager.update_peer_activity(peer.public_key.key_to_bin(), model_round)
 
         self.logger.info("Participant %s received aggregated model of round %d from aggregator %s",
                          self.peer_manager.get_my_short_id(), model_round, peer_id)

@@ -1,7 +1,7 @@
 from binascii import hexlify
-from typing import List, Dict
+from typing import List, Dict, Optional
 
-NEVER_ACTIVE = -1
+NO_ACTIVITY_INFO = -1
 
 
 class PeerManager:
@@ -14,14 +14,17 @@ class PeerManager:
         self.peers: List[bytes] = []
         self.last_active: Dict[bytes, int] = {}
 
-    def add_peer(self, peer_pk: bytes) -> None:
+    def add_peer(self, peer_pk: bytes, round_active: Optional[int] = NO_ACTIVITY_INFO) -> None:
         """
         Add a new peer to this manager.
         :param peer_pk: The public key of the peer to add.
+        :param round_active: The round that we last heard from this peer.
         """
-        # TODO we assume here that the peer is eligible for participation in the process.
+        if peer_pk in self.peers:
+            return
+
         self.peers.append(peer_pk)
-        self.last_active[peer_pk] = NEVER_ACTIVE
+        self.last_active[peer_pk] = round_active
 
     def update_peer_activity(self, peer_pk: bytes, round_active) -> None:
         """
