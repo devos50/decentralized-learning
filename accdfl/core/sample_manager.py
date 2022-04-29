@@ -15,9 +15,11 @@ class SampleManager:
         self.sample_size = sample_size
         self.num_aggregators = num_aggregators
 
-    def get_sample_for_round(self, round: int) -> List[bytes]:
+    def get_sample_for_round(self, round: int, exclude_peer: bytes = None) -> List[bytes]:
         hashes = []
         for peer_id in self.peer_manager.peers:
+            if peer_id == exclude_peer:
+                continue
             h = hashlib.md5(b"%s-%d" % (peer_id, round))
             hashes.append((peer_id, h.digest()))
         hashes = sorted(hashes, key=lambda t: t[1])

@@ -23,6 +23,14 @@ def test_add_peer(peer_manager):
     assert peer_manager.last_active[b"test3"] == 3
 
 
+def test_remove_peer(peer_manager):
+    peer_manager.add_peer(b"test2")
+    assert len(peer_manager.peers) == 1
+    peer_manager.remove_peer(b"test2")
+    assert len(peer_manager.peers) == 0
+    assert b"test2" not in peer_manager.last_active
+
+
 def test_update_last_activity(peer_manager):
     peer_manager.add_peer(b"test2")
     peer_manager.update_peer_activity(b"test2", 3)

@@ -40,6 +40,7 @@ class TestDFLCommunityBase(TestBase):
             "participants": [hexlify(node.my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
             "sample_size": self.SAMPLE_SIZE,
             "num_aggregators": self.NUM_AGGREGATORS,
+            "advertise_ttl": 2,
 
             # These parameters are not available in a deployed environment - only for experimental purposes.
             "target_participants": self.TARGET_NUM_NODES,
@@ -101,7 +102,10 @@ class TestDFLCommunityNodeJoining(TestDFLCommunityBase):
         new_node.overlay.setup(self.experiment_data, None, transmission_method=self.TRANSMISSION_METHOD)
         new_node.overlay.advertise_membership(2)
         await self.deliver_messages()
-        assert len(self.nodes[0].overlay.peer_manager.peers) == 1
+
+        for node in self.nodes:
+            assert len(node.overlay.peer_manager.peers) == 2
+        assert self.nodes[0].overlay.peer_manager.peer_is_in_node_deltas(new_node.my_peer.public_key.key_to_bin())
 
 
 class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
@@ -124,17 +128,17 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
         Test whether the aggregator proceeds when it has received sufficient valid models.
         """
         aggregator, other_node = (self.nodes[0], self.nodes[1]) if self.nodes[0].overlay.my_id in self.nodes[0].overlay.sample_manager.get_aggregators_for_round(2) else (self.nodes[1], self.nodes[0])
-        serialized_model = serialize_model(aggregator.overlay.model_manager.model)
+        model = aggregator.overlay.model_manager.model
 
         ensure_future(aggregator.overlay.participate_in_round(1))
         await sleep(0.1)
 
         # Invalid models should be ignored
-        await other_node.overlay.received_trained_model(aggregator.overlay.my_peer, 1, serialized_model)
+        await other_node.overlay.received_trained_model(aggregator.overlay.my_peer, 1, model)
         assert not other_node.overlay.model_manager.incoming_trained_models
 
-        await aggregator.overlay.received_trained_model(aggregator.overlay.my_peer, 1, serialized_model)
-        await aggregator.overlay.received_trained_model(other_node.overlay.my_peer, 1, serialized_model)
+        await aggregator.overlay.received_trained_model(aggregator.overlay.my_peer, 1, model)
+        await aggregator.overlay.received_trained_model(other_node.overlay.my_peer, 1, model)
         await aggregator.overlay.aggregation_deferred
         await sleep(0.1)
         assert 1 not in aggregator.overlay.model_manager.incoming_trained_models

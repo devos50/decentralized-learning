@@ -5,7 +5,9 @@ from asyncio import Future, ensure_future
 from binascii import unhexlify, hexlify
 from typing import Optional, Dict, Set
 
-from accdfl.core import TransmissionMethod
+from torch import nn
+
+from accdfl.core import TransmissionMethod, NodeDelta
 from accdfl.core.model import serialize_model, unserialize_model, create_model
 from accdfl.core.dataset import TrainDataset
 from accdfl.core.model_manager import ModelManager
@@ -109,10 +111,14 @@ class DFLCommunity(EVAProtocolMixin, Community):
         """
         Advertise your (new) membership to the peers in a particular round.
         """
-        participants_in_sample = self.sample_manager.get_sample_for_round(round)
+        # Note that we have to send this to the sample WITHOUT considering the newly joined node!
+        participants_in_sample = self.sample_manager.get_sample_for_round(round, exclude_peer=self.my_id)
         for participant in participants_in_sample:
             if participant == self.my_id:
                 continue
+
+            self.logger.debug("Participant %s advertising its membership to participant %s",
+                              self.peer_manager.get_my_short_id(), self.peer_manager.get_short_id(participant))
             peer = self.get_peer_by_pk(participant)
             global_time = self.claim_global_time()
             auth = BinMemberAuthenticationPayload(self.my_peer.public_key.key_to_bin())
@@ -127,10 +133,13 @@ class DFLCommunity(EVAProtocolMixin, Community):
         We received a membership advertisement from a new peer.
         """
         # TODO we assume that the peer is allowed to participate
-        peer_id = self.peer_manager.get_short_id(peer.public_key.key_to_bin())
+        peer_pk = peer.public_key.key_to_bin()
+        peer_id = self.peer_manager.get_short_id(peer_pk)
         self.logger.info("Participant %s adding participant %s to its local peer cache",
                          self.peer_manager.get_my_short_id(), peer_id)
-        self.peer_manager.add_peer(peer.public_key.key_to_bin(), payload.round)
+        self.peer_manager.add_peer(peer_pk, payload.round)
+        if not self.peer_manager.peer_is_in_node_deltas(peer_pk):
+            self.peer_manager.node_deltas.append((peer_pk, NodeDelta.JOIN, self.parameters["advertise_ttl"]))
 
     async def participate_in_round(self, round):
         """
@@ -209,8 +218,7 @@ class DFLCommunity(EVAProtocolMixin, Community):
                          self.peer_manager.get_my_short_id(), round, len(aggregators), aggregator_ids)
         for aggregator in aggregators:
             if aggregator == self.my_id:
-                serialized_model = serialize_model(self.model_manager.model)
-                ensure_future(self.received_trained_model(self.my_peer, round, serialized_model))
+                ensure_future(self.received_trained_model(self.my_peer, round, self.model_manager.model))
                 continue
 
             peer = self.get_peer_by_pk(aggregator)
@@ -220,7 +228,10 @@ class DFLCommunity(EVAProtocolMixin, Community):
             await self.eva_send_model(round, self.model_manager.model, "trained_model", peer)
 
     async def eva_send_model(self, round, model, type, peer):
-        response = {"round": round, "type": type}
+        serialized_model = serialize_model(model)
+        serialized_node_deltas = self.peer_manager.get_serialized_node_deltas()
+        binary_data = serialized_model + serialized_node_deltas
+        response = {"round": round, "type": type, "model_data_len": len(serialized_model)}
 
         for attempt in range(1, self.eva_max_retry_attempts + 1):
             self.logger.info("Participant %s sending round %d model to participant %s (attempt %d)",
@@ -228,7 +239,7 @@ class DFLCommunity(EVAProtocolMixin, Community):
                              self.peer_manager.get_short_id(peer.public_key.key_to_bin()), attempt)
             try:
                 # TODO this logic is sequential - optimize by having multiple outgoing transfers at once?
-                res = await self.eva_send_binary(peer, json.dumps(response).encode(), serialize_model(model))
+                res = await self.eva_send_binary(peer, json.dumps(response).encode(), binary_data)
                 self.logger.info("Participant %s successfully sent %s of round %s to participant %s",
                                  self.peer_manager.get_my_short_id(), type, round,
                                  self.peer_manager.get_short_id(peer.public_key.key_to_bin()))
@@ -243,14 +254,20 @@ class DFLCommunity(EVAProtocolMixin, Community):
         peer_pk = result.peer.public_key.key_to_bin()
         peer_id = self.peer_manager.get_short_id(peer_pk)
         my_peer_id = self.peer_manager.get_my_short_id()
+
         self.logger.info(f'Participant {my_peer_id} received data from participant {peer_id}: {result.info.decode()}')
         json_data = json.loads(result.info.decode())
-        if json_data["type"] == "trained_model":
-            ensure_future(self.received_trained_model(result.peer, json_data["round"], result.data))
-        elif json_data["type"] == "aggregated_model":
-            self.received_aggregated_model(result.peer, json_data["round"], result.data)
+        serialized_model = result.data[:json_data["model_data_len"]]
+        serialized_node_deltas = result.data[json_data["model_data_len"]:]
+        self.peer_manager.update_node_deltas(json_data["round"], serialized_node_deltas)
+        incoming_model = unserialize_model(serialized_model, self.parameters["dataset"], self.parameters["model"])
 
-    async def received_trained_model(self, peer: Peer, model_round: int, serialized_model: bytes) -> None:
+        if json_data["type"] == "trained_model":
+            ensure_future(self.received_trained_model(result.peer, json_data["round"], incoming_model))
+        elif json_data["type"] == "aggregated_model":
+            self.received_aggregated_model(result.peer, json_data["round"], incoming_model)
+
+    async def received_trained_model(self, peer: Peer, model_round: int, model: nn.Module) -> None:
         if self.shutting_down:
             return
 
@@ -278,8 +295,7 @@ class DFLCommunity(EVAProtocolMixin, Community):
             self.register_task(task_name, self.aggregate_in_round, model_round)
 
         # Process the model
-        incoming_model = unserialize_model(serialized_model, self.parameters["dataset"], self.parameters["model"])
-        self.model_manager.process_incoming_trained_model(peer_pk, model_round, incoming_model)
+        self.model_manager.process_incoming_trained_model(peer_pk, model_round, model)
 
         # Do we have enough models to start aggregating the models and send them to the other peers in the sample?
         # TODO integrate the success factor
@@ -288,7 +304,7 @@ class DFLCommunity(EVAProtocolMixin, Community):
                              self.peer_manager.get_my_short_id(), model_round)
             self.aggregation_deferred.set_result(None)
 
-    def received_aggregated_model(self, peer: Peer, model_round: int, serialized_model: bytes) -> None:
+    def received_aggregated_model(self, peer: Peer, model_round: int, model: nn.Module) -> None:
         if self.shutting_down:
             return
 
@@ -314,8 +330,7 @@ class DFLCommunity(EVAProtocolMixin, Community):
         # participating in the next round.
         if (model_round + 1) not in self.participating_in_rounds and not self.is_pending_task_active("round_%d" % (model_round + 1)):
             # TODO we are not waiting on all models from other aggregators. We might want to do this in the future to make the system more robust.
-            incoming_model = unserialize_model(serialized_model, self.parameters["dataset"], self.parameters["model"])
-            self.model_manager.adopt_model(incoming_model)
+            self.model_manager.adopt_model(model)
             self.register_task("round_%d" % (model_round + 1), self.participate_in_round, model_round + 1)
 
     def on_send_complete(self, result: TransferResult):
