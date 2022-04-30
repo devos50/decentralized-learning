@@ -9,13 +9,13 @@ from typing import Optional, Dict, Set
 
 from torch import nn
 
-from accdfl.core import TransmissionMethod, NodeDelta
+from accdfl.core import TransmissionMethod, NodeMembershipChange
 from accdfl.core.model import serialize_model, unserialize_model, create_model
 from accdfl.core.dataset import TrainDataset
 from accdfl.core.model_manager import ModelManager
 from accdfl.core.optimizer.sgd import SGDOptimizer
 from accdfl.core.payloads import AdvertiseMembership
-from accdfl.core.peer_manager import PeerManager
+from accdfl.core.peer_manager import PeerManager, WENT_OFFLINE
 from accdfl.core.sample_manager import SampleManager
 from accdfl.util.eva_protocol import EVAProtocolMixin, TransferResult
 
@@ -109,7 +109,12 @@ class DFLCommunity(EVAProtocolMixin, Community):
                 return peer
         return None
 
-    def advertise_membership(self, round: int):
+    def go_offline(self, round: int) -> None:
+        self.is_active = False
+        self.peer_manager.last_active[self.my_id] = WENT_OFFLINE
+        self.advertise_membership(round, NodeMembershipChange.LEAVE)
+
+    def advertise_membership(self, round: int, change: NodeMembershipChange):
         """
         Advertise your (new) membership to the peers in a particular round.
         """
@@ -119,12 +124,12 @@ class DFLCommunity(EVAProtocolMixin, Community):
             if participant == self.my_id:
                 continue
 
-            self.logger.debug("Participant %s advertising its membership to participant %s (part of round %d)",
+            self.logger.info("Participant %s advertising its membership change to participant %s (part of round %d)",
                               self.peer_manager.get_my_short_id(), self.peer_manager.get_short_id(participant), round)
             peer = self.get_peer_by_pk(participant)
             global_time = self.claim_global_time()
             auth = BinMemberAuthenticationPayload(self.my_peer.public_key.key_to_bin())
-            payload = AdvertiseMembership(round - 1)
+            payload = AdvertiseMembership(round - 1, change.value)
             dist = GlobalTimeDistributionPayload(global_time)
             packet = self._ez_pack(self._prefix, AdvertiseMembership.msg_id, [auth, dist, payload])
             self.endpoint.send(peer.address, packet)
@@ -137,16 +142,19 @@ class DFLCommunity(EVAProtocolMixin, Community):
         # TODO we assume that the peer is allowed to participate
         peer_pk = peer.public_key.key_to_bin()
         peer_id = self.peer_manager.get_short_id(peer_pk)
-        self.logger.info("Participant %s adding participant %s to its pending peer cache",
+        self.logger.info("Participant %s updating membership of participant %s",
                          self.peer_manager.get_my_short_id(), peer_id)
 
-        self.peer_manager.last_active_pending[peer_pk] = payload.round
+        change: NodeMembershipChange = NodeMembershipChange(payload.change)
+        if change == NodeMembershipChange.JOIN:
+            self.peer_manager.last_active_pending[peer_pk] = payload.round
+        else:
+            self.peer_manager.last_active[peer_pk] = WENT_OFFLINE
 
     async def participate_in_round(self, round):
         """
         Participate in a round.
         """
-        self.logger.error("START %d by %s", round, self.peer_manager.get_my_short_id())
         if round < 1:
             raise RuntimeError("Round number %d invalid!" % round)
 

@@ -1,11 +1,9 @@
 import logging
-import pickle
 from binascii import hexlify
-from typing import List, Dict, Optional
-
-from accdfl.core import NodeDelta
+from typing import Dict, Optional, List
 
 NO_ACTIVITY_INFO = -1
+WENT_OFFLINE = -2
 
 
 class PeerManager:
@@ -42,11 +40,14 @@ class PeerManager:
     def peer_is_in_view(self, peer_pk: bytes) -> bool:
         return peer_pk in self.last_active
 
+    def get_active_peers(self) -> List[bytes]:
+        return [peer_pk for peer_pk, last_round_active in self.last_active.items() if last_round_active != WENT_OFFLINE]
+
     def get_num_peers(self) -> int:
         """
         Return the number of peers in the local view.
         """
-        return len(self.last_active.keys())
+        return len(self.get_active_peers())
 
     def update_peer_activity(self, peer_pk: bytes, round_active) -> None:
         """
@@ -80,10 +81,13 @@ class PeerManager:
         Reconcile the differences between two population views.
         """
         for peer_pk, last_round_active in other_last_active.items():
-            if self.peer_is_in_view(peer_pk):
-                self.last_active[peer_pk] = max(self.last_active[peer_pk], other_last_active[peer_pk])
+            if last_round_active == WENT_OFFLINE:
+                self.last_active[peer_pk] = WENT_OFFLINE
             else:
-                # This seems to be a new node joining
-                self.logger.info("Participant %s adding newly joined peer %s to local view",
-                                 self.get_my_short_id(), self.get_short_id(peer_pk))
-                self.last_active[peer_pk] = other_last_active[peer_pk]
+                if self.peer_is_in_view(peer_pk) and self.last_active[peer_pk] != WENT_OFFLINE:
+                    self.last_active[peer_pk] = max(self.last_active[peer_pk], other_last_active[peer_pk])
+                else:
+                    # This seems to be a new node joining
+                    self.logger.info("Participant %s adding newly joined peer %s to local view",
+                                     self.get_my_short_id(), self.get_short_id(peer_pk))
+                    self.last_active[peer_pk] = other_last_active[peer_pk]

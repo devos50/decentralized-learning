@@ -2,7 +2,7 @@ import hashlib
 import logging
 from typing import List, Dict, Tuple
 
-from accdfl.core.peer_manager import PeerManager
+from accdfl.core.peer_manager import PeerManager, WENT_OFFLINE
 
 
 class SampleManager:
@@ -22,7 +22,7 @@ class SampleManager:
            return self.sample_cache[(round, exclude_peer)]
 
         hashes = []
-        population_view = sorted(custom_view.keys()) if custom_view else sorted(self.peer_manager.last_active.keys())
+        population_view = sorted([peer_pk for peer_pk, last_round_active in custom_view.items() if last_round_active != WENT_OFFLINE]) if custom_view else sorted(self.peer_manager.get_active_peers())
         for peer_id in population_view:
             if peer_id == exclude_peer:
                 continue

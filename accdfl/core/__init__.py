@@ -5,6 +5,6 @@ class TransmissionMethod(Enum):
     EVA = 0
 
 
-class NodeDelta(Enum):
+class NodeMembershipChange(Enum):
     JOIN = 0
     LEAVE = 1

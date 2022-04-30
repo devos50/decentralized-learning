@@ -4,7 +4,7 @@ from binascii import hexlify
 import pytest
 
 from accdfl.core.community import DFLCommunity, TransmissionMethod
-from accdfl.core.model import serialize_model
+from accdfl.core import NodeMembershipChange
 
 from ipv8.test.base import TestBase
 from ipv8.test.mocking.ipv8 import MockIPv8
@@ -63,6 +63,19 @@ class TestDFLCommunityBase(TestBase):
         node.overlay.round_complete_callback = on_round_complete
         return round_completed_deferred
 
+    def wait_for_num_nodes_in_all_views(self, target_num_nodes):
+        test_complete_deferred = Future()
+
+        def on_round_complete(_):
+            if all([node.overlay.peer_manager.get_num_peers() == target_num_nodes for node in self.nodes]):
+                if not test_complete_deferred.done():
+                    test_complete_deferred.set_result(None)
+
+        for node in self.nodes:
+            node.overlay.round_complete_callback = on_round_complete
+
+        return test_complete_deferred
+
 
 class TestDFLCommunityOneNode(TestDFLCommunityBase):
     NUM_NODES = 1
@@ -99,7 +112,7 @@ class TestDFLCommunityOneNodeOneJoining(TestDFLCommunityBase):
 
         self.experiment_data["participants"].append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
         new_node.overlay.setup(self.experiment_data, None, transmission_method=self.TRANSMISSION_METHOD)
-        new_node.overlay.advertise_membership(2)
+        new_node.overlay.advertise_membership(2, NodeMembershipChange.JOIN)
 
         # Perform some rounds so the membership has propagated
         self.nodes[0].overlay.start()
@@ -175,22 +188,30 @@ class TestDFLCommunityFiveNodesOneJoining(TestDFLCommunityBase):
 
         self.experiment_data["participants"].append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
         new_node.overlay.setup(self.experiment_data, None, transmission_method=self.TRANSMISSION_METHOD)
-        new_node.overlay.advertise_membership(2)
+        new_node.overlay.advertise_membership(2, NodeMembershipChange.JOIN)
 
         # Start all nodes
         for ind in range(self.NUM_NODES):
             self.nodes[ind].overlay.start()
 
-        test_complete_deferred = Future()
+        await self.wait_for_num_nodes_in_all_views(self.TARGET_NUM_NODES)
 
-        def on_round_complete(_):
-            for node in self.nodes:
-                if node.overlay.peer_manager.get_num_peers == 5:
-                    return
-            if not test_complete_deferred.done():
-                test_complete_deferred.set_result(None)
 
-        for node in self.nodes:
-            node.overlay.round_complete_callback = on_round_complete
+class TestDFLCommunityFiveNodesOneLeaving(TestDFLCommunityBase):
+    NUM_NODES = 5
+    TARGET_NUM_NODES = NUM_NODES
+    SAMPLE_SIZE = 2
+    NODES_PER_CLASS = [TARGET_NUM_NODES] * 10
 
-        await test_complete_deferred
+    @pytest.mark.timeout(5)
+    async def test_node_leaving(self):
+        # The node that will not participate in the next round should go offline
+
+        # Start all nodes
+        for ind in range(self.NUM_NODES):
+            self.nodes[ind].overlay.start()
+
+        await sleep(0.1)
+        self.nodes[0].overlay.go_offline(2)
+
+        await self.wait_for_num_nodes_in_all_views(self.NUM_NODES - 1)
