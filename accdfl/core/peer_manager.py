@@ -1,7 +1,7 @@
 import logging
 import pickle
 from binascii import hexlify
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional
 
 from accdfl.core import NodeDelta
 
@@ -16,9 +16,8 @@ class PeerManager:
     def __init__(self, my_pk: bytes):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.my_pk = my_pk
-        self.peers: List[bytes] = []
         self.last_active: Dict[bytes, int] = {}
-        self.node_deltas: List[Tuple[bytes, NodeDelta, int]] = []
+        self.last_active_pending: Dict[bytes, int] = {}  # Pending changes that are not immediately applied.
 
     def add_peer(self, peer_pk: bytes, round_active: Optional[int] = NO_ACTIVITY_INFO) -> None:
         """
@@ -26,12 +25,11 @@ class PeerManager:
         :param peer_pk: The public key of the peer to add.
         :param round_active: The round that we last heard from this peer.
         """
-        if peer_pk in self.peers:
+        if peer_pk in self.last_active:
             return
 
-        self.logger.info("Participant %s adding participant %s to cache",
+        self.logger.info("Participant %s adding participant %s to local view",
                          self.get_my_short_id(), self.get_short_id(peer_pk))
-        self.peers.append(peer_pk)
         self.last_active[peer_pk] = round_active
 
     def remove_peer(self, peer_pk) -> None:
@@ -39,9 +37,16 @@ class PeerManager:
         Remove this peer from this manager.
         :param peer_pk: The public key of the peer to remove.
         """
-        if peer_pk in self.peers:
-            self.peers.remove(peer_pk)
         self.last_active.pop(peer_pk, None)
+
+    def peer_is_in_view(self, peer_pk: bytes) -> bool:
+        return peer_pk in self.last_active
+
+    def get_num_peers(self) -> int:
+        """
+        Return the number of peers in the local view.
+        """
+        return len(self.last_active.keys())
 
     def update_peer_activity(self, peer_pk: bytes, round_active) -> None:
         """
@@ -61,23 +66,24 @@ class PeerManager:
     def get_short_id(peer_pk: bytes) -> str:
         return hexlify(peer_pk).decode()[-8:]
 
-    def peer_is_in_node_deltas(self, peer_pk: bytes) -> bool:
-        for pk, _, __ in self.node_deltas:
-            if pk == peer_pk:
-                return True
-        return False
+    def flush_last_active_pending(self) -> None:
+        """
+        Flush the pending changes to the population view.
+        """
+        if self.last_active_pending:
+            self.logger.info("Participant %s flushing pending changes to population view", self.get_my_short_id())
+            self.update_last_active(self.last_active_pending)
+            self.last_active_pending = {}
 
-    def update_node_deltas(self, round: int, serialized_node_deltas: bytes) -> None:
-        node_deltas = [(pk, NodeDelta(delta), ttl) for pk, delta, ttl in pickle.loads(serialized_node_deltas)]
-        for peer_pk, delta, _ in node_deltas:
-            if peer_pk not in self.peers and delta == NodeDelta.JOIN:
-                self.add_peer(peer_pk, round_active=round)
-            elif peer_pk in self.peers and delta == NodeDelta.LEAVE:
-                self.remove_peer(peer_pk)
-
-        # Decrement TTLs and ignore entries which TTL will be zero
-        self.node_deltas = [(pk, delta, ttl - 1) for pk, delta, ttl in node_deltas if ttl > 1]
-
-    def get_serialized_node_deltas(self) -> bytes:
-        raw_list = [(pk, delta.value, ttl) for pk, delta, ttl in self.node_deltas]
-        return pickle.dumps(raw_list)
+    def update_last_active(self, other_last_active: Dict[bytes, int]) -> None:
+        """
+        Reconcile the differences between two population views.
+        """
+        for peer_pk, last_round_active in other_last_active.items():
+            if self.peer_is_in_view(peer_pk):
+                self.last_active[peer_pk] = max(self.last_active[peer_pk], other_last_active[peer_pk])
+            else:
+                # This seems to be a new node joining
+                self.logger.info("Participant %s adding newly joined peer %s to local view",
+                                 self.get_my_short_id(), self.get_short_id(peer_pk))
+                self.last_active[peer_pk] = other_last_active[peer_pk]

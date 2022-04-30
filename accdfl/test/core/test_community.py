@@ -22,7 +22,6 @@ class TestDFLCommunityBase(TestBase):
     DATASET = "mnist"
     MODEL = "linear"
     TRANSMISSION_METHOD = TransmissionMethod.EVA
-    ADVERTISE_TTL = 2
 
     def create_node(self, *args, **kwargs):
         return MockIPv8("curve25519", self.overlay_class, *args, **kwargs)
@@ -41,7 +40,6 @@ class TestDFLCommunityBase(TestBase):
             "participants": [hexlify(node.my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
             "sample_size": self.SAMPLE_SIZE,
             "num_aggregators": self.NUM_AGGREGATORS,
-            "advertise_ttl": self.ADVERTISE_TTL,
 
             # These parameters are not available in a deployed environment - only for experimental purposes.
             "target_participants": self.TARGET_NUM_NODES,
@@ -102,11 +100,14 @@ class TestDFLCommunityOneNodeOneJoining(TestDFLCommunityBase):
         self.experiment_data["participants"].append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
         new_node.overlay.setup(self.experiment_data, None, transmission_method=self.TRANSMISSION_METHOD)
         new_node.overlay.advertise_membership(2)
-        await self.deliver_messages()
+
+        # Perform some rounds so the membership has propagated
+        self.nodes[0].overlay.start()
+        await self.wait_for_round_completed(self.nodes[0], 2)
 
         for node in self.nodes:
-            assert len(node.overlay.peer_manager.peers) == 2
-        assert self.nodes[0].overlay.peer_manager.peer_is_in_node_deltas(new_node.my_peer.public_key.key_to_bin())
+            assert node.overlay.peer_manager.get_num_peers() == 2
+        assert self.nodes[0].overlay.peer_manager.peer_is_in_view(new_node.my_peer.public_key.key_to_bin())
 
 
 class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
@@ -135,12 +136,12 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
         await sleep(0.1)
 
         # Invalid models should be ignored
-        await other_node.overlay.received_trained_model(aggregator.overlay.my_peer, 1, model)
+        await other_node.overlay.received_trained_model(aggregator.overlay.my_peer, 1, model, aggregator.overlay.peer_manager.last_active)
         assert not other_node.overlay.model_manager.incoming_trained_models
 
-        await aggregator.overlay.received_trained_model(aggregator.overlay.my_peer, 1, model)
-        await aggregator.overlay.received_trained_model(other_node.overlay.my_peer, 1, model)
-        await aggregator.overlay.aggregation_deferred
+        await aggregator.overlay.received_trained_model(aggregator.overlay.my_peer, 1, model, aggregator.overlay.peer_manager.last_active)
+        await aggregator.overlay.received_trained_model(other_node.overlay.my_peer, 1, model, aggregator.overlay.peer_manager.last_active)
+        await aggregator.overlay.aggregation_deferreds[1]
         await sleep(0.1)
         assert 1 not in aggregator.overlay.model_manager.incoming_trained_models
 
@@ -165,9 +166,8 @@ class TestDFLCommunityFiveNodesOneJoining(TestDFLCommunityBase):
     TARGET_NUM_NODES = 6
     SAMPLE_SIZE = 1
     NODES_PER_CLASS = [TARGET_NUM_NODES] * 10
-    ADVERTISE_TTL = 10
 
-    #@pytest.mark.timeout(5)
+    @pytest.mark.timeout(5)
     async def test_new_node_joining(self):
         new_node = self.create_node()
         self.add_node_to_experiment(new_node)
@@ -181,9 +181,16 @@ class TestDFLCommunityFiveNodesOneJoining(TestDFLCommunityBase):
         for ind in range(self.NUM_NODES):
             self.nodes[ind].overlay.start()
 
-        #await self.wait_for_round_completed(self.nodes[0], 5)
-        await sleep(5)
+        test_complete_deferred = Future()
+
+        def on_round_complete(_):
+            for node in self.nodes:
+                if node.overlay.peer_manager.get_num_peers == 5:
+                    return
+            if not test_complete_deferred.done():
+                test_complete_deferred.set_result(None)
 
         for node in self.nodes:
-            assert len(node.overlay.peer_manager.peers) == self.TARGET_NUM_NODES
-        assert self.nodes[0].overlay.peer_manager.peer_is_in_node_deltas(new_node.my_peer.public_key.key_to_bin())
+            node.overlay.round_complete_callback = on_round_complete
+
+        await test_complete_deferred

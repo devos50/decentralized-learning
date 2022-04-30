@@ -1,6 +1,8 @@
 import asyncio
+import copy
 import json
 import os
+import pickle
 from asyncio import Future, ensure_future
 from binascii import unhexlify, hexlify
 from typing import Optional, Dict, Set
@@ -117,8 +119,8 @@ class DFLCommunity(EVAProtocolMixin, Community):
             if participant == self.my_id:
                 continue
 
-            self.logger.debug("Participant %s advertising its membership to participant %s",
-                              self.peer_manager.get_my_short_id(), self.peer_manager.get_short_id(participant))
+            self.logger.debug("Participant %s advertising its membership to participant %s (part of round %d)",
+                              self.peer_manager.get_my_short_id(), self.peer_manager.get_short_id(participant), round)
             peer = self.get_peer_by_pk(participant)
             global_time = self.claim_global_time()
             auth = BinMemberAuthenticationPayload(self.my_peer.public_key.key_to_bin())
@@ -135,11 +137,10 @@ class DFLCommunity(EVAProtocolMixin, Community):
         # TODO we assume that the peer is allowed to participate
         peer_pk = peer.public_key.key_to_bin()
         peer_id = self.peer_manager.get_short_id(peer_pk)
-        self.logger.info("Participant %s adding participant %s to its local peer cache",
+        self.logger.info("Participant %s adding participant %s to its pending peer cache",
                          self.peer_manager.get_my_short_id(), peer_id)
-        self.peer_manager.add_peer(peer_pk, payload.round)
-        if not self.peer_manager.peer_is_in_node_deltas(peer_pk):
-            self.peer_manager.node_deltas.append((peer_pk, NodeDelta.JOIN, self.parameters["advertise_ttl"]))
+
+        self.peer_manager.last_active_pending[peer_pk] = payload.round
 
     async def participate_in_round(self, round):
         """
@@ -191,23 +192,27 @@ class DFLCommunity(EVAProtocolMixin, Community):
         self.model_manager.remove_trained_models_of_round(round)
 
         # 3.3. Distribute the average model to the non-aggregator nodes in the sample.
+        await self.send_aggregated_model_to_participants(avg_model, round)
+
+        self.logger.info("Aggregator %s completed aggregation in round %d", self.peer_manager.get_my_short_id(), round)
+        self.aggregating_in_rounds.remove(round)
+
+        # 5. We aggregated in this round, so we are a participant in the next round.
+        self.register_task("round_%d" % (round + 1), self.participate_in_round, round + 1)
+
+    async def send_aggregated_model_to_participants(self, model: nn.Module, round: int) -> None:
         this_round_participants = self.sample_manager.get_sample_for_round(round + 1)
         this_round_aggregators = self.sample_manager.get_aggregators_for_round(round + 1)
+        population_view = copy.deepcopy(self.peer_manager.last_active)
         for peer_pk in [p for p in this_round_participants if p not in this_round_aggregators]:
             peer = self.get_peer_by_pk(peer_pk)
             if not peer:
                 self.logger.warning("Could not find peer with public key %s", hexlify(peer_pk).decode())
                 continue
-            await self.eva_send_model(round, avg_model, "aggregated_model", peer)
+            await self.eva_send_model(round, model, "aggregated_model", population_view, peer)
 
-        self.logger.info("Aggregator %s completed aggregation in round %d", self.peer_manager.get_my_short_id(), round)
-        self.aggregating_in_rounds.remove(round)
-
-        # 5. If we were an aggregator in this round, we are a participant in the next once.
-        # Since we won't receive a trigger message, start the next round.
-        if self.sample_manager.is_aggregator_in_round(self.my_id, round + 1) and (
-                round + 1) not in self.participating_in_rounds:
-            self.register_task("round_%d" % (round + 1), self.participate_in_round, round + 1)
+        # Flush pending changes to the local view
+        self.peer_manager.flush_last_active_pending()
 
     async def send_trained_model_to_aggregators(self, round: int) -> None:
         """
@@ -217,21 +222,25 @@ class DFLCommunity(EVAProtocolMixin, Community):
         aggregator_ids = [self.peer_manager.get_short_id(aggregator) for aggregator in aggregators]
         self.logger.info("Participant %s sending trained model of round %d to %d aggregators: %s",
                          self.peer_manager.get_my_short_id(), round, len(aggregators), aggregator_ids)
+        population_view = copy.deepcopy(self.peer_manager.last_active)
         for aggregator in aggregators:
             if aggregator == self.my_id:
-                ensure_future(self.received_trained_model(self.my_peer, round, self.model_manager.model))
+                ensure_future(self.received_trained_model(self.my_peer, round, self.model_manager.model, population_view))
                 continue
 
             peer = self.get_peer_by_pk(aggregator)
             if not peer:
                 self.logger.warning("Could not find aggregator peer with public key %s", hexlify(aggregator).decode())
                 continue
-            await self.eva_send_model(round, self.model_manager.model, "trained_model", peer)
+            await self.eva_send_model(round, self.model_manager.model, "trained_model", population_view, peer)
 
-    async def eva_send_model(self, round, model, type, peer):
+        # Flush pending changes to the local view
+        self.peer_manager.flush_last_active_pending()
+
+    async def eva_send_model(self, round, model, type, population_view, peer):
         serialized_model = serialize_model(model)
-        serialized_node_deltas = self.peer_manager.get_serialized_node_deltas()
-        binary_data = serialized_model + serialized_node_deltas
+        serialized_population_view = pickle.dumps(population_view)
+        binary_data = serialized_model + serialized_population_view
         response = {"round": round, "type": type, "model_data_len": len(serialized_model)}
 
         for attempt in range(1, self.eva_max_retry_attempts + 1):
@@ -249,8 +258,6 @@ class DFLCommunity(EVAProtocolMixin, Community):
                 self.logger.exception("Exception when sending aggregated model to peer %s", peer)
             attempt += 1
 
-    just send the full view of each node in each message
-
     def on_receive(self, result: TransferResult):
         peer_pk = result.peer.public_key.key_to_bin()
         peer_id = self.peer_manager.get_short_id(peer_pk)
@@ -259,16 +266,17 @@ class DFLCommunity(EVAProtocolMixin, Community):
         self.logger.info(f'Participant {my_peer_id} received data from participant {peer_id}: {result.info.decode()}')
         json_data = json.loads(result.info.decode())
         serialized_model = result.data[:json_data["model_data_len"]]
-        serialized_node_deltas = result.data[json_data["model_data_len"]:]
-        self.peer_manager.update_node_deltas(json_data["round"], serialized_node_deltas)
+        serialized_population_view = result.data[json_data["model_data_len"]:]
+        received_population_view = pickle.loads(serialized_population_view)
+        self.peer_manager.update_last_active(received_population_view)
         incoming_model = unserialize_model(serialized_model, self.parameters["dataset"], self.parameters["model"])
 
         if json_data["type"] == "trained_model":
-            ensure_future(self.received_trained_model(result.peer, json_data["round"], incoming_model))
+            ensure_future(self.received_trained_model(result.peer, json_data["round"], incoming_model, received_population_view))
         elif json_data["type"] == "aggregated_model":
-            self.received_aggregated_model(result.peer, json_data["round"], incoming_model)
+            self.received_aggregated_model(result.peer, json_data["round"], incoming_model, received_population_view)
 
-    async def received_trained_model(self, peer: Peer, model_round: int, model: nn.Module) -> None:
+    async def received_trained_model(self, peer: Peer, model_round: int, model: nn.Module, received_population_view: Dict[bytes, int]) -> None:
         if self.shutting_down:
             return
 
@@ -279,13 +287,11 @@ class DFLCommunity(EVAProtocolMixin, Community):
         self.logger.info("Participant %s received trained model for round %d from participant %s",
                          self.peer_manager.get_my_short_id(), model_round, peer_id)
 
-        # Check if the peer that sent us the trained model is indeed a participant in the round.
-        if not self.sample_manager.is_participant_in_round(peer_pk, model_round):
-            self.logger.warning("Participant %s is not a participant in round %d", peer_id, model_round)
-            return
+        # TODO Check if the peer that sent us the trained model is indeed a participant in the round.
+        # This is more difficult with dynamic populations since we cannot reliably check this based on received information.
 
         # Check if we are an aggregator in the next round
-        if not self.sample_manager.is_aggregator_in_round(self.my_id, model_round + 1):
+        if not self.sample_manager.is_aggregator_in_round(self.my_id, model_round + 1, custom_view=received_population_view):
             self.logger.warning("Participant %s is not an aggregator in round %d",
                                 self.peer_manager.get_my_short_id(), model_round + 1)
             return
@@ -307,7 +313,7 @@ class DFLCommunity(EVAProtocolMixin, Community):
                                  self.peer_manager.get_my_short_id(), model_round)
                 self.aggregation_deferreds[model_round].set_result(None)
 
-    def received_aggregated_model(self, peer: Peer, model_round: int, model: nn.Module) -> None:
+    def received_aggregated_model(self, peer: Peer, model_round: int, model: nn.Module, received_population_view: Dict[bytes, int]) -> None:
         if self.shutting_down:
             return
 
@@ -319,12 +325,12 @@ class DFLCommunity(EVAProtocolMixin, Community):
                          self.peer_manager.get_my_short_id(), model_round, peer_id)
 
         # Check if the peer that sent us the aggregated model is indeed an aggregator in this round.
-        if not self.sample_manager.is_aggregator_in_round(peer_pk, model_round + 1):
+        if not self.sample_manager.is_aggregator_in_round(peer_pk, model_round + 1, custom_view=received_population_view):
             self.logger.warning("Participant %s is not an aggregator in round %d", peer_id, model_round + 1)
             return
 
         # Check if we are a participant in this round.
-        if not self.sample_manager.is_participant_in_round(self.my_id, model_round + 1):
+        if not self.sample_manager.is_participant_in_round(self.my_id, model_round + 1, custom_view=received_population_view):
             self.logger.warning("Participant %s is not a participant in round %d",
                                 self.peer_manager.get_my_short_id(), model_round)
             return
