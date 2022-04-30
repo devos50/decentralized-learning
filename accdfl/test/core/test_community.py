@@ -40,6 +40,7 @@ class TestDFLCommunityBase(TestBase):
             "participants": [hexlify(node.my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
             "sample_size": self.SAMPLE_SIZE,
             "num_aggregators": self.NUM_AGGREGATORS,
+            "aggregation_timeout": 0.5,
 
             # These parameters are not available in a deployed environment - only for experimental purposes.
             "target_participants": self.TARGET_NUM_NODES,
@@ -142,6 +143,9 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
         """
         Test whether the aggregator proceeds when it has received sufficient valid models.
         """
+        for node in self.nodes:
+            node.overlay.is_active = True
+
         aggregator, other_node = (self.nodes[0], self.nodes[1]) if self.nodes[0].overlay.my_id in self.nodes[0].overlay.sample_manager.get_aggregators_for_round(2) else (self.nodes[1], self.nodes[0])
         model = aggregator.overlay.model_manager.model
 
@@ -186,13 +190,14 @@ class TestDFLCommunityFiveNodesOneJoining(TestDFLCommunityBase):
         self.add_node_to_experiment(new_node)
         await self.introduce_nodes()
 
-        self.experiment_data["participants"].append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
-        new_node.overlay.setup(self.experiment_data, None, transmission_method=self.TRANSMISSION_METHOD)
-        new_node.overlay.advertise_membership(2, NodeMembershipChange.JOIN)
-
         # Start all nodes
         for ind in range(self.NUM_NODES):
             self.nodes[ind].overlay.start()
+
+        self.experiment_data["participants"].append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
+        new_node.overlay.setup(self.experiment_data, None, transmission_method=self.TRANSMISSION_METHOD)
+        new_node.overlay.advertise_membership(2, NodeMembershipChange.JOIN)
+        self.nodes[-1].overlay.start()
 
         await self.wait_for_num_nodes_in_all_views(self.TARGET_NUM_NODES)
 
@@ -201,6 +206,7 @@ class TestDFLCommunityFiveNodesOneLeaving(TestDFLCommunityBase):
     NUM_NODES = 5
     TARGET_NUM_NODES = NUM_NODES
     SAMPLE_SIZE = 2
+    NUM_AGGREGATORS = 2
     NODES_PER_CLASS = [TARGET_NUM_NODES] * 10
 
     @pytest.mark.timeout(5)

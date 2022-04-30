@@ -38,7 +38,7 @@ class PeerManager:
         self.last_active.pop(peer_pk, None)
 
     def peer_is_in_view(self, peer_pk: bytes) -> bool:
-        return peer_pk in self.last_active
+        return peer_pk in self.get_active_peers()
 
     def get_active_peers(self) -> List[bytes]:
         return [peer_pk for peer_pk, last_round_active in self.last_active.items() if last_round_active != WENT_OFFLINE]
@@ -81,13 +81,19 @@ class PeerManager:
         Reconcile the differences between two population views.
         """
         for peer_pk, last_round_active in other_last_active.items():
-            if last_round_active == WENT_OFFLINE:
-                self.last_active[peer_pk] = WENT_OFFLINE
-            else:
-                if self.peer_is_in_view(peer_pk) and self.last_active[peer_pk] != WENT_OFFLINE:
-                    self.last_active[peer_pk] = max(self.last_active[peer_pk], other_last_active[peer_pk])
-                else:
-                    # This seems to be a new node joining
-                    self.logger.info("Participant %s adding newly joined peer %s to local view",
+            # Is this a new joining node?
+            if peer_pk not in self.last_active:
+                # This seems to be a new node joining
+                self.logger.info("Participant %s adds peer %s to local view",
+                                 self.get_my_short_id(), self.get_short_id(peer_pk))
+                self.last_active[peer_pk] = other_last_active[peer_pk]
+                continue
+
+            # This peer is already in the view - update it if it's not offline
+            if self.last_active[peer_pk] != WENT_OFFLINE:
+                if last_round_active == WENT_OFFLINE:
+                    self.logger.info("Participant %s considering peer %s offline",
                                      self.get_my_short_id(), self.get_short_id(peer_pk))
-                    self.last_active[peer_pk] = other_last_active[peer_pk]
+                    self.last_active[peer_pk] = WENT_OFFLINE
+                else:
+                    self.last_active[peer_pk] = max(self.last_active[peer_pk], other_last_active[peer_pk])

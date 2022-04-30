@@ -3,7 +3,7 @@ import copy
 import json
 import os
 import pickle
-from asyncio import Future, ensure_future
+from asyncio import Future, ensure_future, shield
 from binascii import unhexlify, hexlify
 from typing import Optional, Dict, Set
 
@@ -111,6 +111,8 @@ class DFLCommunity(EVAProtocolMixin, Community):
 
     def go_offline(self, round: int) -> None:
         self.is_active = False
+        self.cancel_all_pending_tasks()
+
         self.peer_manager.last_active[self.my_id] = WENT_OFFLINE
         self.advertise_membership(round, NodeMembershipChange.LEAVE)
 
@@ -184,10 +186,14 @@ class DFLCommunity(EVAProtocolMixin, Community):
         self.aggregating_in_rounds.add(round)
 
         if not self.model_manager.has_enough_trained_models_of_round(round):
-            self.logger.info("Aggregator %s start to wait for trained models of round %d",
+            self.logger.info("Aggregator %s starts to wait for trained models of round %d",
                              self.peer_manager.get_my_short_id(), round)
             self.aggregation_deferreds[round] = Future()
-            await asyncio.wait_for(self.aggregation_deferreds[round], timeout=5.0)
+            try:
+                await asyncio.wait_for(self.aggregation_deferreds[round], timeout=self.parameters["aggregation_timeout"])
+            except asyncio.exceptions.TimeoutError:
+                self.logger.info("Aggregator %s triggered timeout while waiting for models of round %d",
+                                 self.peer_manager.get_my_short_id(), round)
             self.aggregation_deferreds.pop(round, None)
 
         # 3.1. Aggregate these models
@@ -209,6 +215,11 @@ class DFLCommunity(EVAProtocolMixin, Community):
         self.register_task("round_%d" % (round + 1), self.participate_in_round, round + 1)
 
     async def send_aggregated_model_to_participants(self, model: nn.Module, round: int) -> None:
+        if not self.is_active:
+            self.logger.warning("Participant %s not sending aggregated model due to offline status",
+                                self.peer_manager.get_my_short_id())
+            return
+
         this_round_participants = self.sample_manager.get_sample_for_round(round + 1)
         this_round_aggregators = self.sample_manager.get_aggregators_for_round(round + 1)
         population_view = copy.deepcopy(self.peer_manager.last_active)
@@ -226,6 +237,11 @@ class DFLCommunity(EVAProtocolMixin, Community):
         """
         Send the current model to the aggregators of the sample associated with the next round.
         """
+        if not self.is_active:
+            self.logger.warning("Participant %s not sending trained model due to offline status",
+                                self.peer_manager.get_my_short_id())
+            return
+
         aggregators = self.sample_manager.get_aggregators_for_round(round + 1)
         aggregator_ids = [self.peer_manager.get_short_id(aggregator) for aggregator in aggregators]
         self.logger.info("Participant %s sending trained model of round %d to %d aggregators: %s",
@@ -270,6 +286,10 @@ class DFLCommunity(EVAProtocolMixin, Community):
         peer_pk = result.peer.public_key.key_to_bin()
         peer_id = self.peer_manager.get_short_id(peer_pk)
         my_peer_id = self.peer_manager.get_my_short_id()
+
+        if not self.is_active:
+            self.logger.warning("Participant %s ignoring message due to inactivity", my_peer_id)
+            return
 
         self.logger.info(f'Participant {my_peer_id} received data from participant {peer_id}: {result.info.decode()}')
         json_data = json.loads(result.info.decode())
@@ -319,7 +339,8 @@ class DFLCommunity(EVAProtocolMixin, Community):
             if model_round in self.aggregation_deferreds:
                 self.logger.info("Aggregator %s received sufficient trained models of round %d",
                                  self.peer_manager.get_my_short_id(), model_round)
-                self.aggregation_deferreds[model_round].set_result(None)
+                if not self.aggregation_deferreds[model_round].done():
+                    self.aggregation_deferreds[model_round].set_result(None)
 
     def received_aggregated_model(self, peer: Peer, model_round: int, model: nn.Module, received_population_view: Dict[bytes, int]) -> None:
         if self.shutting_down:
