@@ -595,7 +595,8 @@ def test_send_scheduled_with_transfers_limit(eva: EVAProtocol):
     assert len(eva.scheduled['peer3']) == 1
 
 
-def test_send_write_request_finished_transfer(eva: EVAProtocol):
+async def test_send_write_request_finished_transfer(eva: EVAProtocol):
+    await asyncio.sleep(0.1)
     transfer = OutgoingTransfer(container=eva.outgoing, peer=Mock(), info=b'123', data=b'456', nonce=42,
                                 settings=EVASettings())
     transfer.finished = True
