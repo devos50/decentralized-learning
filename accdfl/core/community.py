@@ -3,7 +3,7 @@ import copy
 import json
 import os
 import pickle
-from asyncio import Future, ensure_future, shield
+from asyncio import Future, ensure_future
 from binascii import unhexlify, hexlify
 from typing import Optional, Dict, Set
 
@@ -17,7 +17,8 @@ from accdfl.core.optimizer.sgd import SGDOptimizer
 from accdfl.core.payloads import AdvertiseMembership
 from accdfl.core.peer_manager import PeerManager, WENT_OFFLINE
 from accdfl.core.sample_manager import SampleManager
-from accdfl.util.eva_protocol import EVAProtocolMixin, TransferResult
+from accdfl.util.eva.protocol import EVAProtocol
+from accdfl.util.eva.result import TransferResult
 
 from ipv8.community import Community
 from ipv8.lazy_community import lazy_wrapper
@@ -25,7 +26,7 @@ from ipv8.messaging.payload_headers import BinMemberAuthenticationPayload, Globa
 from ipv8.types import Peer
 
 
-class DFLCommunity(EVAProtocolMixin, Community):
+class DFLCommunity(Community):
     community_id = unhexlify('d5889074c1e4c60423cdb6e9307ba0ca5695ead7')
 
     def __init__(self, *args, **kwargs):
@@ -49,6 +50,7 @@ class DFLCommunity(EVAProtocolMixin, Community):
         self.aggregation_deferreds = {}
 
         # Model exchange parameters
+        self.eva = EVAProtocol(self, self.on_receive, self.on_send_complete, self.on_error)
         self.data_dir = None
         self.transmission_method = TransmissionMethod.EVA
         self.eva_max_retry_attempts = 20
@@ -95,11 +97,10 @@ class DFLCommunity(EVAProtocolMixin, Community):
         self.transmission_method = transmission_method
         if self.transmission_method == TransmissionMethod.EVA:
             self.logger.info("Setting up EVA protocol")
-            self.eva_init(window_size_in_blocks=32, retransmit_attempt_count=10, retransmit_interval_in_sec=1,
-                          timeout_interval_in_sec=10)
-            self.eva_register_receive_callback(self.on_receive)
-            self.eva_register_send_complete_callback(self.on_send_complete)
-            self.eva_register_error_callback(self.on_error)
+            self.eva.settings.window_size = 32
+            self.eva.settings.retransmit_attempt_count = 10
+            self.eva.settings.retransmit_interval_in_sec = 1
+            self.eva.settings.timeout_interval_in_sec = 10
 
         self.did_setup = True
 
@@ -279,7 +280,7 @@ class DFLCommunity(EVAProtocolMixin, Community):
                              self.peer_manager.get_short_id(peer.public_key.key_to_bin()), attempt)
             try:
                 # TODO this logic is sequential - optimize by having multiple outgoing transfers at once?
-                res = await self.eva_send_binary(peer, json.dumps(response).encode(), binary_data)
+                res = await self.eva.send_binary(peer, json.dumps(response).encode(), binary_data)
                 self.logger.info("Participant %s successfully sent %s of round %s to participant %s",
                                  self.peer_manager.get_my_short_id(), type, round,
                                  self.peer_manager.get_short_id(peer.public_key.key_to_bin()))
@@ -288,7 +289,7 @@ class DFLCommunity(EVAProtocolMixin, Community):
                 self.logger.exception("Exception when sending aggregated model to peer %s", peer)
             attempt += 1
 
-    def on_receive(self, result: TransferResult):
+    async def on_receive(self, result: TransferResult):
         peer_pk = result.peer.public_key.key_to_bin()
         peer_id = self.peer_manager.get_short_id(peer_pk)
         my_peer_id = self.peer_manager.get_my_short_id()
@@ -377,11 +378,11 @@ class DFLCommunity(EVAProtocolMixin, Community):
             self.model_manager.adopt_model(model)
             self.register_task("round_%d" % (model_round + 1), self.participate_in_round, model_round + 1)
 
-    def on_send_complete(self, result: TransferResult):
+    async def on_send_complete(self, result: TransferResult):
         peer_id = self.peer_manager.get_short_id(result.peer.public_key.key_to_bin())
         self.logger.info(f'Outgoing transfer to participant {peer_id} has completed: {result.info.decode()}')
 
-    def on_error(self, peer, exception):
+    async def on_error(self, peer, exception):
         self.logger.error(f'An error has occurred in transfer to peer {peer}: {exception}')
 
     async def unload(self):
