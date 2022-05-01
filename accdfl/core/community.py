@@ -212,7 +212,8 @@ class DFLCommunity(EVAProtocolMixin, Community):
         self.aggregating_in_rounds.remove(round)
 
         # 5. We aggregated in this round, so we are a participant in the next round.
-        self.register_task("round_%d" % (round + 1), self.participate_in_round, round + 1)
+        if (round + 1) not in self.participating_in_rounds:
+            self.register_task("round_%d" % (round + 1), self.participate_in_round, round + 1)
 
     async def send_aggregated_model_to_participants(self, model: nn.Module, round: int) -> None:
         if not self.is_active:

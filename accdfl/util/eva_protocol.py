@@ -535,7 +535,7 @@ class EVAProtocol:  # pylint: disable=too-many-instance-attributes
 
         EVAProtocol.terminate(self.outgoing, peer, transfer)
 
-        if transfer.future:
+        if transfer.future and not transfer.future.done():
             transfer.future.set_result(result)
 
         for callback in self.send_complete_callbacks:
