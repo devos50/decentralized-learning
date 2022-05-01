@@ -34,6 +34,7 @@ class DFLCommunity(EVAProtocolMixin, Community):
         self.is_active = False
         self.model_send_delay = None
         self.round_complete_callback = None
+        self.aggregate_complete_callback = None
         self.parameters = None
         self.participating_in_rounds: Set[int] = set()
         self.aggregating_in_rounds: Set[int] = set()
@@ -210,6 +211,10 @@ class DFLCommunity(EVAProtocolMixin, Community):
 
         self.logger.info("Aggregator %s completed aggregation in round %d", self.peer_manager.get_my_short_id(), round)
         self.aggregating_in_rounds.remove(round)
+
+        # 4. Invoke the callback
+        if self.aggregate_complete_callback:
+            ensure_future(self.aggregate_complete_callback(round))
 
         # 5. We aggregated in this round, so we are a participant in the next round.
         if (round + 1) not in self.participating_in_rounds:

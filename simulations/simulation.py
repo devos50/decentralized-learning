@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import logging
 import os
 import random
@@ -8,6 +9,7 @@ from binascii import hexlify
 
 import yappi
 
+from core.evaluator import Evaluator
 from ipv8.configuration import ConfigBuilder
 from ipv8_service import IPv8
 
@@ -28,6 +30,7 @@ class ADFLSimulation:
         self.nodes = []
         self.data_dir = os.path.join("data", "n_%d" % self.settings.peers)
         self.peers_rounds_completed = [0] * settings.peers
+        self.evaluator = None
 
         self.loop = DiscreteLoop()
         asyncio.set_event_loop(self.loop)
@@ -67,16 +70,18 @@ class ADFLSimulation:
                 node_a.overlays[0].walk_to(node_b.endpoint.wan_address)
         print("IPv8 peer discovery complete")
 
-    async def on_round_complete(self, ind, round_nr):
+    def on_round_complete(self, ind, round_nr):
         self.peers_rounds_completed[ind] = round_nr
-
-        if ind == 0 and round_nr % self.settings.accuracy_logging_interval == 0:
-            accuracy, loss = await self.nodes[0].overlays[0].compute_accuracy(include_wait_periods=False)
-            with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
-                out_file.write("%d,%d,%f,%f\n" % (ind, round_nr, accuracy, loss))
-
         if all([n >= self.settings.num_rounds for n in self.peers_rounds_completed]):
             exit(0)
+
+    async def on_aggregate_complete(self, ind: int, round_nr: int):
+        if round_nr % self.settings.accuracy_logging_interval == 0:
+            print("Will compute accuracy!")
+            model = copy.deepcopy(self.nodes[ind].overlays[0].model_manager.model)
+            accuracy, loss = self.evaluator.evaluate_accuracy(model)
+            with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
+                out_file.write("%d,%d,%f,%f\n" % (ind, round_nr, accuracy, loss))
 
     async def start_simulation(self) -> None:
         print("Starting simulation with %d peers..." % self.settings.peers)
@@ -97,6 +102,9 @@ class ADFLSimulation:
             "participants": [hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
             "rounds": self.settings.num_rounds,
             "sample_size": self.settings.sample_size,
+            "target_participants": len(self.nodes),
+            "num_aggregators": self.settings.num_aggregators,
+            "aggregation_timeout": 2.0,
 
             # These parameters are not available in a deployed environment - only for experimental purposes.
             "samples_per_class": self.settings.samples_per_class,
@@ -106,9 +114,12 @@ class ADFLSimulation:
             "model": self.settings.model,
         }
         for ind, node in enumerate(self.nodes):
-            node.overlays[0].round_complete_callback = lambda round_nr, _, i=ind: self.on_round_complete(i, round_nr)
+            node.overlays[0].round_complete_callback = lambda round_nr, i=ind: self.on_round_complete(i, round_nr)
+            node.overlays[0].aggregate_complete_callback = lambda round_nr, i=ind: self.on_aggregate_complete(i, round_nr)
             node.overlays[0].setup(experiment_data, None, transmission_method=self.settings.transmission_method)
             node.overlays[0].start()
+
+        self.evaluator = Evaluator(os.path.join(os.environ["HOME"], "dfl-data"), experiment_data)
 
         if self.settings.profile:
             yappi.start(builtins=True)

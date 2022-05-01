@@ -10,7 +10,7 @@ class BasicADFLSimulation(ADFLSimulation):
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = super().get_ipv8_builder(peer_id)
-        builder.add_overlay("SimulatedDFLCommunity", "my peer", [], [], {"working_directory": ":memory:"}, [])
+        builder.add_overlay("SimulatedDFLCommunity", "my peer", [], [], {}, [])
         return builder
 
 

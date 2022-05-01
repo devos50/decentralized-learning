@@ -58,9 +58,9 @@ class ModelManager:
     def remove_trained_models_of_round(self, round: int) -> None:
         self.incoming_trained_models.pop(round)
 
-    def train(self) -> bool:
+    def train(self) -> int:
         """
-        Train the model on a batch. Return a boolean that indicates whether the epoch is completed.
+        Train the model on a batch. Return an integer that indicates how many local steps we have done.
         """
         def it_has_next(iterable):
             try:
@@ -69,16 +69,21 @@ class ModelManager:
                 return None
             return itertools.chain([first], iterable)
 
-        data, target = self.dataset.iterator.__next__()
-        self.model.train()
-        data, target = Variable(data), Variable(target)
-        self.optimizer.optimizer.zero_grad()
-        self.logger.info('d-sgd.next node forward propagation')
-        output = self.model.forward(data)
-        loss = F.nll_loss(output, target)
-        self.logger.info('d-sgd.next node backward propagation')
-        loss.backward()
-        self.optimizer.optimizer.step()
+        local_steps = len(self.dataset.train_set) // self.parameters["batch_size"]
+        if len(self.dataset.train_set) % self.parameters["batch_size"] != 0:
+            local_steps += 1
+
+        for local_step in range(local_steps):
+            data, target = self.dataset.iterator.__next__()
+            self.model.train()
+            data, target = Variable(data), Variable(target)
+            self.optimizer.optimizer.zero_grad()
+            self.logger.info('d-sgd.next node forward propagation')
+            output = self.model.forward(data)
+            loss = F.nll_loss(output, target)
+            self.logger.info('d-sgd.next node backward propagation')
+            loss.backward()
+            self.optimizer.optimizer.step()
 
         # Are we at the end of the epoch?
         res = it_has_next(self.dataset.iterator)
@@ -86,10 +91,10 @@ class ModelManager:
             self.epoch += 1
             self.logger.info("Epoch done - resetting dataset iterator")
             self.dataset.reset_train_iterator()
-            return True
         else:
             self.dataset.iterator = res
-            return False
+
+        return local_steps
 
     @staticmethod
     def average_models(models: List[nn.Module]) -> nn.Module:
