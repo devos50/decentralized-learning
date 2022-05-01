@@ -181,7 +181,7 @@ class DFLCommunity(Community):
         self.logger.info("Participant %s completed round %d", self.peer_manager.get_my_short_id(), round)
         self.participating_in_rounds.remove(round)
         if self.round_complete_callback:
-            self.round_complete_callback(round)
+            ensure_future(self.round_complete_callback(round))
 
     async def aggregate_in_round(self, round: int):
         self.logger.info("Aggregator %s starts aggregating in round %d", self.peer_manager.get_my_short_id(), round)
