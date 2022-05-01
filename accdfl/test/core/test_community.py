@@ -57,7 +57,7 @@ class TestDFLCommunityBase(TestBase):
     def wait_for_round_completed(self, node, round):
         round_completed_deferred = Future()
 
-        def on_round_complete(round_nr):
+        async def on_round_complete(round_nr):
             if round_nr >= round and not round_completed_deferred.done():
                 round_completed_deferred.set_result(None)
 
@@ -67,7 +67,7 @@ class TestDFLCommunityBase(TestBase):
     def wait_for_num_nodes_in_all_views(self, target_num_nodes):
         test_complete_deferred = Future()
 
-        def on_round_complete(_):
+        async def on_round_complete(_):
             if all([node.overlay.peer_manager.get_num_peers() == target_num_nodes for node in self.nodes]):
                 if not test_complete_deferred.done():
                     test_complete_deferred.set_result(None)
@@ -161,6 +161,31 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
         await aggregator.overlay.aggregation_deferreds[1]
         await sleep(0.1)
         assert 1 not in aggregator.overlay.model_manager.incoming_trained_models
+
+    @pytest.mark.timeout(5)
+    async def test_not_start_round_again(self):
+        """
+        Test whether we are not starting a round that we have already completed.
+        """
+        aggregator, other_node = (self.nodes[0], self.nodes[1]) if self.nodes[0].overlay.my_id in self.nodes[0].overlay.sample_manager.get_aggregators_for_round(2) else (self.nodes[1], self.nodes[0])
+        model = aggregator.overlay.model_manager.model
+        population_view = aggregator.overlay.peer_manager.last_active
+        other_node.overlay.last_round_completed = 2
+        other_node.overlay.received_aggregated_model(aggregator.overlay.my_peer, 1, model, population_view)
+        assert not other_node.overlay.is_pending_task_active("round_2")
+
+    @pytest.mark.timeout(5)
+    async def test_not_start_aggregate_again(self):
+        """
+        Test whether we are not starting aggregation for a round that we have already completed.
+        """
+        aggregator, other_node = (self.nodes[0], self.nodes[1]) if self.nodes[0].overlay.my_id in self.nodes[
+            0].overlay.sample_manager.get_aggregators_for_round(2) else (self.nodes[1], self.nodes[0])
+        model = other_node.overlay.model_manager.model
+        population_view = other_node.overlay.peer_manager.last_active
+        aggregator.overlay.last_aggregate_round_completed = 1
+        await aggregator.overlay.received_trained_model(other_node.overlay.my_peer, 1, model, population_view)
+        assert not aggregator.overlay.is_pending_task_active("aggregate_1")
 
 
 class TestDFLCommunityFiveNodes(TestDFLCommunityBase):

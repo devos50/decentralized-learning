@@ -39,6 +39,8 @@ class DFLCommunity(Community):
         self.parameters = None
         self.participating_in_rounds: Set[int] = set()
         self.aggregating_in_rounds: Set[int] = set()
+        self.last_round_completed: int = 0
+        self.last_aggregate_round_completed: int = 0
         self.sample_size = None
         self.did_setup = False
         self.shutting_down = False
@@ -180,6 +182,7 @@ class DFLCommunity(Community):
         # 3. Complete the round
         self.logger.info("Participant %s completed round %d", self.peer_manager.get_my_short_id(), round)
         self.participating_in_rounds.remove(round)
+        self.last_round_completed = max(self.last_round_completed, round)
         if self.round_complete_callback:
             ensure_future(self.round_complete_callback(round))
 
@@ -212,6 +215,7 @@ class DFLCommunity(Community):
 
         self.logger.info("Aggregator %s completed aggregation in round %d", self.peer_manager.get_my_short_id(), round)
         self.aggregating_in_rounds.remove(round)
+        self.last_aggregate_round_completed = max(self.last_aggregate_round_completed, round)
 
         # 4. Invoke the callback
         if self.aggregate_complete_callback:
@@ -333,7 +337,7 @@ class DFLCommunity(Community):
 
         # Start the aggregation logic if we haven't done yet.
         task_name = "aggregate_%d" % model_round
-        if model_round not in self.aggregating_in_rounds and not self.is_pending_task_active(task_name):
+        if model_round not in self.aggregating_in_rounds and not self.is_pending_task_active(task_name) and self.last_aggregate_round_completed < model_round:
             self.register_task(task_name, self.aggregate_in_round, model_round)
 
         # Process the model
@@ -373,10 +377,12 @@ class DFLCommunity(Community):
 
         # If this is the first time we receive an aggregated model for this round, adopt the model and start
         # participating in the next round.
-        if (model_round + 1) not in self.participating_in_rounds and not self.is_pending_task_active("round_%d" % (model_round + 1)):
+        next_round = (model_round + 1)
+        task_name = "round_%d" % next_round
+        if next_round not in self.participating_in_rounds and not self.is_pending_task_active(task_name) and self.last_round_completed < next_round:
             # TODO we are not waiting on all models from other aggregators. We might want to do this in the future to make the system more robust.
             self.model_manager.adopt_model(model)
-            self.register_task("round_%d" % (model_round + 1), self.participate_in_round, model_round + 1)
+            self.register_task(task_name, self.participate_in_round, next_round)
 
     async def on_send_complete(self, result: TransferResult):
         peer_id = self.peer_manager.get_short_id(result.peer.public_key.key_to_bin())
