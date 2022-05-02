@@ -222,11 +222,11 @@ class DFLCommunity(Community):
 
     @lazy_wrapper(PongPayload)
     def on_pong(self, peer: Peer, payload: PongPayload) -> None:
-        if not self.request_cache.has("ping-peers", payload.identifier):
-            self.logger.warning("ping peers cache with id %s not found", payload.identifier)
+        peer_short_id = self.peer_manager.get_short_id(peer.public_key.key_to_bin())
+        if not self.request_cache.has("ping-%s" % peer_short_id, payload.identifier):
+            self.logger.warning("ping cache with id %s not found", payload.identifier)
             return
 
-        peer_short_id = self.peer_manager.get_short_id(peer.public_key.key_to_bin())
         cache = self.request_cache.pop("ping-%s" % peer_short_id, payload.identifier)
         cache.future.set_result((peer.public_key.key_to_bin(), True))
 

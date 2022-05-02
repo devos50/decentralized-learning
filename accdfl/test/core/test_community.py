@@ -41,7 +41,7 @@ class TestDFLCommunityBase(TestBase):
             "sample_size": self.SAMPLE_SIZE,
             "num_aggregators": self.NUM_AGGREGATORS,
             "aggregation_timeout": 0.5,
-            "ping_timeout": 1,
+            "ping_timeout": 0.5,
 
             # These parameters are not available in a deployed environment - only for experimental purposes.
             "target_participants": self.TARGET_NUM_NODES,
@@ -189,15 +189,17 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
         """
         Test pinging a single peer.
         """
+        self.nodes[0].overlay.is_active = True
         self.nodes[1].overlay.is_active = True
         res = await self.nodes[0].overlay.ping_peer(1234, self.nodes[1].overlay.my_peer.public_key.key_to_bin())
-        assert not res[1]
+        assert res[1]
 
     @pytest.mark.timeout(5)
     async def test_ping_fail(self):
         """
         Test pinging a single peer.
         """
+        self.nodes[0].overlay.is_active = True
         res = await self.nodes[0].overlay.ping_peer(1234, self.nodes[1].overlay.my_peer.public_key.key_to_bin())
         assert not res[1]
 
