@@ -43,9 +43,5 @@ class SampleManager:
 
         return sample[:self.sample_size]
 
-    def get_aggregators_for_round(self, round: int, custom_view: Dict = None) -> List[bytes]:
-        derived_sample = self.get_sample_for_round(round, custom_view=custom_view)
-        return derived_sample[:self.num_aggregators]
-
     def is_participant_in_round(self, peer_id: bytes, round: int, custom_view: Dict = None) -> bool:
         return peer_id in self.get_sample_for_round(round, custom_view=custom_view)

@@ -46,7 +46,7 @@ class PingPeersRequestCache(RandomNumberCache):
 
     def add_available_peer(self, peer_pk):
         self.available_peers.append(peer_pk)
-        if len(self.available_peers) == self.target_available_peers:
+        if len(self.available_peers) == self.target_available_peers and not self.future.done():
             self.future.set_result(self.available_peers)
 
     def on_pong_response(self, future):
@@ -58,7 +58,7 @@ class PingPeersRequestCache(RandomNumberCache):
             if self.next_peer_index < len(self.peers):
                 self.ping_peer(peer_pk)
                 self.next_peer_index += 1
-            else:
+            elif not self.future.done():
                 # We're out of peers - return the available peers
                 self.future.set_result(self.available_peers)
 

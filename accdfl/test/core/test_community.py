@@ -147,7 +147,7 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
         for node in self.nodes:
             node.overlay.is_active = True
 
-        aggregator, other_node = (self.nodes[0], self.nodes[1]) if self.nodes[0].overlay.my_id in self.nodes[0].overlay.sample_manager.get_aggregators_for_round(2) else (self.nodes[1], self.nodes[0])
+        aggregator, other_node = self.nodes[0], self.nodes[1]
         model = aggregator.overlay.model_manager.model
 
         ensure_future(aggregator.overlay.participate_in_round(1))
@@ -164,7 +164,7 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
         """
         Test whether we are not starting a round that we have already completed.
         """
-        aggregator, other_node = (self.nodes[0], self.nodes[1]) if self.nodes[0].overlay.my_id in self.nodes[0].overlay.sample_manager.get_aggregators_for_round(2) else (self.nodes[1], self.nodes[0])
+        aggregator, other_node = self.nodes[0], self.nodes[1]
         model = aggregator.overlay.model_manager.model
         population_view = aggregator.overlay.peer_manager.last_active
         other_node.overlay.last_round_completed = 2
@@ -176,8 +176,7 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
         """
         Test whether we are not starting aggregation for a round that we have already completed.
         """
-        aggregator, other_node = (self.nodes[0], self.nodes[1]) if self.nodes[0].overlay.my_id in self.nodes[
-            0].overlay.sample_manager.get_aggregators_for_round(2) else (self.nodes[1], self.nodes[0])
+        aggregator, other_node = self.nodes[0], self.nodes[1]
         model = other_node.overlay.model_manager.model
         population_view = other_node.overlay.peer_manager.last_active
         aggregator.overlay.last_aggregate_round_completed = 1

@@ -176,11 +176,22 @@ class DFLCommunity(Community):
         cache.start()
         return cache.future
 
+    def determine_available_participants_for_round(self, round: int) -> Future:
+        self.logger.info("Aggregator %s starts to determine available participants for round %d",
+                         self.peer_manager.get_my_short_id(), round)
+        candidate_aggregators = self.sample_manager.get_ordered_sample_list(round, self.peer_manager.get_active_peers())
+        cache = PingPeersRequestCache(self, candidate_aggregators, self.parameters["sample_size"])
+        self.request_cache.add(cache)
+        cache.start()
+        return cache.future
+
     def ping_peer(self, ping_all_id: int, peer_pk: bytes) -> Future:
+        self.logger.debug("Participant %s pinging participant %s",
+                          self.peer_manager.get_my_short_id(), self.peer_manager.get_short_id(peer_pk))
         peer_short_id = self.peer_manager.get_short_id(peer_pk)
         peer = self.get_peer_by_pk(peer_pk)
         if not peer:
-            self.logger.warning("Wanted to ping peer %s but cannot find Peer object!", peer_short_id)
+            self.logger.warning("Wanted to ping participant %s but cannot find Peer object!", peer_short_id)
             return succeed((peer_pk, False))
 
         cache = PingRequestCache(self, ping_all_id, peer_pk, self.parameters["ping_timeout"])
@@ -242,17 +253,18 @@ class DFLCommunity(Community):
 
         self.participating_in_rounds.add(round)
         sample_ids = [self.peer_manager.get_short_id(peer_id) for peer_id in self.sample_manager.get_sample_for_round(round)]
-        aggregator_ids = [self.peer_manager.get_short_id(peer_id) for peer_id in self.sample_manager.get_aggregators_for_round(round + 1)]
-        self.logger.info("Participant %s starts participating in round %d (sample: %s, aggregators for next round: %s)",
-                         self.peer_manager.get_my_short_id(), round, sample_ids, aggregator_ids)
+        self.logger.info("Participant %s starts participating in round %d (sample: %s)",
+                         self.peer_manager.get_my_short_id(), round, sample_ids)
 
         # 1. Train the model
         self.model_manager.train()
 
-        # 2. Determine the aggregators that are available
+        # 2. Determine the aggregators of the next sample that are available
         aggregators = await self.determine_available_aggregators_for_round(round + 1)
+        aggregator_ids = [self.peer_manager.get_short_id(peer_id) for peer_id in aggregators]
+        self.logger.info("Participant %s determined %d available aggregators: %s", len(aggregator_ids), aggregator_ids)
 
-        # 2. Send the model to the available aggregators of the next round
+        # 2. Send the model to these available aggregators
         await self.send_trained_model_to_aggregators(aggregators, round)
 
         # 4. Complete the round
@@ -286,8 +298,11 @@ class DFLCommunity(Community):
         # 3.2. Remove these models from the model manager (they are not needed anymore)
         self.model_manager.remove_trained_models_of_round(round)
 
-        # 3.3. Distribute the average model to the non-aggregator nodes in the sample.
-        await self.send_aggregated_model_to_participants(avg_model, round)
+        # Determine the available participants
+        participants = await self.determine_available_participants_for_round(round + 1)
+
+        # 3.3. Distribute the average model to the available participants in the sample.
+        await self.send_aggregated_model_to_participants(participants, avg_model, round)
 
         self.logger.info("Aggregator %s completed aggregation in round %d", self.peer_manager.get_my_short_id(), round)
         self.aggregating_in_rounds.remove(round)
@@ -301,16 +316,14 @@ class DFLCommunity(Community):
         if (round + 1) not in self.participating_in_rounds:
             self.register_task("round_%d" % (round + 1), self.participate_in_round, round + 1)
 
-    async def send_aggregated_model_to_participants(self, model: nn.Module, round: int) -> None:
+    async def send_aggregated_model_to_participants(self, participants: List[bytes], model: nn.Module, round: int) -> None:
         if not self.is_active:
             self.logger.warning("Participant %s not sending aggregated model due to offline status",
                                 self.peer_manager.get_my_short_id())
             return
 
-        this_round_participants = self.sample_manager.get_sample_for_round(round + 1)
-        this_round_aggregators = self.sample_manager.get_aggregators_for_round(round + 1)
         population_view = copy.deepcopy(self.peer_manager.last_active)
-        for peer_pk in [p for p in this_round_participants if p not in this_round_aggregators]:
+        for peer_pk in participants:
             peer = self.get_peer_by_pk(peer_pk)
             if not peer:
                 self.logger.warning("Could not find peer with public key %s", hexlify(peer_pk).decode())
