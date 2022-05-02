@@ -17,29 +17,31 @@ class SampleManager:
         self.num_aggregators = num_aggregators
         self.sample_cache: Dict[Tuple[int, bytes], List[bytes]] = {}
 
-    def get_sample_for_round(self, round: int, exclude_peer: bytes = None, custom_view: Dict = None) -> List[bytes]:
-        if not custom_view and (round, exclude_peer) in self.sample_cache:
-           return self.sample_cache[(round, exclude_peer)]
-
+    def get_ordered_sample_list(self, round: int, peers: List[bytes], exclude_peer: bytes = None) -> List[bytes]:
+        peers = sorted(peers)
         hashes = []
-        if custom_view:
-            population_view = [peer_pk for peer_pk, info in custom_view.items() if info[1][1] != NodeMembershipChange.LEAVE]
-        else:
-            population_view = self.peer_manager.get_active_peers()
-        population_view = sorted(population_view)
-
-        for peer_id in population_view:
+        for peer_id in peers:
             if peer_id == exclude_peer:
                 continue
             h = hashlib.md5(b"%s-%d" % (peer_id, round))
             hashes.append((peer_id, h.digest()))
         hashes = sorted(hashes, key=lambda t: t[1])
-        sample = [t[0] for t in hashes[:self.sample_size]]
+        return [t[0] for t in hashes]
 
+    def get_sample_for_round(self, round: int, exclude_peer: bytes = None, custom_view: Dict = None) -> List[bytes]:
+        if not custom_view and (round, exclude_peer) in self.sample_cache:
+            return self.sample_cache[(round, exclude_peer)]
+
+        if custom_view:
+            peers = [peer_pk for peer_pk, info in custom_view.items() if info[1][1] != NodeMembershipChange.LEAVE]
+        else:
+            peers = self.peer_manager.get_active_peers()
+
+        sample = self.get_ordered_sample_list(round, peers, exclude_peer=exclude_peer)
         if not custom_view:
             self.sample_cache[(round, exclude_peer)] = sample
 
-        return sample
+        return sample[:self.sample_size]
 
     def get_aggregators_for_round(self, round: int, custom_view: Dict = None) -> List[bytes]:
         derived_sample = self.get_sample_for_round(round, custom_view=custom_view)
@@ -47,6 +49,3 @@ class SampleManager:
 
     def is_participant_in_round(self, peer_id: bytes, round: int, custom_view: Dict = None) -> bool:
         return peer_id in self.get_sample_for_round(round, custom_view=custom_view)
-
-    def is_aggregator_in_round(self, peer_id: bytes, round: int, custom_view: Dict = None) -> bool:
-        return peer_id in self.get_aggregators_for_round(round, custom_view=custom_view)

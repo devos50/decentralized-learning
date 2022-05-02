@@ -1,30 +1,72 @@
-import logging
 from asyncio import Future
+from typing import List
 
-from ipv8.requestcache import RandomNumberCache
+from ipv8.requestcache import RandomNumberCache, NumberCache
 
 
-class DataRequestCache(RandomNumberCache):
+class PingRequestCache(NumberCache):
     """
-    This request cache keeps track of outstanding crawl requests.
+    This cache is used to determine the availability status of a particular peer.
     """
 
-    CRAWL_TIMEOUT = 30.0
-
-    def __init__(self, community: "DFLCommunity", request_future: Future) -> None:
-        super(DataRequestCache, self).__init__(community.request_cache, "datarequest")
-        self.logger = logging.getLogger(self.__class__.__name__)
-        self.community = community
-        self.request_future = request_future
+    def __init__(self, community, ping_all_id: int, peer_pk: bytes, ping_timeout):
+        peer_short_id = community.peer_manager.get_short_id(peer_pk)
+        super().__init__(community.request_cache, "ping-%s" % peer_short_id, ping_all_id)
+        self.peer_pk = peer_pk
+        self.ping_all_id = ping_all_id
+        self.request_cache = community.request_cache
+        self.ping_timeout = ping_timeout
+        self.future = Future()
 
     @property
     def timeout_delay(self) -> float:
-        return DataRequestCache.CRAWL_TIMEOUT
+        return self.ping_timeout
 
-    def received_not_found_response(self) -> None:
-        self.community.request_cache.pop("datarequest", self.number)
-        self.request_future.set_result(None)
+    def on_timeout(self):
+        self.future.set_result((self.peer_pk, False))
 
-    def on_timeout(self) -> None:
-        self._logger.info("Timeout for data request with id %d", self.number)
-        self.request_future.set_result(None)
+
+class PingPeersRequestCache(RandomNumberCache):
+
+    def __init__(self, community, peers: List[bytes], target_available_peers: int):
+        super().__init__(community.request_cache, "ping-peers")
+        self.community = community
+        self.peers = peers
+        self.target_available_peers = target_available_peers
+        self.available_peers = []
+        self.next_peer_index = 0
+        self.ping_timeout = self.community.parameters["ping_timeout"]
+        self.future = Future()
+
+    def start(self):
+        # Ping the first peers
+        for peer_pk in self.peers[:self.target_available_peers]:
+            self.ping_peer(peer_pk)
+            self.next_peer_index += 1
+
+    def add_available_peer(self, peer_pk):
+        self.available_peers.append(peer_pk)
+        if len(self.available_peers) == self.target_available_peers:
+            self.future.set_result(self.available_peers)
+
+    def on_pong_response(self, future):
+        peer_pk, online = future.result()
+        if online:
+            self.add_available_peer(peer_pk)
+        else:
+            # Seems this peer was not online - try the next peer if available
+            if self.next_peer_index < len(self.peers):
+                self.ping_peer(peer_pk)
+                self.next_peer_index += 1
+            else:
+                # We're out of peers - return the available peers
+                self.future.set_result(self.available_peers)
+
+    def ping_peer(self, peer_pk: bytes):
+        if peer_pk == self.community.my_id:
+            self.add_available_peer(peer_pk)
+            return
+
+        # Otherwise, queue a ping operation to this peer
+        future: Future = self.community.ping_peer(self._number, peer_pk)
+        future.add_done_callback(self.on_pong_response)

@@ -102,4 +102,4 @@ class PeerManager:
             # Update node membership status
             last_membership_round = info[1][0]
             if last_membership_round > self.last_active[peer_pk][1][0]:
-                self.last_active[peer_pk] = (self.last_active[peer_pk][0], info[1])
+                self.last_active[peer_pk] = (info[1][0], info[1])

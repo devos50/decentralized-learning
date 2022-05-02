@@ -41,6 +41,7 @@ class TestDFLCommunityBase(TestBase):
             "sample_size": self.SAMPLE_SIZE,
             "num_aggregators": self.NUM_AGGREGATORS,
             "aggregation_timeout": 0.5,
+            "ping_timeout": 1,
 
             # These parameters are not available in a deployed environment - only for experimental purposes.
             "target_participants": self.TARGET_NUM_NODES,
@@ -152,10 +153,6 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
         ensure_future(aggregator.overlay.participate_in_round(1))
         await sleep(0.1)
 
-        # Invalid models should be ignored
-        await other_node.overlay.received_trained_model(aggregator.overlay.my_peer, 1, model, aggregator.overlay.peer_manager.last_active)
-        assert not other_node.overlay.model_manager.incoming_trained_models
-
         await aggregator.overlay.received_trained_model(aggregator.overlay.my_peer, 1, model, aggregator.overlay.peer_manager.last_active)
         await aggregator.overlay.received_trained_model(other_node.overlay.my_peer, 1, model, aggregator.overlay.peer_manager.last_active)
         await aggregator.overlay.aggregation_deferreds[1]
@@ -186,6 +183,23 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
         aggregator.overlay.last_aggregate_round_completed = 1
         await aggregator.overlay.received_trained_model(other_node.overlay.my_peer, 1, model, population_view)
         assert not aggregator.overlay.is_pending_task_active("aggregate_1")
+
+    @pytest.mark.timeout(5)
+    async def test_ping_succeed(self):
+        """
+        Test pinging a single peer.
+        """
+        self.nodes[1].overlay.is_active = True
+        res = await self.nodes[0].overlay.ping_peer(1234, self.nodes[1].overlay.my_peer.public_key.key_to_bin())
+        assert not res[1]
+
+    @pytest.mark.timeout(5)
+    async def test_ping_fail(self):
+        """
+        Test pinging a single peer.
+        """
+        res = await self.nodes[0].overlay.ping_peer(1234, self.nodes[1].overlay.my_peer.public_key.key_to_bin())
+        assert not res[1]
 
 
 class TestDFLCommunityFiveNodes(TestDFLCommunityBase):

@@ -5,16 +5,17 @@ import os
 import pickle
 from asyncio import Future, ensure_future
 from binascii import unhexlify, hexlify
-from typing import Optional, Dict, Set, Tuple
+from typing import Optional, Dict, Set, List
 
 from torch import nn
 
 from accdfl.core import TransmissionMethod, NodeMembershipChange
+from accdfl.core.caches import PingPeersRequestCache, PingRequestCache
 from accdfl.core.model import serialize_model, unserialize_model, create_model
 from accdfl.core.dataset import TrainDataset
 from accdfl.core.model_manager import ModelManager
 from accdfl.core.optimizer.sgd import SGDOptimizer
-from accdfl.core.payloads import AdvertiseMembership
+from accdfl.core.payloads import AdvertiseMembership, PingPayload, PongPayload
 from accdfl.core.peer_manager import PeerManager
 from accdfl.core.sample_manager import SampleManager
 from accdfl.util.eva.protocol import EVAProtocol
@@ -23,7 +24,9 @@ from accdfl.util.eva.result import TransferResult
 from ipv8.community import Community
 from ipv8.lazy_community import lazy_wrapper
 from ipv8.messaging.payload_headers import BinMemberAuthenticationPayload, GlobalTimeDistributionPayload
+from ipv8.requestcache import RequestCache
 from ipv8.types import Peer
+from ipv8.util import succeed
 
 
 class DFLCommunity(Community):
@@ -31,6 +34,7 @@ class DFLCommunity(Community):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.request_cache = RequestCache()
         self.my_id = self.my_peer.public_key.key_to_bin()
         self.is_active = False
         self.model_send_delay = None
@@ -58,6 +62,8 @@ class DFLCommunity(Community):
         self.eva_max_retry_attempts = 20
 
         self.add_message_handler(AdvertiseMembership, self.on_membership_advertisement)
+        self.add_message_handler(PingPayload, self.on_ping)
+        self.add_message_handler(PongPayload, self.on_pong)
 
         self.logger.info("The DFL community started with peer ID: %s", self.peer_manager.get_my_short_id())
 
@@ -161,6 +167,69 @@ class DFLCommunity(Community):
         else:
             self.peer_manager.last_active[peer_pk] = (payload.round, (payload.round, NodeMembershipChange.LEAVE))
 
+    def determine_available_aggregators_for_round(self, round: int) -> Future:
+        self.logger.info("Participant %s starts to determine available aggregators for round %d",
+                         self.peer_manager.get_my_short_id(), round)
+        candidate_aggregators = self.sample_manager.get_ordered_sample_list(round, self.peer_manager.get_active_peers())
+        cache = PingPeersRequestCache(self, candidate_aggregators, self.parameters["num_aggregators"])
+        self.request_cache.add(cache)
+        cache.start()
+        return cache.future
+
+    def ping_peer(self, ping_all_id: int, peer_pk: bytes) -> Future:
+        peer_short_id = self.peer_manager.get_short_id(peer_pk)
+        peer = self.get_peer_by_pk(peer_pk)
+        if not peer:
+            self.logger.warning("Wanted to ping peer %s but cannot find Peer object!", peer_short_id)
+            return succeed((peer_pk, False))
+
+        cache = PingRequestCache(self, ping_all_id, peer_pk, self.parameters["ping_timeout"])
+        self.request_cache.add(cache)
+        self.send_ping(peer, cache.number)
+        return cache.future
+
+    def send_ping(self, peer: Peer, identifier: int) -> None:
+        """
+        Send a ping message with an identifier to a specific peer.
+        """
+        auth = BinMemberAuthenticationPayload(self.my_peer.public_key.key_to_bin())
+        payload = PingPayload(identifier)
+
+        packet = self._ez_pack(self._prefix, PingPayload.msg_id, [auth, payload])
+        self.endpoint.send(peer.address, packet)
+
+    @lazy_wrapper(PingPayload)
+    def on_ping(self, peer: Peer, payload: PingPayload) -> None:
+        peer_pk = peer.public_key.key_to_bin()
+        peer_id = self.peer_manager.get_short_id(peer_pk)
+        my_peer_id = self.peer_manager.get_my_short_id()
+
+        if not self.is_active:
+            self.logger.warning("Participant %s ignoring ping message from %s due to inactivity", my_peer_id, peer_id)
+            return
+
+        self.send_pong(peer, payload.identifier)
+
+    def send_pong(self, peer: Peer, identifier: int) -> None:
+        """
+        Send a pong message with an identifier to a specific peer.
+        """
+        auth = BinMemberAuthenticationPayload(self.my_peer.public_key.key_to_bin())
+        payload = PongPayload(identifier)
+
+        packet = self._ez_pack(self._prefix, PongPayload.msg_id, [auth, payload])
+        self.endpoint.send(peer.address, packet)
+
+    @lazy_wrapper(PongPayload)
+    def on_pong(self, peer: Peer, payload: PongPayload) -> None:
+        if not self.request_cache.has("ping-peers", payload.identifier):
+            self.logger.warning("ping peers cache with id %s not found", payload.identifier)
+            return
+
+        peer_short_id = self.peer_manager.get_short_id(peer.public_key.key_to_bin())
+        cache = self.request_cache.pop("ping-%s" % peer_short_id, payload.identifier)
+        cache.future.set_result((peer.public_key.key_to_bin(), True))
+
     async def participate_in_round(self, round):
         """
         Participate in a round.
@@ -180,10 +249,13 @@ class DFLCommunity(Community):
         # 1. Train the model
         self.model_manager.train()
 
-        # 2. Send the model to the aggregators of the next round
-        await self.send_trained_model_to_aggregators(round)
+        # 2. Determine the aggregators that are available
+        aggregators = await self.determine_available_aggregators_for_round(round + 1)
 
-        # 3. Complete the round
+        # 2. Send the model to the available aggregators of the next round
+        await self.send_trained_model_to_aggregators(aggregators, round)
+
+        # 4. Complete the round
         self.logger.info("Participant %s completed round %d", self.peer_manager.get_my_short_id(), round)
         self.participating_in_rounds.remove(round)
         self.last_round_completed = max(self.last_round_completed, round)
@@ -248,7 +320,7 @@ class DFLCommunity(Community):
         # Flush pending changes to the local view
         self.peer_manager.flush_last_active_pending()
 
-    async def send_trained_model_to_aggregators(self, round: int) -> None:
+    async def send_trained_model_to_aggregators(self, aggregators: List[bytes], round: int) -> None:
         """
         Send the current model to the aggregators of the sample associated with the next round.
         """
@@ -257,7 +329,6 @@ class DFLCommunity(Community):
                                 self.peer_manager.get_my_short_id())
             return
 
-        aggregators = self.sample_manager.get_aggregators_for_round(round + 1)
         aggregator_ids = [self.peer_manager.get_short_id(aggregator) for aggregator in aggregators]
         self.logger.info("Participant %s sending trained model of round %d to %d aggregators: %s",
                          self.peer_manager.get_my_short_id(), round, len(aggregators), aggregator_ids)
@@ -333,12 +404,6 @@ class DFLCommunity(Community):
         # TODO Check if the peer that sent us the trained model is indeed a participant in the round.
         # This is more difficult with dynamic populations since we cannot reliably check this based on received information.
 
-        # Check if we are an aggregator in the next round
-        if not self.sample_manager.is_aggregator_in_round(self.my_id, model_round + 1, custom_view=received_population_view):
-            self.logger.warning("Participant %s is not an aggregator in round %d",
-                                self.peer_manager.get_my_short_id(), model_round + 1)
-            return
-
         # Start the aggregation logic if we haven't done yet.
         task_name = "aggregate_%d" % model_round
         if model_round not in self.aggregating_in_rounds and not self.is_pending_task_active(task_name) and self.last_aggregate_round_completed < model_round:
@@ -368,17 +433,6 @@ class DFLCommunity(Community):
         self.logger.info("Participant %s received aggregated model of round %d from aggregator %s",
                          self.peer_manager.get_my_short_id(), model_round, peer_id)
 
-        # Check if the peer that sent us the aggregated model is indeed an aggregator in this round.
-        if not self.sample_manager.is_aggregator_in_round(peer_pk, model_round + 1, custom_view=received_population_view):
-            self.logger.warning("Participant %s is not an aggregator in round %d", peer_id, model_round + 1)
-            return
-
-        # Check if we are a participant in this round.
-        if not self.sample_manager.is_participant_in_round(self.my_id, model_round + 1, custom_view=received_population_view):
-            self.logger.warning("Participant %s is not a participant in round %d",
-                                self.peer_manager.get_my_short_id(), model_round)
-            return
-
         # If this is the first time we receive an aggregated model for this round, adopt the model and start
         # participating in the next round.
         next_round = (model_round + 1)
@@ -397,4 +451,5 @@ class DFLCommunity(Community):
 
     async def unload(self):
         self.shutting_down = True
+        await self.request_cache.shutdown()
         await super().unload()
