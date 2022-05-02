@@ -49,7 +49,7 @@ class DFLCommunity(Community):
         self.did_setup = False
         self.shutting_down = False
 
-        self.peer_manager: PeerManager = PeerManager(self.my_id)
+        self.peer_manager: PeerManager = PeerManager(self.my_id, -1)
         self.sample_manager: Optional[SampleManager] = None  # Initialized when the process is setup
         self.model_manager: Optional[ModelManager] = None    # Initialized when the process is setup
 
@@ -90,6 +90,7 @@ class DFLCommunity(Community):
         self.logger.info("Setting up experiment with %d initial participants and sample size %d (I am participant %s)" %
                          (len(parameters["participants"]), self.sample_size, self.peer_manager.get_my_short_id()))
 
+        self.peer_manager.inactivity_threshold = parameters["inactivity_threshold"]
         for participant in parameters["participants"]:
             self.peer_manager.add_peer(unhexlify(participant))
         self.sample_manager = SampleManager(self.peer_manager, self.sample_size, parameters["num_aggregators"])
@@ -170,7 +171,7 @@ class DFLCommunity(Community):
     def determine_available_aggregators_for_round(self, round: int) -> Future:
         self.logger.info("Participant %s starts to determine available aggregators for round %d",
                          self.peer_manager.get_my_short_id(), round)
-        candidate_aggregators = self.sample_manager.get_ordered_sample_list(round, self.peer_manager.get_active_peers())
+        candidate_aggregators = self.sample_manager.get_ordered_sample_list(round, self.peer_manager.get_active_peers(round))
         cache = PingPeersRequestCache(self, candidate_aggregators, self.parameters["num_aggregators"])
         self.request_cache.add(cache)
         cache.start()
@@ -179,8 +180,8 @@ class DFLCommunity(Community):
     def determine_available_participants_for_round(self, round: int) -> Future:
         self.logger.info("Aggregator %s starts to determine available participants for round %d",
                          self.peer_manager.get_my_short_id(), round)
-        candidate_aggregators = self.sample_manager.get_ordered_sample_list(round, self.peer_manager.get_active_peers())
-        cache = PingPeersRequestCache(self, candidate_aggregators, self.parameters["sample_size"])
+        candidate_participants = self.sample_manager.get_ordered_sample_list(round, self.peer_manager.get_active_peers(round))
+        cache = PingPeersRequestCache(self, candidate_participants, self.parameters["sample_size"])
         self.request_cache.add(cache)
         cache.start()
         return cache.future

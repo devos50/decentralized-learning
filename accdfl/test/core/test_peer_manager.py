@@ -6,7 +6,7 @@ from accdfl.core.peer_manager import PeerManager, NO_ACTIVITY_INFO
 
 @pytest.fixture
 def peer_manager():
-    return PeerManager(b"test")
+    return PeerManager(b"test", -1)
 
 
 def test_add_peer(peer_manager):
@@ -22,6 +22,9 @@ def test_add_peer(peer_manager):
     # Add a peer with a particular round active
     peer_manager.add_peer(b"test3", round_active=3)
     assert peer_manager.last_active[b"test3"] == (3, (0, NodeMembershipChange.JOIN))
+
+    # Old nodes that have not been responding for a long time should be ignored
+    assert not peer_manager.get_active_peers(10000)
 
 
 def test_remove_peer(peer_manager):

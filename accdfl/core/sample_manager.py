@@ -35,7 +35,7 @@ class SampleManager:
         if custom_view:
             peers = [peer_pk for peer_pk, info in custom_view.items() if info[1][1] != NodeMembershipChange.LEAVE]
         else:
-            peers = self.peer_manager.get_active_peers()
+            peers = self.peer_manager.get_active_peers(round)
 
         sample = self.get_ordered_sample_list(round, peers, exclude_peer=exclude_peer)
         if not custom_view:

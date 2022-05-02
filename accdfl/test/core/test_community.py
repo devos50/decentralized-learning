@@ -42,6 +42,7 @@ class TestDFLCommunityBase(TestBase):
             "num_aggregators": self.NUM_AGGREGATORS,
             "aggregation_timeout": 0.5,
             "ping_timeout": 0.5,
+            "inactivity_threshold": 10,
 
             # These parameters are not available in a deployed environment - only for experimental purposes.
             "target_participants": self.TARGET_NUM_NODES,
@@ -68,8 +69,8 @@ class TestDFLCommunityBase(TestBase):
     def wait_for_num_nodes_in_all_views(self, target_num_nodes):
         test_complete_deferred = Future()
 
-        async def on_round_complete(_):
-            if all([node.overlay.peer_manager.get_num_peers() == target_num_nodes for node in self.nodes]):
+        async def on_round_complete(round_nr):
+            if all([node.overlay.peer_manager.get_num_peers(round_nr) == target_num_nodes for node in self.nodes]):
                 if not test_complete_deferred.done():
                     test_complete_deferred.set_result(None)
 
@@ -122,7 +123,7 @@ class TestDFLCommunityOneNodeOneJoining(TestDFLCommunityBase):
 
         for node in self.nodes:
             assert node.overlay.peer_manager.get_num_peers() == 2
-        assert self.nodes[0].overlay.peer_manager.peer_is_in_view(new_node.my_peer.public_key.key_to_bin())
+        assert new_node.my_peer.public_key.key_to_bin() in self.nodes[0].overlay.peer_manager.last_active
 
 
 class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
