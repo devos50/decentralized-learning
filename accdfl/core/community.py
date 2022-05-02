@@ -282,12 +282,19 @@ class DFLCommunity(Community):
             self.logger.info("Aggregator %s starts to wait for trained models of round %d",
                              self.peer_manager.get_my_short_id(), round)
             self.aggregation_deferreds[round] = Future()
+            received_sufficient_models = False
             try:
                 await asyncio.wait_for(self.aggregation_deferreds[round], timeout=self.parameters["aggregation_timeout"])
+                received_sufficient_models = True
             except asyncio.exceptions.TimeoutError:
                 self.logger.info("Aggregator %s triggered timeout while waiting for models of round %d",
                                  self.peer_manager.get_my_short_id(), round)
             self.aggregation_deferreds.pop(round, None)
+        else:
+            received_sufficient_models = True
+
+        if not received_sufficient_models:
+            return
 
         # 3.1. Aggregate these models
         self.logger.info("Aggregator %s will average the models of round %d",
