@@ -340,6 +340,7 @@ class DFLCommunity(Community):
         for peer_pk in participants:
             if peer_pk == self.my_id:
                 self.received_aggregated_model(self.my_peer, round, model)
+                continue
 
             peer = self.get_peer_by_pk(peer_pk)
             if not peer:
