@@ -47,7 +47,7 @@ class ModelManager:
     def has_enough_trained_models_of_round(self, round: int) -> bool:
         if round not in self.incoming_trained_models:
             return False
-        return len(self.incoming_trained_models[round]) == self.parameters["sample_size"]
+        return len(self.incoming_trained_models[round]) >= (self.parameters["sample_size"] * self.parameters["success_fraction"])
 
     def average_trained_models_of_round(self, round: int) -> Optional[nn.Module]:
         if round not in self.incoming_trained_models:

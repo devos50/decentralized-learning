@@ -17,7 +17,7 @@ from ipv8.test.base import TestBase
 from ipv8.types import Peer
 
 from accdfl.util.eva.exceptions import SizeException, TimeoutException, TransferException, \
-    TransferLimitException, ValueException
+    TransferLimitException, ValueException, TransferCancelledException
 from accdfl.util.eva.payload import Acknowledgement, Data, Error, WriteRequest
 from accdfl.util.eva.protocol import EVAProtocol
 from accdfl.util.eva.result import TransferResult
@@ -116,6 +116,17 @@ class TestEVA(TestBase):
 
         await self.alice.data_has_been_sent.wait()
         assert self.alice.most_recent_sent_data == data
+
+    async def test_cancel_send_binary(self):
+        future = self.alice.eva.send_binary(self.bob.my_peer, b'test1', b'1234')
+        transfer = self.alice.eva.outgoing[self.bob.my_peer]
+
+        future.cancel()
+        await self.alice.error_has_been_raised.wait()
+
+        assert isinstance(self.alice.most_recent_received_exception, TransferCancelledException)
+        assert transfer.finished
+        assert not self.alice.eva.outgoing
 
     async def test_block_count_fits_a_single_window(self):
         # In this test we send three transfers from Alice to Bob to ensure that
@@ -596,7 +607,6 @@ def test_send_scheduled_with_transfers_limit(eva: EVAProtocol):
 
 
 async def test_send_write_request_finished_transfer(eva: EVAProtocol):
-    await asyncio.sleep(0.1)
     transfer = OutgoingTransfer(container=eva.outgoing, peer=Mock(), info=b'123', data=b'456', nonce=42,
                                 settings=EVASettings())
     transfer.finished = True

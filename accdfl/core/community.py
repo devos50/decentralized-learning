@@ -171,8 +171,9 @@ class DFLCommunity(Community):
 
     def determine_available_aggregators_for_round(self, round: int) -> Future:
         candidate_aggregators = self.sample_manager.get_ordered_sample_list(round, self.peer_manager.get_active_peers(round))
-        self.logger.info("Participant %s starts to determine available aggregators for round %d (candidates: %d)",
-                         self.peer_manager.get_my_short_id(), round, len(candidate_aggregators))
+        self.logger.info("Participant %s starts to determine %d available aggregators for round %d (candidates: %d)",
+                         self.peer_manager.get_my_short_id(), self.parameters["num_aggregators"], round,
+                         len(candidate_aggregators))
         cache = PingPeersRequestCache(self, candidate_aggregators, self.parameters["num_aggregators"], round)
         self.request_cache.add(cache)
         cache.start()
@@ -180,8 +181,9 @@ class DFLCommunity(Community):
 
     def determine_available_participants_for_round(self, round: int) -> Future:
         candidate_participants = self.sample_manager.get_ordered_sample_list(round, self.peer_manager.get_active_peers(round))
-        self.logger.info("Aggregator %s starts to determine available participants for round %d (candidates: %d)",
-                         self.peer_manager.get_my_short_id(), round, len(candidate_participants))
+        self.logger.info("Aggregator %s starts to determine %d available participants for round %d (candidates: %d)",
+                         self.peer_manager.get_my_short_id(), self.parameters["sample_size"], round,
+                         len(candidate_participants))
         cache = PingPeersRequestCache(self, candidate_participants, self.parameters["sample_size"], round)
         self.request_cache.add(cache)
         cache.start()
@@ -293,8 +295,8 @@ class DFLCommunity(Community):
                 await asyncio.wait_for(self.aggregation_deferreds[round], timeout=self.parameters["aggregation_timeout"])
                 received_sufficient_models = True
             except asyncio.exceptions.TimeoutError:
-                self.logger.info("Aggregator %s triggered timeout while waiting for models of round %d",
-                                 self.peer_manager.get_my_short_id(), round)
+                self.logger.warning("Aggregator %s triggered timeout while waiting for models of round %d",
+                                    self.peer_manager.get_my_short_id(), round)
             self.aggregation_deferreds.pop(round, None)
         else:
             received_sufficient_models = True
@@ -328,10 +330,6 @@ class DFLCommunity(Community):
         if self.aggregate_complete_callback:
             ensure_future(self.aggregate_complete_callback(round))
 
-        # 5. We aggregated in this round, so we are a participant in the next round.
-        if (round + 1) not in self.participating_in_rounds:
-            self.register_task("round_%d" % (round + 1), self.participate_in_round, round + 1)
-
     async def send_aggregated_model_to_participants(self, participants: List[bytes], model: nn.Module, round: int) -> None:
         if not self.is_active:
             self.logger.warning("Participant %s not sending aggregated model due to offline status",
@@ -341,7 +339,7 @@ class DFLCommunity(Community):
         population_view = copy.deepcopy(self.peer_manager.last_active)
         for peer_pk in participants:
             if peer_pk == self.my_id:
-                continue  # Do not send the aggregated model to yourself
+                self.received_aggregated_model(self.my_peer, round, model)
 
             peer = self.get_peer_by_pk(peer_pk)
             if not peer:
@@ -367,7 +365,7 @@ class DFLCommunity(Community):
         population_view = copy.deepcopy(self.peer_manager.last_active)
         for aggregator in aggregators:
             if aggregator == self.my_id:
-                ensure_future(self.received_trained_model(self.my_peer, round, self.model_manager.model, population_view))
+                ensure_future(self.received_trained_model(self.my_peer, round, self.model_manager.model))
                 continue
 
             peer = self.get_peer_by_pk(aggregator)
@@ -418,11 +416,11 @@ class DFLCommunity(Community):
         incoming_model = unserialize_model(serialized_model, self.parameters["dataset"], self.parameters["model"])
 
         if json_data["type"] == "trained_model":
-            ensure_future(self.received_trained_model(result.peer, json_data["round"], incoming_model, received_population_view))
+            ensure_future(self.received_trained_model(result.peer, json_data["round"], incoming_model))
         elif json_data["type"] == "aggregated_model":
-            self.received_aggregated_model(result.peer, json_data["round"], incoming_model, received_population_view)
+            self.received_aggregated_model(result.peer, json_data["round"], incoming_model)
 
-    async def received_trained_model(self, peer: Peer, model_round: int, model: nn.Module, received_population_view: Dict) -> None:
+    async def received_trained_model(self, peer: Peer, model_round: int, model: nn.Module) -> None:
         if self.shutting_down:
             return
 
@@ -454,7 +452,7 @@ class DFLCommunity(Community):
                 if not self.aggregation_deferreds[model_round].done():
                     self.aggregation_deferreds[model_round].set_result(None)
 
-    def received_aggregated_model(self, peer: Peer, model_round: int, model: nn.Module, received_population_view: Dict[bytes, int]) -> None:
+    def received_aggregated_model(self, peer: Peer, model_round: int, model: nn.Module) -> None:
         if self.shutting_down:
             return
 

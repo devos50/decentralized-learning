@@ -58,7 +58,7 @@ class PingPeersRequestCache(RandomNumberCache):
         else:
             # Seems this peer was not online - try the next peer if available
             if self.next_peer_index < len(self.peers):
-                self.ping_peer(peer_pk)
+                self.ping_peer(self.peers[self.next_peer_index])
                 self.next_peer_index += 1
             elif not self.future.done():
                 # We're out of peers - return the available peers

@@ -15,6 +15,7 @@ class TestDFLCommunityBase(TestBase):
     TARGET_NUM_NODES = NUM_NODES
     SAMPLE_SIZE = NUM_NODES
     NUM_AGGREGATORS = 1
+    SUCCESS_FRACTION = 1
     LOCAL_CLASSES = 10
     TOTAL_SAMPLES_PER_CLASS = 6
     SAMPLES_PER_CLASS = [TOTAL_SAMPLES_PER_CLASS] * 10
@@ -40,6 +41,7 @@ class TestDFLCommunityBase(TestBase):
             "participants": [hexlify(node.my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
             "sample_size": self.SAMPLE_SIZE,
             "num_aggregators": self.NUM_AGGREGATORS,
+            "success_fraction": self.SUCCESS_FRACTION,
             "aggregation_timeout": 0.5,
             "ping_timeout": 0.5,
             "inactivity_threshold": 30,
@@ -153,8 +155,8 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
 
         await sleep(0.1)
 
-        await aggregator.overlay.received_trained_model(aggregator.overlay.my_peer, 1, model, aggregator.overlay.peer_manager.last_active)
-        await aggregator.overlay.received_trained_model(other_node.overlay.my_peer, 1, model, aggregator.overlay.peer_manager.last_active)
+        await aggregator.overlay.received_trained_model(aggregator.overlay.my_peer, 1, model)
+        await aggregator.overlay.received_trained_model(other_node.overlay.my_peer, 1, model)
         await sleep(0.1)
         assert 1 not in aggregator.overlay.aggregating_in_rounds
         assert aggregator.overlay.last_aggregate_round_completed >= 1
@@ -167,9 +169,8 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
         """
         aggregator, other_node = self.nodes[0], self.nodes[1]
         model = aggregator.overlay.model_manager.model
-        population_view = aggregator.overlay.peer_manager.last_active
         other_node.overlay.last_round_completed = 2
-        other_node.overlay.received_aggregated_model(aggregator.overlay.my_peer, 1, model, population_view)
+        other_node.overlay.received_aggregated_model(aggregator.overlay.my_peer, 1, model)
         assert not other_node.overlay.is_pending_task_active("round_2")
 
     @pytest.mark.timeout(5)
@@ -179,9 +180,8 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
         """
         aggregator, other_node = self.nodes[0], self.nodes[1]
         model = other_node.overlay.model_manager.model
-        population_view = other_node.overlay.peer_manager.last_active
         aggregator.overlay.last_aggregate_round_completed = 1
-        await aggregator.overlay.received_trained_model(other_node.overlay.my_peer, 1, model, population_view)
+        await aggregator.overlay.received_trained_model(other_node.overlay.my_peer, 1, model)
         assert not aggregator.overlay.is_pending_task_active("aggregate_1")
 
     @pytest.mark.timeout(5)
@@ -248,6 +248,7 @@ class TestDFLCommunityFiveNodesOneLeaving(TestDFLCommunityBase):
     TARGET_NUM_NODES = NUM_NODES
     SAMPLE_SIZE = 2
     NUM_AGGREGATORS = 2
+    SUCCESS_FRACTION = 0.5
     NODES_PER_CLASS = [TARGET_NUM_NODES] * 10
 
     @pytest.mark.timeout(5)
@@ -255,8 +256,6 @@ class TestDFLCommunityFiveNodesOneLeaving(TestDFLCommunityBase):
         """
         Test whether a node that leaves gracefully will eventually be removed from the population views' of others.
         """
-
-        # Start all nodes
         for ind in range(self.NUM_NODES):
             self.nodes[ind].overlay.start()
 

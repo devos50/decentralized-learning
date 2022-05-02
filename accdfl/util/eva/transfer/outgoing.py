@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import math
-from typing import Iterable, Optional
+from typing import Iterable
 
-from accdfl.util.eva.exceptions import SizeException, TransferException
+from accdfl.util.eva.exceptions import SizeException
 from accdfl.util.eva.payload import Data
 from accdfl.util.eva.result import TransferResult
 from accdfl.util.eva.transfer.base import Transfer
@@ -37,9 +37,8 @@ class OutgoingTransfer(Transfer):
             if len(block) == 0:
                 return
 
-    def finish(self, *, result: Optional[TransferResult] = None, exception: Optional[TransferException] = None):
-        self.container.pop(self.peer, None)
-        super().finish(result=result, exception=exception)
+    def _release(self):
+        super()._release()
         self.data = None
 
     def _get_block(self, number: int) -> bytes:
