@@ -181,9 +181,11 @@ class DFLCommunity(Community):
 
     def determine_available_participants_for_round(self, round: int) -> Future:
         candidate_participants = self.sample_manager.get_ordered_sample_list(round, self.peer_manager.get_active_peers(round))
+        candidate_participants_ids = [self.peer_manager.get_short_id(peer_id) for peer_id in candidate_participants]
         self.logger.info("Aggregator %s starts to determine %d available participants for round %d (candidates: %d)",
                          self.peer_manager.get_my_short_id(), self.parameters["sample_size"], round,
                          len(candidate_participants))
+        self.logger.debug("Candidates for participating in round %d: %s", round, candidate_participants_ids)
         cache = PingPeersRequestCache(self, candidate_participants, self.parameters["sample_size"], round)
         self.request_cache.add(cache)
         cache.start()
