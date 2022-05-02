@@ -120,7 +120,7 @@ class DFLCommunity(Community):
                 return peer
         return None
 
-    def go_offline(self, round: int) -> None:
+    def go_offline(self, round: int, graceful: bool = True) -> None:
         self.is_active = False
         self.cancel_all_pending_tasks()
 
@@ -128,7 +128,8 @@ class DFLCommunity(Community):
 
         info = self.peer_manager.last_active[self.my_id]
         self.peer_manager.last_active[self.my_id] = (info[0], (round, NodeMembershipChange.LEAVE))
-        self.advertise_membership(round, NodeMembershipChange.LEAVE)
+        if graceful:
+            self.advertise_membership(round, NodeMembershipChange.LEAVE)
 
     def advertise_membership(self, round: int, change: NodeMembershipChange):
         """
@@ -169,43 +170,43 @@ class DFLCommunity(Community):
             self.peer_manager.last_active[peer_pk] = (payload.round, (payload.round, NodeMembershipChange.LEAVE))
 
     def determine_available_aggregators_for_round(self, round: int) -> Future:
-        self.logger.info("Participant %s starts to determine available aggregators for round %d",
-                         self.peer_manager.get_my_short_id(), round)
         candidate_aggregators = self.sample_manager.get_ordered_sample_list(round, self.peer_manager.get_active_peers(round))
-        cache = PingPeersRequestCache(self, candidate_aggregators, self.parameters["num_aggregators"])
+        self.logger.info("Participant %s starts to determine available aggregators for round %d (candidates: %d)",
+                         self.peer_manager.get_my_short_id(), round, len(candidate_aggregators))
+        cache = PingPeersRequestCache(self, candidate_aggregators, self.parameters["num_aggregators"], round)
         self.request_cache.add(cache)
         cache.start()
         return cache.future
 
     def determine_available_participants_for_round(self, round: int) -> Future:
-        self.logger.info("Aggregator %s starts to determine available participants for round %d",
-                         self.peer_manager.get_my_short_id(), round)
         candidate_participants = self.sample_manager.get_ordered_sample_list(round, self.peer_manager.get_active_peers(round))
-        cache = PingPeersRequestCache(self, candidate_participants, self.parameters["sample_size"])
+        self.logger.info("Aggregator %s starts to determine available participants for round %d (candidates: %d)",
+                         self.peer_manager.get_my_short_id(), round, len(candidate_participants))
+        cache = PingPeersRequestCache(self, candidate_participants, self.parameters["sample_size"], round)
         self.request_cache.add(cache)
         cache.start()
         return cache.future
 
-    def ping_peer(self, ping_all_id: int, peer_pk: bytes) -> Future:
-        self.logger.debug("Participant %s pinging participant %s",
-                          self.peer_manager.get_my_short_id(), self.peer_manager.get_short_id(peer_pk))
+    def ping_peer(self, ping_all_id: int, peer_pk: bytes, round: int) -> Future:
+        self.logger.debug("Participant %s pinging participant %s for round %d",
+                          self.peer_manager.get_my_short_id(), self.peer_manager.get_short_id(peer_pk), round)
         peer_short_id = self.peer_manager.get_short_id(peer_pk)
         peer = self.get_peer_by_pk(peer_pk)
         if not peer:
             self.logger.warning("Wanted to ping participant %s but cannot find Peer object!", peer_short_id)
             return succeed((peer_pk, False))
 
-        cache = PingRequestCache(self, ping_all_id, peer_pk, self.parameters["ping_timeout"])
+        cache = PingRequestCache(self, ping_all_id, peer_pk, round, self.parameters["ping_timeout"])
         self.request_cache.add(cache)
-        self.send_ping(peer, cache.number)
+        self.send_ping(peer, round, cache.number)
         return cache.future
 
-    def send_ping(self, peer: Peer, identifier: int) -> None:
+    def send_ping(self, peer: Peer, round: int, identifier: int) -> None:
         """
         Send a ping message with an identifier to a specific peer.
         """
         auth = BinMemberAuthenticationPayload(self.my_peer.public_key.key_to_bin())
-        payload = PingPayload(identifier)
+        payload = PingPayload(round, identifier)
 
         packet = self._ez_pack(self._prefix, PingPayload.msg_id, [auth, payload])
         self.endpoint.send(peer.address, packet)
@@ -220,14 +221,14 @@ class DFLCommunity(Community):
             self.logger.warning("Participant %s ignoring ping message from %s due to inactivity", my_peer_id, peer_id)
             return
 
-        self.send_pong(peer, payload.identifier)
+        self.send_pong(peer, payload.round, payload.identifier)
 
-    def send_pong(self, peer: Peer, identifier: int) -> None:
+    def send_pong(self, peer: Peer, round: int, identifier: int) -> None:
         """
         Send a pong message with an identifier to a specific peer.
         """
         auth = BinMemberAuthenticationPayload(self.my_peer.public_key.key_to_bin())
-        payload = PongPayload(identifier)
+        payload = PongPayload(round, identifier)
 
         packet = self._ez_pack(self._prefix, PongPayload.msg_id, [auth, payload])
         self.endpoint.send(peer.address, packet)
@@ -239,8 +240,11 @@ class DFLCommunity(Community):
             self.logger.warning("ping cache with id %s not found", payload.identifier)
             return
 
+        # Update the population view with this new information
+        self.peer_manager.update_peer_activity(peer.public_key.key_to_bin(), payload.round)
+
         cache = self.request_cache.pop("ping-%s" % peer_short_id, payload.identifier)
-        cache.future.set_result((peer.public_key.key_to_bin(), True))
+        cache.future.set_result((peer.public_key.key_to_bin(), payload.round, True))
 
     async def participate_in_round(self, round):
         """
@@ -263,7 +267,8 @@ class DFLCommunity(Community):
         # 2. Determine the aggregators of the next sample that are available
         aggregators = await self.determine_available_aggregators_for_round(round + 1)
         aggregator_ids = [self.peer_manager.get_short_id(peer_id) for peer_id in aggregators]
-        self.logger.info("Participant %s determined %d available aggregators: %s", len(aggregator_ids), aggregator_ids)
+        self.logger.info("Participant %s determined %d available aggregators: %s",
+                         self.peer_manager.get_my_short_id(), len(aggregator_ids), aggregator_ids)
 
         # 2. Send the model to these available aggregators
         await self.send_trained_model_to_aggregators(aggregators, round)
@@ -308,6 +313,9 @@ class DFLCommunity(Community):
 
         # Determine the available participants
         participants = await self.determine_available_participants_for_round(round + 1)
+        participants_ids = [self.peer_manager.get_short_id(peer_id) for peer_id in participants]
+        self.logger.info("Participant %s determined %d available participants for round %d: %s",
+                         self.peer_manager.get_my_short_id(), len(participants_ids), round + 1, participants_ids)
 
         # 3.3. Distribute the average model to the available participants in the sample.
         await self.send_aggregated_model_to_participants(participants, avg_model, round)
@@ -332,6 +340,9 @@ class DFLCommunity(Community):
 
         population_view = copy.deepcopy(self.peer_manager.last_active)
         for peer_pk in participants:
+            if peer_pk == self.my_id:
+                continue  # Do not send the aggregated model to yourself
+
             peer = self.get_peer_by_pk(peer_pk)
             if not peer:
                 self.logger.warning("Could not find peer with public key %s", hexlify(peer_pk).decode())

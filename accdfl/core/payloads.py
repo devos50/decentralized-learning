@@ -9,9 +9,11 @@ class AdvertiseMembership:
 
 @dataclass(msg_id=11)
 class PingPayload:
+    round: int
     identifier: int
 
 
 @dataclass(msg_id=12)
 class PongPayload:
+    round: int
     identifier: int

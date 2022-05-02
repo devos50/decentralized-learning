@@ -42,7 +42,7 @@ class TestDFLCommunityBase(TestBase):
             "num_aggregators": self.NUM_AGGREGATORS,
             "aggregation_timeout": 0.5,
             "ping_timeout": 0.5,
-            "inactivity_threshold": 10,
+            "inactivity_threshold": 30,
 
             # These parameters are not available in a deployed environment - only for experimental purposes.
             "target_participants": self.TARGET_NUM_NODES,
@@ -151,13 +151,13 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
         aggregator, other_node = self.nodes[0], self.nodes[1]
         model = aggregator.overlay.model_manager.model
 
-        ensure_future(aggregator.overlay.participate_in_round(1))
         await sleep(0.1)
 
         await aggregator.overlay.received_trained_model(aggregator.overlay.my_peer, 1, model, aggregator.overlay.peer_manager.last_active)
         await aggregator.overlay.received_trained_model(other_node.overlay.my_peer, 1, model, aggregator.overlay.peer_manager.last_active)
-        await aggregator.overlay.aggregation_deferreds[1]
         await sleep(0.1)
+        assert 1 not in aggregator.overlay.aggregating_in_rounds
+        assert aggregator.overlay.last_aggregate_round_completed >= 1
         assert 1 not in aggregator.overlay.model_manager.incoming_trained_models
 
     @pytest.mark.timeout(5)
@@ -191,8 +191,8 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
         """
         self.nodes[0].overlay.is_active = True
         self.nodes[1].overlay.is_active = True
-        res = await self.nodes[0].overlay.ping_peer(1234, self.nodes[1].overlay.my_peer.public_key.key_to_bin())
-        assert res[1]
+        res = await self.nodes[0].overlay.ping_peer(1234, self.nodes[1].overlay.my_peer.public_key.key_to_bin(), 1)
+        assert res[2]
 
     @pytest.mark.timeout(5)
     async def test_ping_fail(self):
@@ -200,8 +200,8 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
         Test pinging a single peer.
         """
         self.nodes[0].overlay.is_active = True
-        res = await self.nodes[0].overlay.ping_peer(1234, self.nodes[1].overlay.my_peer.public_key.key_to_bin())
-        assert not res[1]
+        res = await self.nodes[0].overlay.ping_peer(1234, self.nodes[1].overlay.my_peer.public_key.key_to_bin(), 1)
+        assert not res[2]
 
 
 class TestDFLCommunityFiveNodes(TestDFLCommunityBase):
@@ -252,13 +252,30 @@ class TestDFLCommunityFiveNodesOneLeaving(TestDFLCommunityBase):
 
     @pytest.mark.timeout(5)
     async def test_node_leaving(self):
-        # The node that will not participate in the next round should go offline
+        """
+        Test whether a node that leaves gracefully will eventually be removed from the population views' of others.
+        """
 
         # Start all nodes
         for ind in range(self.NUM_NODES):
             self.nodes[ind].overlay.start()
 
-        await sleep(0.1)
+        await sleep(0.1)  # Progress the network
+        self.nodes[0].overlay.go_offline(2)
+
+        await self.wait_for_num_nodes_in_all_views(self.NUM_NODES - 1)
+
+    @pytest.mark.timeout(5)
+    async def test_node_crashing(self):
+        """
+        Test whether a node that leaves gracefully will eventually be removed from the population views' of others.
+        """
+
+        # Start all nodes
+        for ind in range(self.NUM_NODES):
+            self.nodes[ind].overlay.start()
+
+        await sleep(0.1)  # Progress the network
         self.nodes[0].overlay.go_offline(2)
 
         await self.wait_for_num_nodes_in_all_views(self.NUM_NODES - 1)
