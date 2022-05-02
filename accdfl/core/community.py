@@ -5,7 +5,7 @@ import os
 import pickle
 from asyncio import Future, ensure_future
 from binascii import unhexlify, hexlify
-from typing import Optional, Dict, Set
+from typing import Optional, Dict, Set, Tuple
 
 from torch import nn
 
@@ -15,7 +15,7 @@ from accdfl.core.dataset import TrainDataset
 from accdfl.core.model_manager import ModelManager
 from accdfl.core.optimizer.sgd import SGDOptimizer
 from accdfl.core.payloads import AdvertiseMembership
-from accdfl.core.peer_manager import PeerManager, WENT_OFFLINE
+from accdfl.core.peer_manager import PeerManager
 from accdfl.core.sample_manager import SampleManager
 from accdfl.util.eva.protocol import EVAProtocol
 from accdfl.util.eva.result import TransferResult
@@ -117,7 +117,10 @@ class DFLCommunity(Community):
         self.is_active = False
         self.cancel_all_pending_tasks()
 
-        self.peer_manager.last_active[self.my_id] = WENT_OFFLINE
+        self.logger.info("Participant %s will go offline in round %d", self.peer_manager.get_my_short_id(), round)
+
+        info = self.peer_manager.last_active[self.my_id]
+        self.peer_manager.last_active[self.my_id] = (info[0], (round, NodeMembershipChange.LEAVE))
         self.advertise_membership(round, NodeMembershipChange.LEAVE)
 
     def advertise_membership(self, round: int, change: NodeMembershipChange):
@@ -153,9 +156,10 @@ class DFLCommunity(Community):
 
         change: NodeMembershipChange = NodeMembershipChange(payload.change)
         if change == NodeMembershipChange.JOIN:
-            self.peer_manager.last_active_pending[peer_pk] = payload.round
+            # Do not apply this immediately since we do not want the newly joined node to be part of the next sample just yet.
+            self.peer_manager.last_active_pending[peer_pk] = (payload.round, (payload.round, NodeMembershipChange.JOIN))
         else:
-            self.peer_manager.last_active[peer_pk] = WENT_OFFLINE
+            self.peer_manager.last_active[peer_pk] = (payload.round, (payload.round, NodeMembershipChange.LEAVE))
 
     async def participate_in_round(self, round):
         """
@@ -299,7 +303,7 @@ class DFLCommunity(Community):
         my_peer_id = self.peer_manager.get_my_short_id()
 
         if not self.is_active:
-            self.logger.warning("Participant %s ignoring message due to inactivity", my_peer_id)
+            self.logger.warning("Participant %s ignoring message from %s due to inactivity", my_peer_id, peer_id)
             return
 
         self.logger.info(f'Participant {my_peer_id} received data from participant {peer_id}: {result.info.decode()}')
@@ -315,7 +319,7 @@ class DFLCommunity(Community):
         elif json_data["type"] == "aggregated_model":
             self.received_aggregated_model(result.peer, json_data["round"], incoming_model, received_population_view)
 
-    async def received_trained_model(self, peer: Peer, model_round: int, model: nn.Module, received_population_view: Dict[bytes, int]) -> None:
+    async def received_trained_model(self, peer: Peer, model_round: int, model: nn.Module, received_population_view: Dict) -> None:
         if self.shutting_down:
             return
 

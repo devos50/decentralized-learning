@@ -1,9 +1,10 @@
 import logging
 from binascii import hexlify
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Tuple
+
+from accdfl.core import NodeMembershipChange
 
 NO_ACTIVITY_INFO = -1
-WENT_OFFLINE = -2
 
 
 class PeerManager:
@@ -13,9 +14,9 @@ class PeerManager:
 
     def __init__(self, my_pk: bytes):
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.my_pk = my_pk
-        self.last_active: Dict[bytes, int] = {}
-        self.last_active_pending: Dict[bytes, int] = {}  # Pending changes that are not immediately applied.
+        self.my_pk: bytes = my_pk
+        self.last_active: Dict[bytes, Tuple[int, Tuple[int, NodeMembershipChange]]] = {}
+        self.last_active_pending: Dict[bytes, Tuple[int, Tuple[int, NodeMembershipChange]]] = {}  # Pending changes that are not immediately applied.
 
     def add_peer(self, peer_pk: bytes, round_active: Optional[int] = NO_ACTIVITY_INFO) -> None:
         """
@@ -28,7 +29,7 @@ class PeerManager:
 
         self.logger.info("Participant %s adding participant %s to local view",
                          self.get_my_short_id(), self.get_short_id(peer_pk))
-        self.last_active[peer_pk] = round_active
+        self.last_active[peer_pk] = (round_active, (0, NodeMembershipChange.JOIN))
 
     def remove_peer(self, peer_pk) -> None:
         """
@@ -41,7 +42,8 @@ class PeerManager:
         return peer_pk in self.get_active_peers()
 
     def get_active_peers(self) -> List[bytes]:
-        return [peer_pk for peer_pk, last_round_active in self.last_active.items() if last_round_active != WENT_OFFLINE]
+        return [peer_pk for peer_pk, membership_status in self.last_active.items()
+                if membership_status[1][1] != NodeMembershipChange.LEAVE]
 
     def get_num_peers(self) -> int:
         """
@@ -49,13 +51,14 @@ class PeerManager:
         """
         return len(self.get_active_peers())
 
-    def update_peer_activity(self, peer_pk: bytes, round_active) -> None:
+    def update_peer_activity(self, peer_pk: bytes, round_active: int) -> None:
         """
         Update the status of a particular peer.
         :param peer_pk: The public key of the peer which activity status will be udpated.
         :param round_active: The last round in which this peer has been active.
         """
-        self.last_active[peer_pk] = max(self.last_active[peer_pk], round_active)
+        info = self.last_active[peer_pk]
+        self.last_active[peer_pk] = (max(self.last_active[peer_pk][0], round_active), info[1])
 
     def get_my_short_id(self) -> str:
         """
@@ -76,11 +79,11 @@ class PeerManager:
             self.update_last_active(self.last_active_pending)
             self.last_active_pending = {}
 
-    def update_last_active(self, other_last_active: Dict[bytes, int]) -> None:
+    def update_last_active(self, other_last_active: Dict[bytes, Tuple[int, Tuple[int, NodeMembershipChange]]]) -> None:
         """
         Reconcile the differences between two population views.
         """
-        for peer_pk, last_round_active in other_last_active.items():
+        for peer_pk, info in other_last_active.items():
             # Is this a new joining node?
             if peer_pk not in self.last_active:
                 # This seems to be a new node joining
@@ -89,11 +92,14 @@ class PeerManager:
                 self.last_active[peer_pk] = other_last_active[peer_pk]
                 continue
 
-            # This peer is already in the view - update it if it's not offline
-            if self.last_active[peer_pk] != WENT_OFFLINE:
-                if last_round_active == WENT_OFFLINE:
-                    self.logger.info("Participant %s considering peer %s offline",
-                                     self.get_my_short_id(), self.get_short_id(peer_pk))
-                    self.last_active[peer_pk] = WENT_OFFLINE
-                else:
-                    self.last_active[peer_pk] = max(self.last_active[peer_pk], other_last_active[peer_pk])
+            # This peer is already in the view - take its latest information
+
+            # Check the last round activity
+            last_round_active = info[0]
+            if last_round_active > self.last_active[peer_pk][0]:
+                self.update_peer_activity(peer_pk, last_round_active)
+
+            # Update node membership status
+            last_membership_round = info[1][0]
+            if last_membership_round > self.last_active[peer_pk][1][0]:
+                self.last_active[peer_pk] = (self.last_active[peer_pk][0], info[1])
