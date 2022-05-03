@@ -5,7 +5,7 @@ import os
 import pickle
 from asyncio import Future, ensure_future
 from binascii import unhexlify, hexlify
-from typing import Optional, Dict, Set, List
+from typing import Optional, Dict, Set, List, Callable
 
 from torch import nn
 
@@ -38,8 +38,8 @@ class DFLCommunity(Community):
         self.my_id = self.my_peer.public_key.key_to_bin()
         self.is_active = False
         self.model_send_delay = None
-        self.round_complete_callback = None
-        self.aggregate_complete_callback = None
+        self.round_complete_callback: Optional[Callable] = None
+        self.aggregate_complete_callback: Optional[Callable] = None
         self.parameters = None
         self.participating_in_rounds: Set[int] = set()
         self.aggregating_in_rounds: Set[int] = set()
@@ -308,7 +308,6 @@ class DFLCommunity(Community):
         self.logger.info("Aggregator %s will average the models of round %d",
                          self.peer_manager.get_my_short_id(), round)
         avg_model = self.model_manager.average_trained_models_of_round(round)
-        self.model_manager.adopt_model(avg_model)
 
         # 3.2. Remove these models from the model manager (they are not needed anymore)
         self.model_manager.remove_trained_models_of_round(round)
@@ -328,7 +327,7 @@ class DFLCommunity(Community):
 
         # 4. Invoke the callback
         if self.aggregate_complete_callback:
-            ensure_future(self.aggregate_complete_callback(round))
+            ensure_future(self.aggregate_complete_callback(round, avg_model))
 
     async def send_aggregated_model_to_participants(self, participants: List[bytes], model: nn.Module, round: int) -> None:
         if not self.is_active:
