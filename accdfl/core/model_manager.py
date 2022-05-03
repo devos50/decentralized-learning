@@ -1,18 +1,16 @@
 import copy
-import itertools
 import logging
 import os
-from asyncio import get_event_loop, to_thread
+from asyncio import get_event_loop
 from concurrent.futures import ProcessPoolExecutor
 from typing import Dict, Optional, List
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from torch.autograd import Variable
 
 
 from accdfl.core.evaluator import setup_evaluator, evaluate_accuracy
+from accdfl.core.model_trainer import setup_trainer, train_model
 
 
 class ModelManager:
@@ -20,10 +18,8 @@ class ModelManager:
     This class manages the current ML model and training.
     """
 
-    def __init__(self, model, dataset, optimizer, parameters):
+    def __init__(self, model, parameters, participant_index: int):
         self.model = model
-        self.dataset = dataset
-        self.optimizer = optimizer
         self.epoch = 1
         self.parameters = parameters
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -31,6 +27,10 @@ class ModelManager:
                                                       initargs=(
                                                       os.path.join(os.environ["HOME"], "dfl-data"), parameters,),
                                                       max_workers=1)
+        self.model_train_executor = ProcessPoolExecutor(initializer=setup_trainer,
+                                                        initargs=(
+                                                        os.path.join(os.environ["HOME"], "dfl-data"), parameters, participant_index),
+                                                        max_workers=1)
 
         # Keeps track of the incoming trained models as aggregator
         self.incoming_trained_models: Dict[int, Dict[bytes, nn.Module]] = {}
@@ -58,46 +58,9 @@ class ModelManager:
     def remove_trained_models_of_round(self, round: int) -> None:
         self.incoming_trained_models.pop(round)
 
-    async def train_in_thread(self):
-        await to_thread(self.train)
-
-    def train(self) -> int:
-        """
-        Train the model on a batch. Return an integer that indicates how many local steps we have done.
-        """
-        def it_has_next(iterable):
-            try:
-                first = next(iterable)
-            except StopIteration:
-                return None
-            return itertools.chain([first], iterable)
-
-        local_steps = len(self.dataset.train_set) // self.parameters["batch_size"]
-        if len(self.dataset.train_set) % self.parameters["batch_size"] != 0:
-            local_steps += 1
-
-        for local_step in range(local_steps):
-            data, target = self.dataset.iterator.__next__()
-            self.model.train()
-            data, target = Variable(data), Variable(target)
-            self.optimizer.optimizer.zero_grad()
-            self.logger.info('d-sgd.next node forward propagation')
-            output = self.model.forward(data)
-            loss = F.nll_loss(output, target)
-            self.logger.info('d-sgd.next node backward propagation')
-            loss.backward()
-            self.optimizer.optimizer.step()
-
-        # Are we at the end of the epoch?
-        res = it_has_next(self.dataset.iterator)
-        if res is None:
-            self.epoch += 1
-            self.logger.info("Epoch done - resetting dataset iterator")
-            self.dataset.reset_train_iterator()
-        else:
-            self.dataset.iterator = res
-
-        return local_steps
+    async def train(self):
+        trained_model = await get_event_loop().run_in_executor(self.model_train_executor, train_model, self.model)
+        self.model = trained_model
 
     @staticmethod
     def average_models(models: List[nn.Module]) -> nn.Module:

@@ -98,9 +98,7 @@ class DFLCommunity(Community):
         # Initialize the model
         participant_index = parameters["participants"].index(hexlify(self.my_id).decode())
         model = create_model(parameters["dataset"], parameters["model"])
-        dataset = TrainDataset(os.path.join(os.environ["HOME"], "dfl-data"), parameters, participant_index)
-        optimizer = SGDOptimizer(model, parameters["learning_rate"], parameters["momentum"])
-        self.model_manager = ModelManager(model, dataset, optimizer, parameters)
+        self.model_manager = ModelManager(model, parameters, participant_index)
 
         # Setup the model transmission
         self.transmission_method = transmission_method
@@ -266,7 +264,7 @@ class DFLCommunity(Community):
                          self.peer_manager.get_my_short_id(), round, sample_ids)
 
         # 1. Train the model
-        await self.model_manager.train_in_thread()
+        await self.model_manager.train()
 
         # 2. Determine the aggregators of the next sample that are available
         aggregators = await self.determine_available_aggregators_for_round(round + 1)
