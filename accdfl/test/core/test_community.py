@@ -225,7 +225,7 @@ class TestDFLCommunityFiveNodesOneJoining(TestDFLCommunityBase):
     SAMPLE_SIZE = 1
     NODES_PER_CLASS = [TARGET_NUM_NODES] * 10
 
-    @pytest.mark.timeout(5)
+    @pytest.mark.timeout(10)
     async def test_new_node_joining(self):
         new_node = self.create_node()
         self.add_node_to_experiment(new_node)

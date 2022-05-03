@@ -40,16 +40,25 @@ class PingPeersRequestCache(RandomNumberCache):
         self.ping_timeout = self.community.parameters["ping_timeout"]
         self.future = Future()
 
+    @property
+    def timeout_delay(self) -> float:
+        # This cache will practically not timeout.
+        return 3600.0
+
     def start(self):
         # Ping the first peers
         for peer_pk in self.peers[:self.target_available_peers]:
             self.ping_peer(peer_pk)
             self.next_peer_index += 1
 
+    def finish(self):
+        self.community.request_cache.pop(self.prefix, self._number)
+        self.future.set_result(self.available_peers)
+
     def add_available_peer(self, peer_pk):
         self.available_peers.append(peer_pk)
         if len(self.available_peers) == self.target_available_peers and not self.future.done():
-            self.future.set_result(self.available_peers)
+            self.finish()
 
     def on_pong_response(self, future):
         peer_pk, _, online = future.result()
@@ -61,8 +70,8 @@ class PingPeersRequestCache(RandomNumberCache):
                 self.ping_peer(self.peers[self.next_peer_index])
                 self.next_peer_index += 1
             elif not self.future.done():
-                # We're out of peers - return the available peers
-                self.future.set_result(self.available_peers)
+                # We're out of peers - return the available peers, it's the best we can do
+                self.finish()
 
     def ping_peer(self, peer_pk: bytes):
         if peer_pk == self.community.my_id:
