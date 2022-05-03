@@ -74,7 +74,7 @@ class ModelManager:
                     c1.add_(w * p1)
             return center_model
 
-    def adopt_model(self, new_model):
+    def adopt_model(self, new_model: nn.Module):
         """
         Replace the parameters of the current model with those of a new model.
         """
@@ -84,11 +84,11 @@ class ModelManager:
                 p.mul_(0.)
                 p.add_(new_p)
 
-    async def compute_accuracy(self):
+    async def compute_accuracy(self, model: nn.Module):
         """
         Compute the accuracy/loss of the current model.
         Optionally, one can provide a custom iterator to compute the accuracy on a custom dataset.
         """
         self.logger.info("Computing accuracy of model")
-        accuracy, loss = await get_event_loop().run_in_executor(self.acc_check_executor, evaluate_accuracy, self.model)
+        accuracy, loss = await get_event_loop().run_in_executor(self.acc_check_executor, evaluate_accuracy, model)
         return accuracy, loss
