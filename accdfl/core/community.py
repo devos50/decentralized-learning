@@ -47,6 +47,7 @@ class DFLCommunity(Community):
         self.did_setup = False
         self.shutting_down = False
         self.train_in_subprocess = True
+        self.fixed_aggregator = None
 
         self.peer_manager: PeerManager = PeerManager(self.my_id, -1)
         self.sample_manager: Optional[SampleManager] = None  # Initialized when the process is setup
@@ -80,11 +81,13 @@ class DFLCommunity(Community):
         else:
             self.logger.info("Participant %s won't participate in round 1", self.peer_manager.get_my_short_id())
 
-    def setup(self, parameters: Dict, data_dir: str, transmission_method: TransmissionMethod = TransmissionMethod.EVA):
+    def setup(self, parameters: Dict, data_dir: str, transmission_method: TransmissionMethod = TransmissionMethod.EVA,
+              aggregator: Optional[bytes] = None):
         assert parameters["target_participants"] * parameters["local_classes"] == sum(parameters["nodes_per_class"])
 
         self.parameters = parameters
         self.data_dir = data_dir
+        self.fixed_aggregator = aggregator
         self.sample_size = parameters["sample_size"]
         self.logger.info("Setting up experiment with %d initial participants and sample size %d (I am participant %s)" %
                          (len(parameters["participants"]), self.sample_size, self.peer_manager.get_my_short_id()))
@@ -167,7 +170,11 @@ class DFLCommunity(Community):
             self.peer_manager.last_active[peer_pk] = (payload.round, (payload.round, NodeMembershipChange.LEAVE))
 
     def determine_available_aggregators_for_round(self, round: int) -> Future:
-        candidate_aggregators = self.sample_manager.get_ordered_sample_list(round, self.peer_manager.get_active_peers(round))
+        if self.fixed_aggregator:
+            candidate_aggregators = [self.fixed_aggregator]
+        else:
+            candidate_aggregators = self.sample_manager.get_ordered_sample_list(
+                round, self.peer_manager.get_active_peers(round))
         self.logger.info("Participant %s starts to determine %d available aggregators for round %d (candidates: %d)",
                          self.peer_manager.get_my_short_id(), self.parameters["num_aggregators"], round,
                          len(candidate_aggregators))
