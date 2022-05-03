@@ -366,7 +366,7 @@ class DFLCommunity(Community):
         population_view = copy.deepcopy(self.peer_manager.last_active)
         for aggregator in aggregators:
             if aggregator == self.my_id:
-                ensure_future(self.received_trained_model(self.my_peer, round, self.model_manager.model))
+                self.received_trained_model(self.my_peer, round, self.model_manager.model)
                 continue
 
             peer = self.get_peer_by_pk(aggregator)
@@ -417,11 +417,11 @@ class DFLCommunity(Community):
         incoming_model = unserialize_model(serialized_model, self.parameters["dataset"], self.parameters["model"])
 
         if json_data["type"] == "trained_model":
-            ensure_future(self.received_trained_model(result.peer, json_data["round"], incoming_model))
+            self.received_trained_model(result.peer, json_data["round"], incoming_model)
         elif json_data["type"] == "aggregated_model":
             self.received_aggregated_model(result.peer, json_data["round"], incoming_model)
 
-    async def received_trained_model(self, peer: Peer, model_round: int, model: nn.Module) -> None:
+    def received_trained_model(self, peer: Peer, model_round: int, model: nn.Module) -> None:
         if self.shutting_down:
             return
 

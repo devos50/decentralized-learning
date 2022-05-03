@@ -155,9 +155,9 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
 
         await sleep(0.1)
 
-        await aggregator.overlay.received_trained_model(aggregator.overlay.my_peer, 1, model)
-        await aggregator.overlay.received_trained_model(other_node.overlay.my_peer, 1, model)
-        await sleep(0.1)
+        aggregator.overlay.received_trained_model(aggregator.overlay.my_peer, 1, model)
+        aggregator.overlay.received_trained_model(other_node.overlay.my_peer, 1, model)
+        await sleep(0.3)
         assert 1 not in aggregator.overlay.aggregating_in_rounds
         assert aggregator.overlay.last_aggregate_round_completed >= 1
         assert 1 not in aggregator.overlay.model_manager.incoming_trained_models
@@ -181,7 +181,7 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
         aggregator, other_node = self.nodes[0], self.nodes[1]
         model = other_node.overlay.model_manager.model
         aggregator.overlay.last_aggregate_round_completed = 1
-        await aggregator.overlay.received_trained_model(other_node.overlay.my_peer, 1, model)
+        aggregator.overlay.received_trained_model(other_node.overlay.my_peer, 1, model)
         assert not aggregator.overlay.is_pending_task_active("aggregate_1")
 
     @pytest.mark.timeout(5)
