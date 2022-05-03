@@ -312,14 +312,8 @@ class DFLCommunity(Community):
         # 3.2. Remove these models from the model manager (they are not needed anymore)
         self.model_manager.remove_trained_models_of_round(round)
 
-        # Determine the available participants
-        participants = await self.determine_available_participants_for_round(round + 1)
-        participants_ids = [self.peer_manager.get_short_id(peer_id) for peer_id in participants]
-        self.logger.info("Participant %s determined %d available participants for round %d: %s",
-                         self.peer_manager.get_my_short_id(), len(participants_ids), round + 1, participants_ids)
-
         # 3.3. Distribute the average model to the available participants in the sample.
-        await self.send_aggregated_model_to_participants(participants, avg_model, round)
+        await self.send_aggregated_model_to_participants(avg_model, round)
 
         self.logger.info("Aggregator %s completed aggregation in round %d", self.peer_manager.get_my_short_id(), round)
         self.aggregating_in_rounds.remove(round)
@@ -329,24 +323,33 @@ class DFLCommunity(Community):
         if self.aggregate_complete_callback:
             ensure_future(self.aggregate_complete_callback(round, avg_model))
 
-    async def send_aggregated_model_to_participants(self, participants: List[bytes], model: nn.Module, round: int) -> None:
+    async def send_aggregated_model_to_participants(self, model: nn.Module, model_round: int) -> None:
         if not self.is_active:
             self.logger.warning("Participant %s not sending aggregated model due to offline status",
                                 self.peer_manager.get_my_short_id())
             return
 
+        self.logger.info("Participant %s sending aggregated model of round %d to participants",
+                         self.peer_manager.get_my_short_id(), model_round)
+
+        # Determine the available participants for the next round
+        participants = await self.determine_available_participants_for_round(model_round + 1)
+        participants_ids = [self.peer_manager.get_short_id(peer_id) for peer_id in participants]
+        self.logger.info("Participant %s determined %d available participants for round %d: %s",
+                         self.peer_manager.get_my_short_id(), len(participants_ids), model_round + 1, participants_ids)
+
         population_view = copy.deepcopy(self.peer_manager.last_active)
         for peer_pk in participants:
             if peer_pk == self.my_id:
                 model_cpy = copy.deepcopy(model)
-                self.received_aggregated_model(self.my_peer, round, model_cpy)
+                self.received_aggregated_model(self.my_peer, model_round, model_cpy)
                 continue
 
             peer = self.get_peer_by_pk(peer_pk)
             if not peer:
                 self.logger.warning("Could not find peer with public key %s", hexlify(peer_pk).decode())
                 continue
-            await self.eva_send_model(round, model, "aggregated_model", population_view, peer)
+            await self.eva_send_model(model_round, model, "aggregated_model", population_view, peer)
 
         # Flush pending changes to the local view
         self.peer_manager.flush_last_active_pending()
@@ -463,6 +466,17 @@ class DFLCommunity(Community):
 
         self.logger.info("Participant %s received aggregated model of round %d from aggregator %s",
                          self.peer_manager.get_my_short_id(), model_round, peer_id)
+
+        # If we are aggregating in this particular model round and still waiting for models, stop doing so.
+        task_name = "aggregate_%d" % model_round
+        if self.is_pending_task_active(task_name) and model_round in self.aggregating_in_rounds and \
+                peer != self.my_peer:
+            self.logger.warning("Received aggregated model for round %d from participant %s while we are also "
+                                "aggregating in that round! Stopping task %s", model_round, peer_id, task_name)
+            self.cancel_pending_task(task_name)
+
+            # Help to spread this received aggregated model
+            ensure_future(self.send_aggregated_model_to_participants(model, model_round))
 
         # If this is the first time we receive an aggregated model for this round, adopt the model and start
         # participating in the next round.
