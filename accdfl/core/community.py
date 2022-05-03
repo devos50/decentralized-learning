@@ -338,7 +338,8 @@ class DFLCommunity(Community):
         population_view = copy.deepcopy(self.peer_manager.last_active)
         for peer_pk in participants:
             if peer_pk == self.my_id:
-                self.received_aggregated_model(self.my_peer, round, model)
+                model_cpy = copy.deepcopy(model)
+                self.received_aggregated_model(self.my_peer, round, model_cpy)
                 continue
 
             peer = self.get_peer_by_pk(peer_pk)
