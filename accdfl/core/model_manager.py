@@ -10,7 +10,7 @@ import torch.nn as nn
 
 
 from accdfl.core.evaluator import setup_evaluator, evaluate_accuracy
-from accdfl.core.model_trainer import setup_trainer, train_model
+from accdfl.core.model_trainer import setup_trainer, train_model, ModelTrainer
 
 
 class ModelManager:
@@ -22,15 +22,16 @@ class ModelManager:
         self.model = model
         self.epoch = 1
         self.parameters = parameters
+        self.participant_index = participant_index
         self.logger = logging.getLogger(self.__class__.__name__)
+        self.data_dir = os.path.join(os.environ["HOME"], "dfl-data")
         self.acc_check_executor = ProcessPoolExecutor(initializer=setup_evaluator,
-                                                      initargs=(
-                                                      os.path.join(os.environ["HOME"], "dfl-data"), parameters,),
+                                                      initargs=(self.data_dir, parameters,),
                                                       max_workers=1)
         self.model_train_executor = ProcessPoolExecutor(initializer=setup_trainer,
-                                                        initargs=(
-                                                        os.path.join(os.environ["HOME"], "dfl-data"), parameters, participant_index),
+                                                        initargs=(self.data_dir, parameters, participant_index,),
                                                         max_workers=1)
+        self.model_trainer = None  # Only used when not training in a subprocess (e.g., in the unit tests)
 
         # Keeps track of the incoming trained models as aggregator
         self.incoming_trained_models: Dict[int, Dict[bytes, nn.Module]] = {}
@@ -58,8 +59,14 @@ class ModelManager:
     def remove_trained_models_of_round(self, round: int) -> None:
         self.incoming_trained_models.pop(round)
 
-    async def train(self):
-        trained_model = await get_event_loop().run_in_executor(self.model_train_executor, train_model, self.model)
+    async def train(self, in_subprocess: bool = True):
+        if in_subprocess:
+            trained_model = await get_event_loop().run_in_executor(self.model_train_executor, train_model, self.model)
+        else:
+            if not self.model_trainer:
+                # Lazy initialize the model trainer
+                self.model_trainer = ModelTrainer(self.data_dir, self.parameters, self.participant_index)
+            trained_model = self.model_trainer.train(self.model)
         self.model = trained_model
 
     @staticmethod

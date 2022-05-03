@@ -52,7 +52,8 @@ class PingPeersRequestCache(RandomNumberCache):
             self.next_peer_index += 1
 
     def finish(self):
-        self.community.request_cache.pop(self.prefix, self._number)
+        if self.community.request_cache.has(self.prefix, self._number):
+            self.community.request_cache.pop(self.prefix, self._number)
         self.future.set_result(self.available_peers)
 
     def add_available_peer(self, peer_pk):

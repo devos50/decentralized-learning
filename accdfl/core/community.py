@@ -46,6 +46,7 @@ class DFLCommunity(Community):
         self.sample_size = None
         self.did_setup = False
         self.shutting_down = False
+        self.train_in_subprocess = True
 
         self.peer_manager: PeerManager = PeerManager(self.my_id, -1)
         self.sample_manager: Optional[SampleManager] = None  # Initialized when the process is setup
@@ -262,7 +263,7 @@ class DFLCommunity(Community):
                          self.peer_manager.get_my_short_id(), round, sample_ids)
 
         # 1. Train the model
-        await self.model_manager.train()
+        await self.model_manager.train(self.train_in_subprocess)
 
         # 2. Determine the aggregators of the next sample that are available
         aggregators = await self.determine_available_aggregators_for_round(round + 1)
