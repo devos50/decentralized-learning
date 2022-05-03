@@ -269,8 +269,8 @@ class DFLCommunity(Community):
         # 2. Determine the aggregators of the next sample that are available
         aggregators = await self.determine_available_aggregators_for_round(round + 1)
         aggregator_ids = [self.peer_manager.get_short_id(peer_id) for peer_id in aggregators]
-        self.logger.info("Participant %s determined %d available aggregators: %s",
-                         self.peer_manager.get_my_short_id(), len(aggregator_ids), aggregator_ids)
+        self.logger.info("Participant %s determined %d available aggregators for round %d: %s",
+                         self.peer_manager.get_my_short_id(), len(aggregator_ids), round + 1, aggregator_ids)
 
         # 2. Send the model to these available aggregators
         await self.send_trained_model_to_aggregators(aggregators, round)
