@@ -35,7 +35,7 @@ class DFLCommunity(Community):
         self.request_cache = RequestCache()
         self.my_id = self.my_peer.public_key.key_to_bin()
         self.is_active = False
-        self.model_send_delay = None
+        self.model_send_delay = 1.0
         self.round_complete_callback: Optional[Callable] = None
         self.aggregate_complete_callback: Optional[Callable] = None
         self.parameters = None
@@ -411,6 +411,7 @@ class DFLCommunity(Community):
                 break
             except Exception:
                 self.logger.exception("Exception when sending aggregated model to peer %s", peer)
+            await asyncio.sleep(self.model_send_delay)
             attempt += 1
 
     async def on_receive(self, result: TransferResult):
