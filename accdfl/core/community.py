@@ -304,6 +304,8 @@ class DFLCommunity(Community):
             received_sufficient_models = True
 
         if not received_sufficient_models:
+            self.model_manager.remove_trained_models_of_round(round)
+            self.aggregating_in_rounds.remove(round)
             return
 
         # 3.1. Aggregate these models
