@@ -81,16 +81,6 @@ class ModelManager:
                     c1.add_(w * p1)
             return center_model
 
-    def adopt_model(self, new_model: nn.Module):
-        """
-        Replace the parameters of the current model with those of a new model.
-        """
-        # TODO replace this with the latest code from the simulator
-        with torch.no_grad():
-            for p, new_p in zip(self.model.parameters(), new_model.parameters()):
-                p.mul_(0.)
-                p.add_(new_p)
-
     async def compute_accuracy(self, model: nn.Module):
         """
         Compute the accuracy/loss of the current model.

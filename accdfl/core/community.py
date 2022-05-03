@@ -487,7 +487,7 @@ class DFLCommunity(Community):
         task_name = "round_%d" % next_round
         if next_round not in self.participating_in_rounds and not self.is_pending_task_active(task_name) and self.last_round_completed < next_round:
             # TODO we are not waiting on all models from other aggregators. We might want to do this in the future to make the system more robust.
-            self.model_manager.adopt_model(model)
+            self.model_manager.model = model
             self.register_task(task_name, self.participate_in_round, next_round)
 
     async def on_send_complete(self, result: TransferResult):
