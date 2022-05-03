@@ -27,7 +27,7 @@ class ModelManager:
         self.data_dir = os.path.join(os.environ["HOME"], "dfl-data")
         self.acc_check_executor = ProcessPoolExecutor(initializer=setup_evaluator,
                                                       initargs=(self.data_dir, parameters,),
-                                                      max_workers=2)
+                                                      max_workers=4)
         self.model_train_executor = ProcessPoolExecutor(initializer=setup_trainer,
                                                         initargs=(self.data_dir, parameters, participant_index,),
                                                         max_workers=1)
