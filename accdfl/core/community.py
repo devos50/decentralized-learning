@@ -266,7 +266,7 @@ class DFLCommunity(Community):
                          self.peer_manager.get_my_short_id(), round, sample_ids)
 
         # 1. Train the model
-        self.model_manager.train()
+        await self.model_manager.train_in_thread()
 
         # 2. Determine the aggregators of the next sample that are available
         aggregators = await self.determine_available_aggregators_for_round(round + 1)

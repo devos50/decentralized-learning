@@ -2,7 +2,7 @@ import copy
 import itertools
 import logging
 import os
-from asyncio import get_event_loop
+from asyncio import get_event_loop, to_thread
 from concurrent.futures import ProcessPoolExecutor
 from typing import Dict, Optional, List
 
@@ -57,6 +57,9 @@ class ModelManager:
 
     def remove_trained_models_of_round(self, round: int) -> None:
         self.incoming_trained_models.pop(round)
+
+    async def train_in_thread(self):
+        await to_thread(self.train)
 
     def train(self) -> int:
         """

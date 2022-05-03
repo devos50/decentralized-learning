@@ -11,7 +11,7 @@ from accdfl.core.optimizer.sgd import SGDOptimizer
 @pytest.fixture
 def model_manager():
     parameters = {
-        "batch_size": 25,
+        "batch_size": 1,
         "target_participants": 1,
         "dataset": "cifar10",
         "nodes_per_class": [1] * 10,
@@ -27,3 +27,7 @@ def model_manager():
 
 def test_train(model_manager):
     assert model_manager.train() == 20
+
+
+async def test_train_threaded(model_manager):
+    await model_manager.train_in_thread()
