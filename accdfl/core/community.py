@@ -1,7 +1,6 @@
 import asyncio
 import copy
 import json
-import os
 import pickle
 from asyncio import Future, ensure_future
 from binascii import unhexlify, hexlify
@@ -11,10 +10,9 @@ from torch import nn
 
 from accdfl.core import TransmissionMethod, NodeMembershipChange
 from accdfl.core.caches import PingPeersRequestCache, PingRequestCache
+from accdfl.core.exceptions import StopAggregationException
 from accdfl.core.model import serialize_model, unserialize_model, create_model
-from accdfl.core.dataset import TrainDataset
 from accdfl.core.model_manager import ModelManager
-from accdfl.core.optimizer.sgd import SGDOptimizer
 from accdfl.core.payloads import AdvertiseMembership, PingPayload, PongPayload
 from accdfl.core.peer_manager import PeerManager
 from accdfl.core.sample_manager import SampleManager
@@ -53,7 +51,7 @@ class DFLCommunity(Community):
         self.sample_manager: Optional[SampleManager] = None  # Initialized when the process is setup
         self.model_manager: Optional[ModelManager] = None    # Initialized when the process is setup
 
-        self.aggregation_deferreds = {}
+        self.aggregation_futures: Dict[int, Future] = {}
 
         # Model exchange parameters
         self.eva = EVAProtocol(self, self.on_receive, self.on_send_complete, self.on_error)
@@ -289,15 +287,18 @@ class DFLCommunity(Community):
         if not self.model_manager.has_enough_trained_models_of_round(round):
             self.logger.info("Aggregator %s starts to wait for trained models of round %d",
                              self.peer_manager.get_my_short_id(), round)
-            self.aggregation_deferreds[round] = Future()
+            self.aggregation_futures[round] = Future()
             received_sufficient_models = False
             try:
-                await asyncio.wait_for(self.aggregation_deferreds[round], timeout=self.parameters["aggregation_timeout"])
+                await asyncio.wait_for(self.aggregation_futures[round], timeout=self.parameters["aggregation_timeout"])
                 received_sufficient_models = True
             except asyncio.exceptions.TimeoutError:
                 self.logger.warning("Aggregator %s triggered timeout while waiting for models of round %d",
                                     self.peer_manager.get_my_short_id(), round)
-            self.aggregation_deferreds.pop(round, None)
+            except StopAggregationException:
+                self.logger.warning("Aggregator %s triggered StopAggregationException while waiting for models of "
+                                    "round %d", self.peer_manager.get_my_short_id(), round)
+            self.aggregation_futures.pop(round, None)
         else:
             received_sufficient_models = True
 
@@ -450,11 +451,11 @@ class DFLCommunity(Community):
         # TODO integrate the success factor
         if self.model_manager.has_enough_trained_models_of_round(model_round):
             # It could be that the register_task call above is slower than this logic.
-            if model_round in self.aggregation_deferreds:
+            if model_round in self.aggregation_futures:
                 self.logger.info("Aggregator %s received sufficient trained models of round %d",
                                  self.peer_manager.get_my_short_id(), model_round)
-                if not self.aggregation_deferreds[model_round].done():
-                    self.aggregation_deferreds[model_round].set_result(None)
+                if not self.aggregation_futures[model_round].done():
+                    self.aggregation_futures[model_round].set_result(None)
 
     def received_aggregated_model(self, peer: Peer, model_round: int, model: nn.Module) -> None:
         if self.shutting_down:
@@ -468,12 +469,11 @@ class DFLCommunity(Community):
                          self.peer_manager.get_my_short_id(), model_round, peer_id)
 
         # If we are aggregating in this particular model round and still waiting for models, stop doing so.
-        task_name = "aggregate_%d" % model_round
-        if self.is_pending_task_active(task_name) and model_round in self.aggregating_in_rounds and \
-                peer != self.my_peer:
-            self.logger.warning("Received aggregated model for round %d from participant %s while we are also "
-                                "aggregating in that round! Stopping task %s", model_round, peer_id, task_name)
-            self.cancel_pending_task(task_name)
+        if model_round in self.aggregating_in_rounds and model_round in self.aggregation_futures and \
+                not self.aggregation_futures[model_round].done():
+            self.logger.warning("Received aggregated model for round %d from participant %s while were still waiting "
+                                "for trained models in that round! Stopping to wait", model_round, peer_id)
+            self.aggregation_futures[model_round].set_exception(StopAggregationException())
 
             # Help to spread this received aggregated model
             ensure_future(self.send_aggregated_model_to_participants(model, model_round))
