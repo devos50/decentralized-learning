@@ -2,6 +2,7 @@ import asyncio
 import copy
 import json
 import pickle
+import random
 from asyncio import Future, ensure_future
 from binascii import unhexlify, hexlify
 from typing import Optional, Dict, Set, List, Callable
@@ -349,6 +350,9 @@ class DFLCommunity(Community):
         self.logger.info("Participant %s determined %d available participants for round %d: %s",
                          self.peer_manager.get_my_short_id(), len(participants_ids), model_round + 1, participants_ids)
 
+        # For load balancing purposes, shuffle this list
+        random.shuffle(participants)
+
         population_view = copy.deepcopy(self.peer_manager.last_active)
         for peer_pk in participants:
             if peer_pk == self.my_id:
@@ -378,6 +382,10 @@ class DFLCommunity(Community):
         self.logger.info("Participant %s sending trained model of round %d to %d aggregators: %s",
                          self.peer_manager.get_my_short_id(), round, len(aggregators), aggregator_ids)
         population_view = copy.deepcopy(self.peer_manager.last_active)
+
+        # For load balancing purposes, shuffle this list
+        random.shuffle(aggregators)
+
         for aggregator in aggregators:
             if aggregator == self.my_id:
                 self.received_trained_model(self.my_peer, round, self.model_manager.model)
