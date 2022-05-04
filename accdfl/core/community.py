@@ -3,6 +3,7 @@ import copy
 import json
 import pickle
 import random
+import time
 from asyncio import Future, ensure_future
 from binascii import unhexlify, hexlify
 from typing import Optional, Dict, Set, List, Callable
@@ -42,6 +43,7 @@ class DFLCommunity(Community):
         self.parameters = None
         self.participating_in_rounds: Set[int] = set()
         self.aggregating_in_rounds: Set[int] = set()
+        self.aggregation_durations: Dict[int, float] = {}
         self.last_round_completed: int = 0
         self.last_aggregate_round_completed: int = 0
         self.sample_size = None
@@ -292,6 +294,7 @@ class DFLCommunity(Community):
     async def aggregate_in_round(self, round: int):
         self.logger.info("Aggregator %s starts aggregating in round %d", self.peer_manager.get_my_short_id(), round)
         self.aggregating_in_rounds.add(round)
+        start_time = time.time()
 
         if not self.model_manager.has_enough_trained_models_of_round(round):
             self.logger.info("Aggregator %s starts to wait for trained models of round %d",
@@ -316,6 +319,8 @@ class DFLCommunity(Community):
             self.aggregating_in_rounds.remove(round)
             self.last_aggregate_round_completed = max(self.last_aggregate_round_completed, round)
             return
+
+        self.aggregation_durations[round] = time.time() - start_time
 
         # 3.1. Aggregate these models
         self.logger.info("Aggregator %s will average the models of round %d",
