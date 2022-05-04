@@ -408,6 +408,9 @@ class DFLCommunity(Community):
 
     def on_eva_send_done(self, future: Future, peer: Peer, serialized_response: bytes, binary_data: bytes):
         if future.exception():
+            peer_id = self.peer_manager.get_short_id(peer.public_key.key_to_bin())
+            self.logger.warning("Transfer to participant %s failed, scheduling it again (Exception: %s)",
+                                peer_id, future.exception())
             # The transfer failed - try it again after some delay
             asyncio.sleep(self.model_send_delay).add_done_callback(
                 lambda _: self.schedule_eva_send_model(peer, serialized_response, binary_data))
