@@ -110,6 +110,7 @@ class DFLCommunity(Community):
         self.transmission_method = transmission_method
         if self.transmission_method == TransmissionMethod.EVA:
             self.logger.info("Setting up EVA protocol")
+            self.eva.settings.block_size = 60000
             self.eva.settings.window_size = 64
             self.eva.settings.retransmit_attempt_count = 10
             self.eva.settings.retransmit_interval_in_sec = 1
