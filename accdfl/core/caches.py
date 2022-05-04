@@ -24,7 +24,7 @@ class PingRequestCache(NumberCache):
         return self.ping_timeout
 
     def on_timeout(self):
-        self.future.set_result((self.peer_pk, round, False))
+        self.future.set_result((self.peer_pk, self.round, False))
 
 
 class PingPeersRequestCache(RandomNumberCache):
