@@ -314,6 +314,7 @@ class DFLCommunity(Community):
         if not received_sufficient_models:
             self.model_manager.remove_trained_models_of_round(round)
             self.aggregating_in_rounds.remove(round)
+            self.last_aggregate_round_completed = max(self.last_aggregate_round_completed, round)
             return
 
         # 3.1. Aggregate these models
