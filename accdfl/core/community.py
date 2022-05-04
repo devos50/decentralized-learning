@@ -63,6 +63,7 @@ class DFLCommunity(Community):
         self.data_dir = None
         self.transmission_method = TransmissionMethod.EVA
         self.eva_max_retry_attempts = 20
+        self.transfer_times = []
 
         self.add_message_handler(AdvertiseMembership, self.on_membership_advertisement)
         self.add_message_handler(PingPayload, self.on_ping)
@@ -406,28 +407,32 @@ class DFLCommunity(Community):
         # Flush pending changes to the local view
         self.peer_manager.flush_last_active_pending()
 
-    def on_eva_send_done(self, future: Future, peer: Peer, serialized_response: bytes, binary_data: bytes):
+    def on_eva_send_done(self, future: Future, peer: Peer, serialized_response: bytes, binary_data: bytes, start_time: float):
         if future.exception():
             peer_id = self.peer_manager.get_short_id(peer.public_key.key_to_bin())
             self.logger.warning("Transfer to participant %s failed, scheduling it again (Exception: %s)",
                                 peer_id, future.exception())
             # The transfer failed - try it again after some delay
             asyncio.sleep(self.model_send_delay).add_done_callback(
-                lambda _: self.schedule_eva_send_model(peer, serialized_response, binary_data))
+                lambda _: self.schedule_eva_send_model(peer, serialized_response, binary_data, start_time))
+        else:
+            # The transfer seems to be completed - record the transfer time
+            self.transfer_times.append(time.time() - start_time)
 
-    def schedule_eva_send_model(self, peer: Peer, serialized_response: bytes, binary_data: bytes):
+    def schedule_eva_send_model(self, peer: Peer, serialized_response: bytes, binary_data: bytes, start_time: float):
         # Schedule the transfer
         future = self.eva.send_binary(peer, serialized_response, binary_data)
         ensure_future(future).add_done_callback(
-            lambda f: self.on_eva_send_done(f, peer, serialized_response, binary_data))
+            lambda f: self.on_eva_send_done(f, peer, serialized_response, binary_data, start_time))
 
     async def eva_send_model(self, round, model, type, population_view, peer):
+        start_time = time.time()
         serialized_model = serialize_model(model)
         serialized_population_view = pickle.dumps(population_view)
         binary_data = serialized_model + serialized_population_view
         response = {"round": round, "type": type, "model_data_len": len(serialized_model)}
         serialized_response = json.dumps(response).encode()
-        self.schedule_eva_send_model(peer, serialized_response, binary_data)
+        self.schedule_eva_send_model(peer, serialized_response, binary_data, start_time)
 
     async def on_receive(self, result: TransferResult):
         peer_pk = result.peer.public_key.key_to_bin()
