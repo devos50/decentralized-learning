@@ -413,7 +413,7 @@ class DFLCommunity(Community):
             self.logger.warning("Transfer to participant %s failed, scheduling it again (Exception: %s)",
                                 peer_id, future.exception())
             # The transfer failed - try it again after some delay
-            asyncio.sleep(self.model_send_delay).add_done_callback(
+            ensure_future(asyncio.sleep(self.model_send_delay)).add_done_callback(
                 lambda _: self.schedule_eva_send_model(peer, serialized_response, binary_data, start_time))
         else:
             # The transfer seems to be completed - record the transfer time
