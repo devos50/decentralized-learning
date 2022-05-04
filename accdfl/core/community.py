@@ -406,27 +406,25 @@ class DFLCommunity(Community):
         # Flush pending changes to the local view
         self.peer_manager.flush_last_active_pending()
 
+    def on_eva_send_done(self, future: Future, peer: Peer, serialized_response: bytes, binary_data: bytes):
+        if future.exception():
+            # The transfer failed - try it again after some delay
+            asyncio.sleep(self.model_send_delay).add_done_callback(
+                lambda _: self.schedule_eva_send_model(peer, serialized_response, binary_data))
+
+    def schedule_eva_send_model(self, peer: Peer, serialized_response: bytes, binary_data: bytes):
+        # Schedule the transfer
+        future = self.eva.send_binary(peer, serialized_response, binary_data)
+        ensure_future(future).add_done_callback(
+            lambda f: self.on_eva_send_done(f, peer, serialized_response, binary_data))
+
     async def eva_send_model(self, round, model, type, population_view, peer):
         serialized_model = serialize_model(model)
         serialized_population_view = pickle.dumps(population_view)
         binary_data = serialized_model + serialized_population_view
         response = {"round": round, "type": type, "model_data_len": len(serialized_model)}
-
-        for attempt in range(1, self.eva_max_retry_attempts + 1):
-            self.logger.info("Participant %s sending round %d model to participant %s (attempt %d)",
-                             self.peer_manager.get_my_short_id(), round,
-                             self.peer_manager.get_short_id(peer.public_key.key_to_bin()), attempt)
-            try:
-                # TODO this logic is sequential - optimize by having multiple outgoing transfers at once?
-                res = await self.eva.send_binary(peer, json.dumps(response).encode(), binary_data)
-                self.logger.info("Participant %s successfully sent %s of round %s to participant %s",
-                                 self.peer_manager.get_my_short_id(), type, round,
-                                 self.peer_manager.get_short_id(peer.public_key.key_to_bin()))
-                break
-            except Exception:
-                self.logger.exception("Exception when sending aggregated model to peer %s", peer)
-            await asyncio.sleep(self.model_send_delay)
-            attempt += 1
+        serialized_response = json.dumps(response).encode()
+        self.schedule_eva_send_model(peer, serialized_response, binary_data)
 
     async def on_receive(self, result: TransferResult):
         peer_pk = result.peer.public_key.key_to_bin()
