@@ -37,11 +37,11 @@ class SampleManager:
         else:
             peers = self.peer_manager.get_active_peers(round)
 
-        sample = self.get_ordered_sample_list(round, peers, exclude_peer=exclude_peer)
+        sample = self.get_ordered_sample_list(round, peers, exclude_peer=exclude_peer)[:self.sample_size]
         if not custom_view:
             self.sample_cache[(round, exclude_peer)] = sample
 
-        return sample[:self.sample_size]
+        return sample
 
     def is_participant_in_round(self, peer_id: bytes, round: int, custom_view: Dict = None) -> bool:
         return peer_id in self.get_sample_for_round(round, custom_view=custom_view)
