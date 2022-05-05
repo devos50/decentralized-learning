@@ -1,7 +1,6 @@
 import hashlib
 from typing import List, Dict, Tuple
 
-from accdfl.core import NodeMembershipChange
 from accdfl.core.peer_manager import PeerManager
 
 
@@ -28,20 +27,15 @@ class SampleManager:
         hashes = sorted(hashes, key=lambda t: t[1])
         return [t[0] for t in hashes]
 
-    def get_sample_for_round(self, round: int, exclude_peer: bytes = None, custom_view: Dict = None) -> List[bytes]:
-        if not custom_view and (round, exclude_peer) in self.sample_cache:
+    def get_sample_for_round(self, round: int, exclude_peer: bytes = None) -> List[bytes]:
+        if (round, exclude_peer) in self.sample_cache:
             return self.sample_cache[(round, exclude_peer)]
 
-        if custom_view:
-            peers = [peer_pk for peer_pk, info in custom_view.items() if info[1][1] != NodeMembershipChange.LEAVE]
-        else:
-            peers = self.peer_manager.get_active_peers(round)
-
+        peers = self.peer_manager.get_active_peers(round)
         sample = self.get_ordered_sample_list(round, peers, exclude_peer=exclude_peer)[:self.sample_size]
-        if not custom_view:
-            self.sample_cache[(round, exclude_peer)] = sample
+        self.sample_cache[(round, exclude_peer)] = sample
 
         return sample
 
-    def is_participant_in_round(self, peer_id: bytes, round: int, custom_view: Dict = None) -> bool:
-        return peer_id in self.get_sample_for_round(round, custom_view=custom_view)
+    def is_participant_in_round(self, peer_id: bytes, round: int) -> bool:
+        return peer_id in self.get_sample_for_round(round)
