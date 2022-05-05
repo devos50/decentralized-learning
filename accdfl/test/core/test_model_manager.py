@@ -1,11 +1,7 @@
-import os
-
 import pytest
 
-from accdfl.core.dataset import TrainDataset
 from accdfl.core.model import create_model
 from accdfl.core.model_manager import ModelManager
-from accdfl.core.optimizer.sgd import SGDOptimizer
 
 
 @pytest.fixture
@@ -19,7 +15,8 @@ def model_manager():
         "local_classes": 10,
         "participants": ["a"],
         "learning_rate": 0.002,
-        "momentum": 0.9
+        "momentum": 0.9,
+        "data_distribution": "iid",
     }
     model = create_model(parameters["dataset"], "gnlenet")
     return ModelManager(model, parameters, 0)

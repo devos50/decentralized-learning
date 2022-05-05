@@ -112,6 +112,7 @@ class ADFLSimulation:
             "nodes_per_class": self.settings.nodes_per_class,
             "dataset": self.settings.dataset,
             "model": self.settings.model,
+            "data_distribution": "iid",
         }
         for ind, node in enumerate(self.nodes):
             node.overlays[0].round_complete_callback = lambda round_nr, i=ind: self.on_round_complete(i, round_nr)

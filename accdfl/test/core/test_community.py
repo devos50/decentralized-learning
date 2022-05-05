@@ -53,6 +53,7 @@ class TestDFLCommunityBase(TestBase):
             "nodes_per_class": self.NODES_PER_CLASS,
             "dataset": self.DATASET,
             "model": self.MODEL,
+            "data_distribution": "iid",
         }
         for node in self.nodes:
             node.overlay.train_in_subprocess = False

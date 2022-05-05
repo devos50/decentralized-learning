@@ -19,6 +19,7 @@ class TrainDataset:
         self.batch_size = parameters["batch_size"]
         self.total_participants = parameters["target_participants"]
         self.participant_index = participant_index
+        self.is_iid = parameters["data_distribution"]  # "iid" or "non-iid"
 
         if parameters["dataset"] == "mnist":
             transform = transforms.Compose([
@@ -57,7 +58,7 @@ class TrainDataset:
 
         self.partition_dataset()
 
-    def get_ranges(self) -> List[Tuple[int, int]]:
+    def get_ranges_iid(self) -> List[Tuple[int, int]]:
         rand = Random()
         rand.seed(1337)
         remaining_classes = [n for n in self.parameters["nodes_per_class"]]
@@ -109,9 +110,66 @@ class TrainDataset:
 
         return nodes[self.participant_index]["samples"]
 
+    def get_ranges_non_iid_google(self) -> List[Tuple[int, int]]:
+        nb_nodes = len(self.parameters["participants"])
+        shard_nb = self.parameters["local_shards"]
+        rand = Random()
+        rand.seed(1337)
+
+        # Create shards
+        examples_per_class = self.parameters["samples_per_class"]
+        shard_size = self.parameters["shard_size"]
+        expected_nb_shards = int(sum(examples_per_class) / shard_size)
+        shards = []
+        remaining = [s for s in examples_per_class]
+        c = 0
+        for _ in range(int(expected_nb_shards)):
+            assert sum(remaining) >= shard_size, "Insufficient number of available examples"
+            shard = {}
+            assigned = 0
+            while assigned < shard_size:
+                if remaining[c] == 0:
+                    c += 1
+                s = min(shard_size - assigned, remaining[c])
+                remaining[c] -= s
+                shard[c] = s
+                assigned += s
+            shards.append(shard)
+        assert sum(remaining) == 0, "Remaining unassigned examples"
+
+        # Assign shards to nodes
+        rand.shuffle(shards)
+        nodes = [{"rank": i} for i in range(nb_nodes)]
+
+        # save [start, end[ for each class of every node where:
+        # 'start' is the inclusive start index
+        # 'end' is the exclusive end index
+        start = [0 for i in range(10)]
+        for n in nodes:
+            n['classes'] = [0 for _ in range(10)]
+            local_shards = shards[n['rank'] * shard_nb:(n['rank'] * shard_nb) + shard_nb]
+            end = [x for x in start]
+            for shard in local_shards:
+                for k in shard.keys():
+                    n['classes'][k] = 1.0
+                    end[k] += shard[k]
+            n['samples'] = [(start[c], end[c]) for c in range(10)]
+            start = end
+
+        multiples = [0 for _ in range(10)]
+        for n in nodes:
+            for c in range(10):
+                multiples[c] += n["classes"][c]
+        logging.info('assign_classes: classes represented times {}'.format(multiples))
+
+        return nodes[self.participant_index]["samples"]
+
     def partition_dataset(self) -> None:
         # Generate the ranges of samples for this particular node
-        ranges = self.get_ranges()
+        if self.is_iid:
+            ranges = self.get_ranges_iid()
+        else:
+            ranges = self.get_ranges_non_iid_google()
 
         # Partition the dataset, based on the participant index
         # TODO assume iid distribution + hard-coded values
