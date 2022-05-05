@@ -213,9 +213,9 @@ class DFLCommunity(Community):
             self.logger.warning("Wanted to ping participant %s but cannot find Peer object!", peer_short_id)
             return succeed((peer_pk, False))
 
-        cache = PingRequestCache(self, ping_all_id, peer_pk, round, self.parameters["ping_timeout"])
+        cache = PingRequestCache(self, ping_all_id, peer, round, self.parameters["ping_timeout"])
         self.request_cache.add(cache)
-        self.send_ping(peer, round, cache.number)
+        cache.start()
         return cache.future
 
     def send_ping(self, peer: Peer, round: int, identifier: int) -> None:
