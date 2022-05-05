@@ -117,7 +117,7 @@ class TestDFLCommunityOneNodeOneJoining(TestDFLCommunityBase):
 
         self.experiment_data["participants"].append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
         new_node.overlay.setup(self.experiment_data, None, transmission_method=self.TRANSMISSION_METHOD)
-        new_node.overlay.advertise_membership(2, NodeMembershipChange.JOIN)
+        new_node.overlay.advertise_membership(NodeMembershipChange.JOIN)
 
         # Perform some rounds so the membership has propagated
         self.nodes[0].overlay.start()
@@ -237,7 +237,7 @@ class TestDFLCommunityFiveNodesOneJoining(TestDFLCommunityBase):
 
         self.experiment_data["participants"].append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
         new_node.overlay.setup(self.experiment_data, None, transmission_method=self.TRANSMISSION_METHOD)
-        new_node.overlay.advertise_membership(2, NodeMembershipChange.JOIN)
+        new_node.overlay.advertise_membership(NodeMembershipChange.JOIN)
         self.nodes[-1].overlay.start()
 
         await self.wait_for_num_nodes_in_all_views(self.TARGET_NUM_NODES)
@@ -260,7 +260,7 @@ class TestDFLCommunityFiveNodesOneLeaving(TestDFLCommunityBase):
             self.nodes[ind].overlay.start()
 
         await sleep(0.1)  # Progress the network
-        self.nodes[0].overlay.go_offline(2)
+        self.nodes[0].overlay.go_offline()
 
         await self.wait_for_num_nodes_in_all_views(self.NUM_NODES - 1)
 

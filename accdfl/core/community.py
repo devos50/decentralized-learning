@@ -125,33 +125,37 @@ class DFLCommunity(Community):
                 return peer
         return None
 
-    def go_offline(self, round: int, graceful: bool = True) -> None:
+    def go_offline(self, graceful: bool = True) -> None:
         self.is_active = False
         self.cancel_all_pending_tasks()
 
-        self.logger.info("Participant %s will go offline in round %d", self.peer_manager.get_my_short_id(), round)
+        self.logger.info("Participant %s will go offline", self.peer_manager.get_my_short_id())
 
         info = self.peer_manager.last_active[self.my_id]
-        self.peer_manager.last_active[self.my_id] = (info[0], (round, NodeMembershipChange.LEAVE))
+        self.peer_manager.last_active[self.my_id] = (info[0], (self.get_latest_round() + 1, NodeMembershipChange.LEAVE))
         if graceful:
-            self.advertise_membership(round, NodeMembershipChange.LEAVE)
+            self.advertise_membership(NodeMembershipChange.LEAVE)
 
-    def advertise_membership(self, round: int, change: NodeMembershipChange):
+    def get_latest_round(self) -> int:
         """
-        Advertise your (new) membership to the peers in a particular round.
+        Return the latest round from this peers' perspective.
+        """
+        return max(self.last_round_completed, self.last_aggregate_round_completed)
+
+    def advertise_membership(self, change: NodeMembershipChange):
+        """
+        Advertise your (new) membership to random peers.
         """
         # Note that we have to send this to the sample WITHOUT considering the newly joined node!
-        participants_in_sample = self.sample_manager.get_sample_for_round(round, exclude_peer=self.my_id)
-        for participant in participants_in_sample:
-            if participant == self.my_id:
-                continue
-
-            self.logger.info("Participant %s advertising its membership change to participant %s (part of round %d)",
-                              self.peer_manager.get_my_short_id(), self.peer_manager.get_short_id(participant), round)
-            peer = self.get_peer_by_pk(participant)
+        peers: List[Peer] = list(self.get_peers())
+        random_peers = random.sample(peers, min(self.sample_size, len(peers)))
+        for peer in random_peers:
+            peer_pk = peer.public_key.key_to_bin()
+            self.logger.info("Participant %s advertising its membership change to participant %s",
+                              self.peer_manager.get_my_short_id(), self.peer_manager.get_short_id(peer_pk))
             global_time = self.claim_global_time()
             auth = BinMemberAuthenticationPayload(self.my_peer.public_key.key_to_bin())
-            payload = AdvertiseMembership(round - 1, change.value)
+            payload = AdvertiseMembership(self.get_latest_round() + 1, change.value)
             dist = GlobalTimeDistributionPayload(global_time)
             packet = self._ez_pack(self._prefix, AdvertiseMembership.msg_id, [auth, dist, payload])
             self.endpoint.send(peer.address, packet)
