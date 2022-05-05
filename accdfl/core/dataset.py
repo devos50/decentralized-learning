@@ -19,7 +19,7 @@ class TrainDataset:
         self.batch_size = parameters["batch_size"]
         self.total_participants = parameters["target_participants"]
         self.participant_index = participant_index
-        self.is_iid = parameters["data_distribution"]  # "iid" or "non-iid"
+        self.is_iid = parameters["data_distribution"] == "iid"  # "iid" or "non-iid"
 
         if parameters["dataset"] == "mnist":
             transform = transforms.Compose([
