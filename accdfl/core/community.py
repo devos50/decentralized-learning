@@ -71,13 +71,16 @@ class DFLCommunity(Community):
 
         self.logger.info("The DFL community started with peer ID: %s", self.peer_manager.get_my_short_id())
 
-    def start(self):
+    def start(self, advertise_join: bool = False):
         """
         Start to participate in the training process.
         """
         assert self.did_setup, "Process has not been setup - call setup() first"
 
         self.is_active = True
+
+        if advertise_join:
+            self.advertise_membership(NodeMembershipChange.JOIN)
 
         # Start the process
         if self.sample_manager.is_participant_in_round(self.my_id, 1):
