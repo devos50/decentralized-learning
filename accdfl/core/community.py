@@ -87,7 +87,10 @@ class DFLCommunity(Community):
 
     def setup(self, parameters: Dict, data_dir: str, transmission_method: TransmissionMethod = TransmissionMethod.EVA,
               aggregator: Optional[bytes] = None):
-        assert parameters["target_participants"] * parameters["local_classes"] == sum(parameters["nodes_per_class"])
+        if parameters["data_distribution"] == "iid":
+            assert parameters["target_participants"] * parameters["local_classes"] == sum(parameters["nodes_per_class"])
+        else:
+            assert parameters["target_participants"] * parameters["local_shards"] * parameters["shard_size"] == sum(parameters["samples_per_class"])
 
         self.parameters = parameters
         self.data_dir = data_dir

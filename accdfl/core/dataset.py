@@ -90,7 +90,7 @@ class TrainDataset:
             return classes
 
         sampler = sampler_gen(remaining_classes, self.parameters["local_classes"])
-        nodes = [{"classes": classes()} for _ in range(len(self.parameters["participants"]))]
+        nodes = [{"classes": classes()} for _ in range(self.parameters["target_participants"])]
         multiples = [0 for _ in range(10)]
         for n in nodes:
             for c in range(10):
@@ -111,7 +111,7 @@ class TrainDataset:
         return nodes[self.participant_index]["samples"]
 
     def get_ranges_non_iid_google(self) -> List[Tuple[int, int]]:
-        nb_nodes = len(self.parameters["participants"])
+        nb_nodes = self.parameters["target_participants"]
         shard_nb = self.parameters["local_shards"]
         rand = Random()
         rand.seed(1337)
