@@ -171,8 +171,6 @@ class TrainDataset:
         else:
             ranges = self.get_ranges_non_iid_google()
 
-        self.logger.info("Partitioning dataset: %s", self.get_statistics())
-
         # Partition the dataset, based on the participant index
         # TODO assume iid distribution + hard-coded values
         rand = Random()
@@ -220,7 +218,7 @@ class TrainDataset:
         self.reset_train_iterator()
         self.reset_validation_iterator()
 
-        self.logger.info("Partition: done")
+        self.logger.info("Partition: done (dataset statistics: %s)", self.get_statistics())
 
     def reset_train_iterator(self):
         self.iterator = iter(torch.utils.data.DataLoader(
