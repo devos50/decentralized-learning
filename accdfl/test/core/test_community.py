@@ -23,6 +23,7 @@ class TestDFLCommunityBase(TestBase):
     DATASET = "mnist"
     MODEL = "linear"
     TRANSMISSION_METHOD = TransmissionMethod.EVA
+    INACTIVITY_THRESHOLD = 10
 
     def create_node(self, *args, **kwargs):
         return MockIPv8("curve25519", self.overlay_class, *args, **kwargs)
@@ -44,8 +45,8 @@ class TestDFLCommunityBase(TestBase):
             "num_aggregators": self.NUM_AGGREGATORS,
             "success_fraction": self.SUCCESS_FRACTION,
             "aggregation_timeout": 0.5,
-            "ping_timeout": 0.5,
-            "inactivity_threshold": 30,
+            "ping_timeout": 0.1,
+            "inactivity_threshold": self.INACTIVITY_THRESHOLD,
 
             # These parameters are not available in a deployed environment - only for experimental purposes.
             "target_participants": self.TARGET_NUM_NODES,
@@ -70,11 +71,12 @@ class TestDFLCommunityBase(TestBase):
         node.overlay.round_complete_callback = on_round_complete
         return round_completed_deferred
 
-    def wait_for_num_nodes_in_all_views(self, target_num_nodes):
+    def wait_for_num_nodes_in_all_views(self, target_num_nodes, exclude_node=None):
         test_complete_deferred = Future()
 
         async def on_round_complete(round_nr):
-            if all([node.overlay.peer_manager.get_num_peers(round_nr) == target_num_nodes for node in self.nodes]):
+            nodes_to_check = [n for n in self.nodes if n != exclude_node]
+            if all([node.overlay.peer_manager.get_num_peers(round_nr) == target_num_nodes for node in nodes_to_check]):
                 if not test_complete_deferred.done():
                     test_complete_deferred.set_result(None)
 
@@ -227,6 +229,7 @@ class TestDFLCommunityFiveNodesOneJoining(TestDFLCommunityBase):
     TARGET_NUM_NODES = 6
     SAMPLE_SIZE = 1
     NODES_PER_CLASS = [TARGET_NUM_NODES] * 10
+    INACTIVITY_THRESHOLD = 100
 
     @pytest.mark.timeout(10)
     async def test_new_node_joining(self):
@@ -241,10 +244,9 @@ class TestDFLCommunityFiveNodesOneJoining(TestDFLCommunityBase):
         self.experiment_data["participants"].append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
         self.experiment_data["all_participants"].append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
         new_node.overlay.setup(self.experiment_data, None, transmission_method=self.TRANSMISSION_METHOD)
-        new_node.overlay.advertise_membership(NodeMembershipChange.JOIN)
-        self.nodes[-1].overlay.start()
+        self.nodes[-1].overlay.start(advertise_join=True)
 
-        await self.wait_for_num_nodes_in_all_views(self.TARGET_NUM_NODES)
+        await self.wait_for_num_nodes_in_all_views(self.TARGET_NUM_NODES, exclude_node=self.nodes[-1])
 
 
 class TestDFLCommunityFiveNodesOneLeaving(TestDFLCommunityBase):
@@ -266,9 +268,9 @@ class TestDFLCommunityFiveNodesOneLeaving(TestDFLCommunityBase):
         await sleep(0.1)  # Progress the network
         self.nodes[0].overlay.go_offline()
 
-        await self.wait_for_num_nodes_in_all_views(self.NUM_NODES - 1)
+        await self.wait_for_num_nodes_in_all_views(self.NUM_NODES - 1, exclude_node=self.nodes[0])
 
-    @pytest.mark.timeout(5)
+    @pytest.mark.timeout(10)
     async def test_node_crashing(self):
         """
         Test whether a node that leaves gracefully will eventually be removed from the population views' of others.
@@ -278,7 +280,7 @@ class TestDFLCommunityFiveNodesOneLeaving(TestDFLCommunityBase):
         for ind in range(self.NUM_NODES):
             self.nodes[ind].overlay.start()
 
-        await sleep(0.1)  # Progress the network
-        self.nodes[0].overlay.go_offline(2)
+        await sleep(0.5)  # Progress the network
+        self.nodes[0].overlay.go_offline(graceful=False)
 
-        await self.wait_for_num_nodes_in_all_views(self.NUM_NODES - 1)
+        await self.wait_for_num_nodes_in_all_views(self.NUM_NODES - 1, exclude_node=self.nodes[0])

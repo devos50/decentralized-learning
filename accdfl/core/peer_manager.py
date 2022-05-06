@@ -40,9 +40,9 @@ class PeerManager:
         self.last_active.pop(peer_pk, None)
 
     def get_active_peers(self, round: Optional[int] = None) -> List[bytes]:
-        active_peers = [peer_pk for peer_pk, status in self.last_active.items() if status[1][1] != NodeMembershipChange.LEAVE]
+        active_peers = [peer_pk for peer_pk, status in self.last_active.items() if (status[1][1] != NodeMembershipChange.LEAVE or peer_pk == self.my_pk)]
         if round:
-            active_peers = [peer_pk for peer_pk in active_peers if self.last_active[peer_pk][0] >= (round - self.inactivity_threshold)]
+            active_peers = [peer_pk for peer_pk in active_peers if (self.last_active[peer_pk][0] >= (round - self.inactivity_threshold) or peer_pk == self.my_pk)]
         return active_peers
 
     def get_num_peers(self, round: Optional[int] = None) -> int:
@@ -102,5 +102,4 @@ class PeerManager:
             # Update node membership status
             last_membership_round = info[1][0]
             if last_membership_round > self.last_active[peer_pk][1][0]:
-                self.logger.error("HERE1234 -> %d", last_membership_round)
                 self.last_active[peer_pk] = (info[1][0], info[1])

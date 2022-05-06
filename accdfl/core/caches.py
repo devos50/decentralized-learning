@@ -25,10 +25,13 @@ class PingRequestCache(NumberCache):
         self.round = round
         self.num_pings = 0
         self.future = Future()
+        self.task_name = None
 
     def start(self):
         self.send_ping()
-        ensure_future(sleep(PING_INTERVAL)).add_done_callback(self.on_interval)
+        peer_id = self.community.peer_manager.get_short_id(self.peer.public_key.key_to_bin())
+        self.task_name = "ping_%s_%s" % (self.number, peer_id)
+        self.community.register_task(self.task_name, self.on_interval, delay=PING_INTERVAL)
 
     def send_ping(self):
         self.num_pings += 1
@@ -41,13 +44,19 @@ class PingRequestCache(NumberCache):
             return
 
         self.send_ping()
-        ensure_future(sleep(PING_INTERVAL)).add_done_callback(self.on_interval)
+
+    def on_pong(self, round):
+        if self.task_name:
+            self.community.cancel_pending_task(self.task_name)
+        self.future.set_result((self.peer.public_key.key_to_bin(), round, True))
 
     @property
     def timeout_delay(self) -> float:
         return self.ping_timeout
 
     def on_timeout(self):
+        if self.task_name:
+            self.community.cancel_pending_task(self.task_name)
         self.future.set_result((self.peer.public_key.key_to_bin(), self.round, False))
 
 

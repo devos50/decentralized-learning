@@ -51,6 +51,7 @@ class DFLCommunity(Community):
         self.shutting_down = False
         self.train_in_subprocess = True
         self.fixed_aggregator = None
+        self.active_peers_history = []
 
         self.peer_manager: PeerManager = PeerManager(self.my_id, -1)
         self.sample_manager: Optional[SampleManager] = None  # Initialized when the process is setup
@@ -133,20 +134,28 @@ class DFLCommunity(Community):
 
     def go_offline(self, graceful: bool = True) -> None:
         self.is_active = False
-        self.cancel_all_pending_tasks()
 
         self.logger.info("Participant %s will go offline", self.peer_manager.get_my_short_id())
 
-        info = self.peer_manager.last_active[self.my_id]
-        self.peer_manager.last_active[self.my_id] = (info[0], (self.get_latest_round() + 1, NodeMembershipChange.LEAVE))
         if graceful:
+            info = self.peer_manager.last_active[self.my_id]
+            self.peer_manager.last_active[self.my_id] = (info[0], (self.get_latest_round() + 1, NodeMembershipChange.LEAVE))
             self.advertise_membership(NodeMembershipChange.LEAVE)
+        else:
+            self.cancel_all_pending_tasks()
 
     def get_latest_round(self) -> int:
         """
-        Return the latest round from this peers' perspective.
+        Return the latest round that this peer knows about.
         """
-        return max(self.last_round_completed, self.last_aggregate_round_completed)
+        return max(self.last_round_completed, self.last_aggregate_round_completed,
+                   max(self.participating_in_rounds) if self.participating_in_rounds else 0,
+                   max(self.aggregating_in_rounds) if self.aggregating_in_rounds else 0)
+
+    def update_population_view_history(self):
+        num_active_peers = self.peer_manager.get_num_peers(self.get_latest_round())
+        if not self.active_peers_history or (self.active_peers_history[-1][1] != num_active_peers):  # It's the first entry or it has changed
+            self.active_peers_history.append((time.time(), num_active_peers))
 
     def advertise_membership(self, change: NodeMembershipChange):
         """
@@ -161,7 +170,7 @@ class DFLCommunity(Community):
                               self.peer_manager.get_my_short_id(), self.peer_manager.get_short_id(peer_pk))
             global_time = self.claim_global_time()
             auth = BinMemberAuthenticationPayload(self.my_peer.public_key.key_to_bin())
-            payload = AdvertiseMembership(self.get_latest_round() + 1, change.value)
+            payload = AdvertiseMembership(self.get_latest_round(), change.value)
             dist = GlobalTimeDistributionPayload(global_time)
             packet = self._ez_pack(self._prefix, AdvertiseMembership.msg_id, [auth, dist, payload])
             self.endpoint.send(peer.address, packet)
@@ -171,18 +180,18 @@ class DFLCommunity(Community):
         """
         We received a membership advertisement from a new peer.
         """
-        # TODO we assume that the peer is allowed to participate
         peer_pk = peer.public_key.key_to_bin()
         peer_id = self.peer_manager.get_short_id(peer_pk)
         self.logger.info("Participant %s updating membership of participant %s",
                          self.peer_manager.get_my_short_id(), peer_id)
 
         change: NodeMembershipChange = NodeMembershipChange(payload.change)
+        latest_round = self.get_latest_round()
         if change == NodeMembershipChange.JOIN:
             # Do not apply this immediately since we do not want the newly joined node to be part of the next sample just yet.
-            self.peer_manager.last_active_pending[peer_pk] = (payload.round, (payload.round, NodeMembershipChange.JOIN))
+            self.peer_manager.last_active_pending[peer_pk] = (max(payload.round, latest_round), (payload.round, NodeMembershipChange.JOIN))
         else:
-            self.peer_manager.last_active[peer_pk] = (payload.round, (payload.round, NodeMembershipChange.LEAVE))
+            self.peer_manager.last_active[peer_pk] = (max(payload.round, latest_round), (payload.round, NodeMembershipChange.LEAVE))
 
     def determine_available_aggregators_for_round(self, round: int) -> Future:
         if self.fixed_aggregator:
@@ -244,6 +253,10 @@ class DFLCommunity(Community):
             self.logger.warning("Participant %s ignoring ping message from %s due to inactivity", my_peer_id, peer_id)
             return
 
+        peer_pk = peer.public_key.key_to_bin()
+        if peer_pk in self.peer_manager.last_active:
+            self.peer_manager.update_peer_activity(peer_pk, max(self.get_latest_round(), payload.round))
+
         self.send_pong(peer, payload.round, payload.identifier)
 
     def send_pong(self, peer: Peer, round: int, identifier: int) -> None:
@@ -258,16 +271,23 @@ class DFLCommunity(Community):
 
     @lazy_wrapper(PongPayload)
     def on_pong(self, peer: Peer, payload: PongPayload) -> None:
+        my_peer_id = self.peer_manager.get_my_short_id()
         peer_short_id = self.peer_manager.get_short_id(peer.public_key.key_to_bin())
+
+        if not self.is_active:
+            self.logger.warning("Participant %s ignoring ping message from %s due to inactivity",
+                                my_peer_id, peer_short_id)
+            return
+
         if not self.request_cache.has("ping-%s" % peer_short_id, payload.identifier):
             self.logger.warning("ping cache with id %s not found", payload.identifier)
             return
 
-        # Update the population view with this new information
-        self.peer_manager.update_peer_activity(peer.public_key.key_to_bin(), payload.round)
+        self.peer_manager.update_peer_activity(peer.public_key.key_to_bin(),
+                                               max(self.get_latest_round(), payload.round))
 
         cache = self.request_cache.pop("ping-%s" % peer_short_id, payload.identifier)
-        cache.future.set_result((peer.public_key.key_to_bin(), payload.round, True))
+        cache.on_pong(payload.round)
 
     async def participate_in_round(self, round):
         """
@@ -386,6 +406,7 @@ class DFLCommunity(Community):
 
         # Flush pending changes to the local view
         self.peer_manager.flush_last_active_pending()
+        self.update_population_view_history()
 
     async def send_trained_model_to_aggregators(self, aggregators: List[bytes], round: int) -> None:
         """
@@ -460,6 +481,9 @@ class DFLCommunity(Community):
         serialized_population_view = result.data[json_data["model_data_len"]:]
         received_population_view = pickle.loads(serialized_population_view)
         self.peer_manager.update_last_active(received_population_view)
+        self.peer_manager.update_peer_activity(result.peer.public_key.key_to_bin(),
+                                               max(json_data["round"], self.get_latest_round()))
+        self.update_population_view_history()
         incoming_model = unserialize_model(serialized_model, self.parameters["dataset"], self.parameters["model"])
 
         if json_data["type"] == "trained_model":
@@ -473,7 +497,6 @@ class DFLCommunity(Community):
 
         peer_pk = peer.public_key.key_to_bin()
         peer_id = self.peer_manager.get_short_id(peer_pk)
-        self.peer_manager.update_peer_activity(peer.public_key.key_to_bin(), model_round)
 
         self.logger.info("Participant %s received trained model for round %d from participant %s",
                          self.peer_manager.get_my_short_id(), model_round, peer_id)
@@ -505,7 +528,6 @@ class DFLCommunity(Community):
 
         peer_pk = peer.public_key.key_to_bin()
         peer_id = self.peer_manager.get_short_id(peer_pk)
-        self.peer_manager.update_peer_activity(peer.public_key.key_to_bin(), model_round)
 
         self.logger.info("Participant %s received aggregated model of round %d from aggregator %s",
                          self.peer_manager.get_my_short_id(), model_round, peer_id)
@@ -532,6 +554,7 @@ class DFLCommunity(Community):
     async def on_send_complete(self, result: TransferResult):
         peer_id = self.peer_manager.get_short_id(result.peer.public_key.key_to_bin())
         self.logger.info(f'Outgoing transfer to participant {peer_id} has completed: {result.info.decode()}')
+        self.peer_manager.update_peer_activity(result.peer.public_key.key_to_bin(), self.get_latest_round())
 
     async def on_error(self, peer, exception):
         self.logger.error(f'An error has occurred in transfer to peer {peer}: {exception}')
