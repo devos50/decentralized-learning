@@ -39,7 +39,7 @@ class PingRequestCache(NumberCache):
         self.logger.debug("Sending ping %d to participant %s", self.num_pings, peer_id)
         self.community.send_ping(self.peer, self.round, self.number)
 
-    def on_interval(self, _):
+    def on_interval(self):
         if self.future.done():
             return
 
