@@ -123,6 +123,8 @@ class DFLCommunity(Community):
             self.eva.settings.retransmit_interval_in_sec = 1
             self.eva.settings.timeout_interval_in_sec = 10
 
+        self.update_population_view_history()
+
         self.did_setup = True
 
     def get_peer_by_pk(self, target_pk: bytes):

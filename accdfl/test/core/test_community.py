@@ -248,6 +248,12 @@ class TestDFLCommunityFiveNodesOneJoining(TestDFLCommunityBase):
 
         await self.wait_for_num_nodes_in_all_views(self.TARGET_NUM_NODES, exclude_node=self.nodes[-1])
 
+        # Check whether this has been recorded in the population view history
+        for node in self.nodes:
+            if node == self.nodes[-1]:
+                continue
+            assert len(node.overlay.active_peers_history) == 2
+
 
 class TestDFLCommunityFiveNodesOneLeaving(TestDFLCommunityBase):
     NUM_NODES = 5
