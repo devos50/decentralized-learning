@@ -39,6 +39,7 @@ class TestDFLCommunityBase(TestBase):
             "momentum": 0.0,
             "batch_size": self.batch_size,
             "participants": [hexlify(node.my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
+            "all_participants": [hexlify(node.my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
             "sample_size": self.SAMPLE_SIZE,
             "num_aggregators": self.NUM_AGGREGATORS,
             "success_fraction": self.SUCCESS_FRACTION,
@@ -117,6 +118,7 @@ class TestDFLCommunityOneNodeOneJoining(TestDFLCommunityBase):
         await self.introduce_nodes()
 
         self.experiment_data["participants"].append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
+        self.experiment_data["all_participants"].append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
         new_node.overlay.setup(self.experiment_data, None, transmission_method=self.TRANSMISSION_METHOD)
         new_node.overlay.advertise_membership(NodeMembershipChange.JOIN)
 
@@ -237,6 +239,7 @@ class TestDFLCommunityFiveNodesOneJoining(TestDFLCommunityBase):
             self.nodes[ind].overlay.start()
 
         self.experiment_data["participants"].append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
+        self.experiment_data["all_participants"].append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
         new_node.overlay.setup(self.experiment_data, None, transmission_method=self.TRANSMISSION_METHOD)
         new_node.overlay.advertise_membership(NodeMembershipChange.JOIN)
         self.nodes[-1].overlay.start()

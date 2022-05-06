@@ -108,8 +108,8 @@ class DFLCommunity(Community):
         self.sample_manager = SampleManager(self.peer_manager, self.sample_size, parameters["num_aggregators"])
 
         # Initialize the model
-        participant_index = parameters["participants"].index(hexlify(self.my_id).decode())
         model = create_model(parameters["dataset"], parameters["model"])
+        participant_index = parameters["all_participants"].index(hexlify(self.my_id).decode())
         self.model_manager = ModelManager(model, parameters, participant_index)
 
         # Setup the model transmission
