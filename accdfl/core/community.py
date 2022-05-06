@@ -163,11 +163,16 @@ class DFLCommunity(Community):
         """
         Advertise your (new) membership to random peers.
         """
-        # Note that we have to send this to the sample WITHOUT considering the newly joined node!
-        peers: List[Peer] = list(self.get_peers())
-        random_peers = random.sample(peers, min(self.sample_size, len(peers)))
-        for peer in random_peers:
-            peer_pk = peer.public_key.key_to_bin()
+        active_peer_pks = self.peer_manager.get_active_peers()
+        if self.my_id in active_peer_pks:
+            active_peer_pks.remove(self.my_id)
+
+        random_peer_pks = random.sample(active_peer_pks, min(self.sample_size, len(active_peer_pks)))
+        for peer_pk in random_peer_pks:
+            peer = self.get_peer_by_pk(peer_pk)
+            if not peer:
+                self.logger.warning("Cannot find Peer object for participant %s!",
+                                    self.peer_manager.get_short_id(peer_pk))
             self.logger.info("Participant %s advertising its membership change to participant %s",
                               self.peer_manager.get_my_short_id(), self.peer_manager.get_short_id(peer_pk))
             global_time = self.claim_global_time()
