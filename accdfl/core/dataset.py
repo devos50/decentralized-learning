@@ -171,13 +171,13 @@ class TrainDataset:
         else:
             ranges = self.get_ranges_non_iid_google()
 
+        self.logger.info("Partitioning dataset: %s", self.get_statistics())
+
         # Partition the dataset, based on the participant index
         # TODO assume iid distribution + hard-coded values
-        samples_per_class_per_node = [t // self.total_participants for t in self.parameters["samples_per_class"]]
         rand = Random()
         rand.seed(1337)
 
-        logging.info('partition: split the dataset per class (samples per class: %s)', samples_per_class_per_node)
         indexes = {x: [] for x in range(10)}
 
         if type(self.dataset.targets) != torch.Tensor:
