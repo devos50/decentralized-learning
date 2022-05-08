@@ -1,13 +1,23 @@
-from asyncio import Future, sleep, ensure_future
+from asyncio import Future, sleep
 from binascii import hexlify
 
 import pytest
 
 from accdfl.core.community import DFLCommunity, TransmissionMethod
 from accdfl.core import NodeMembershipChange
+from accdfl.core.model_manager import ModelManager
 
 from ipv8.test.base import TestBase
 from ipv8.test.mocking.ipv8 import MockIPv8
+
+
+class FakeModelManager(ModelManager):
+    """
+    A model manager that does not actually train the model but simply sleeps.
+    """
+
+    async def train(self, in_subprocess: bool = True):
+        await sleep(0.001)
 
 
 class TestDFLCommunityBase(TestBase):
@@ -60,6 +70,9 @@ class TestDFLCommunityBase(TestBase):
         for node in self.nodes:
             node.overlay.train_in_subprocess = False
             node.overlay.setup(self.experiment_data, None, transmission_method=self.TRANSMISSION_METHOD)
+            cur_model_mgr = node.overlay.model_manager
+            node.overlay.model_manager = FakeModelManager(cur_model_mgr.model, self.experiment_data,
+                                                          cur_model_mgr.participant_index)
 
     def wait_for_round_completed(self, node, round):
         round_completed_deferred = Future()
@@ -105,6 +118,12 @@ class TestDFLCommunityOneNode(TestDFLCommunityBase):
         assert self.nodes[0].overlay.did_setup
         self.nodes[0].overlay.start()
         await self.wait_for_round_completed(self.nodes[0], 1)
+
+    @pytest.mark.timeout(5)
+    async def test_multiple_round(self):
+        assert self.nodes[0].overlay.did_setup
+        self.nodes[0].overlay.start()
+        await self.wait_for_round_completed(self.nodes[0], 5)
 
 
 class TestDFLCommunityOneNodeOneJoining(TestDFLCommunityBase):
@@ -222,6 +241,12 @@ class TestDFLCommunityFiveNodes(TestDFLCommunityBase):
         for node in self.nodes:
             node.overlay.start()
         await self.wait_for_round_completed(self.nodes[0], 1)
+
+    @pytest.mark.timeout(5)
+    async def test_multiple_rounds(self):
+        for node in self.nodes:
+            node.overlay.start()
+        await self.wait_for_round_completed(self.nodes[0], 5)
 
 
 class TestDFLCommunityFiveNodesOneJoining(TestDFLCommunityBase):

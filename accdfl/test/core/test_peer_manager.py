@@ -48,21 +48,21 @@ def test_update_peer_activity(peer_manager):
 def test_update_last_active(peer_manager):
     peer_manager.add_peer(b"test2")
     other_last_active = {b"test2": (2, (0, NodeMembershipChange.JOIN))}
-    peer_manager.update_last_active(other_last_active)
+    peer_manager.merge_population_views(other_last_active)
     assert peer_manager.last_active[b"test2"][0] == 2
 
     # This should be ignored
     other_last_active = {b"test2": (1, (0, NodeMembershipChange.JOIN))}
-    peer_manager.update_last_active(other_last_active)
+    peer_manager.merge_population_views(other_last_active)
     assert peer_manager.last_active[b"test2"][0] == 2
 
     other_last_active = {b"test2": (2, (3, NodeMembershipChange.LEAVE))}
-    peer_manager.update_last_active(other_last_active)
+    peer_manager.merge_population_views(other_last_active)
     assert peer_manager.last_active[b"test2"][1][0] == 3
 
     # This should be ignored
     other_last_active = {b"test2": (2, (2, NodeMembershipChange.JOIN))}
-    peer_manager.update_last_active(other_last_active)
+    peer_manager.merge_population_views(other_last_active)
     assert peer_manager.last_active[b"test2"][1][0] == 3
 
 

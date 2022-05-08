@@ -8,3 +8,9 @@ class TransmissionMethod(Enum):
 class NodeMembershipChange(Enum):
     JOIN = 0
     LEAVE = 1
+
+
+class State(Enum):
+    IDLE = 0
+    TRAINING = 1
+    AGGREGATING = 2
