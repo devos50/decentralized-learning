@@ -46,7 +46,6 @@ class DFLCommunity(Community):
         self.aggregation_durations: Dict[int, float] = {}
         self.last_round_completed: int = 0
         self.last_aggregate_round_completed: int = 0
-        self.sample_size = None
         self.did_setup = False
         self.shutting_down = False
         self.train_in_subprocess = True
@@ -99,14 +98,14 @@ class DFLCommunity(Community):
         self.parameters = parameters
         self.data_dir = data_dir
         self.fixed_aggregator = aggregator
-        self.sample_size = parameters["sample_size"]
         self.logger.info("Setting up experiment with %d initial participants and sample size %d (I am participant %s)" %
-                         (len(parameters["participants"]), self.sample_size, self.peer_manager.get_my_short_id()))
+                         (len(parameters["participants"]), parameters["sample_size"],
+                          self.peer_manager.get_my_short_id()))
 
         self.peer_manager.inactivity_threshold = parameters["inactivity_threshold"]
         for participant in parameters["participants"]:
             self.peer_manager.add_peer(unhexlify(participant))
-        self.sample_manager = SampleManager(self.peer_manager, self.sample_size, parameters["num_aggregators"])
+        self.sample_manager = SampleManager(self.peer_manager, parameters["sample_size"], parameters["num_aggregators"])
 
         # Initialize the model
         model = create_model(parameters["dataset"], parameters["model"])
@@ -167,7 +166,7 @@ class DFLCommunity(Community):
         if self.my_id in active_peer_pks:
             active_peer_pks.remove(self.my_id)
 
-        random_peer_pks = random.sample(active_peer_pks, min(self.sample_size, len(active_peer_pks)))
+        random_peer_pks = random.sample(active_peer_pks, min(self.sample_manager.sample_size, len(active_peer_pks)))
         for peer_pk in random_peer_pks:
             peer = self.get_peer_by_pk(peer_pk)
             if not peer:
