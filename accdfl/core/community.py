@@ -55,6 +55,7 @@ class DFLCommunity(Community):
         self.ongoing_training_task_name: Optional[str] = None
         self.train_sample_estimate: int = 0
         self.aggregate_sample_estimate: int = 0
+        self.advertise_index: int = 1
         self.aggregate_start_time = 0
         self.completed_aggregation = False
         self.completed_training = False
@@ -149,8 +150,6 @@ class DFLCommunity(Community):
         self.logger.info("Participant %s will go offline", self.peer_manager.get_my_short_id())
 
         if graceful:
-            info = self.peer_manager.last_active[self.my_id]
-            self.peer_manager.last_active[self.my_id] = (info[0], (self.get_round_estimate(), NodeMembershipChange.LEAVE))
             self.advertise_membership(NodeMembershipChange.LEAVE)
         else:
             self.cancel_all_pending_tasks()
@@ -178,10 +177,15 @@ class DFLCommunity(Community):
                               self.peer_manager.get_my_short_id(), self.peer_manager.get_short_id(peer_pk))
             global_time = self.claim_global_time()
             auth = BinMemberAuthenticationPayload(self.my_peer.public_key.key_to_bin())
-            payload = AdvertiseMembership(self.get_round_estimate(), change.value)
+            payload = AdvertiseMembership(self.get_round_estimate(), self.advertise_index, change.value)
             dist = GlobalTimeDistributionPayload(global_time)
             packet = self._ez_pack(self._prefix, AdvertiseMembership.msg_id, [auth, dist, payload])
             self.endpoint.send(peer.address, packet)
+
+        # Update your own population view
+        info = self.peer_manager.last_active[self.my_id]
+        self.peer_manager.last_active[self.my_id] = (info[0], (self.advertise_index, change))
+        self.advertise_index += 1
 
     @lazy_wrapper(GlobalTimeDistributionPayload, AdvertiseMembership)
     def on_membership_advertisement(self, peer, dist, payload):
@@ -197,9 +201,9 @@ class DFLCommunity(Community):
         latest_round = self.get_round_estimate()
         if change == NodeMembershipChange.JOIN:
             # Do not apply this immediately since we do not want the newly joined node to be part of the next sample just yet.
-            self.peer_manager.last_active_pending[peer_pk] = (max(payload.round, latest_round), (payload.round, NodeMembershipChange.JOIN))
+            self.peer_manager.last_active_pending[peer_pk] = (max(payload.round, latest_round), (payload.index, NodeMembershipChange.JOIN))
         else:
-            self.peer_manager.last_active[peer_pk] = (max(payload.round, latest_round), (payload.round, NodeMembershipChange.LEAVE))
+            self.peer_manager.last_active[peer_pk] = (max(payload.round, latest_round), (payload.index, NodeMembershipChange.LEAVE))
 
     def determine_available_peers_for_sample(self, sample: int, count: int, getting_aggregators: bool = False) -> Future:
         if getting_aggregators and self.fixed_aggregator:

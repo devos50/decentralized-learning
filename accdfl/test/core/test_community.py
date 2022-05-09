@@ -374,6 +374,10 @@ class TestDFLCommunityFiveNodesOneLeaving(TestDFLCommunityBase):
 
         await self.wait_for_num_nodes_in_all_views(self.NUM_NODES - 1, exclude_node=self.nodes[0])
 
+        node_pk = self.nodes[0].overlay.my_peer.public_key.key_to_bin()
+        for node in self.nodes[1:]:
+            assert node.overlay.peer_manager.last_active[node_pk][1][0] == 1
+
     @pytest.mark.timeout(10)
     async def test_node_crashing(self):
         """
