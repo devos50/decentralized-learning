@@ -15,9 +15,10 @@ class FakeModelManager(ModelManager):
     """
     A model manager that does not actually train the model but simply sleeps.
     """
+    train_time = 0.001
 
     async def train(self, in_subprocess: bool = True):
-        await sleep(0.001)
+        await sleep(self.train_time)
 
 
 class TestDFLCommunityBase(TestBase):
@@ -105,14 +106,6 @@ class TestDFLCommunityOneNode(TestDFLCommunityBase):
     SAMPLE_SIZE = NUM_NODES
     NODES_PER_CLASS = [TARGET_NUM_NODES] * 10
 
-    async def test_start_invalid_round(self):
-        with pytest.raises(RuntimeError):
-            await self.nodes[0].overlay.train_in_round(0)
-
-        self.nodes[0].overlay.participating_in_rounds.add(1)
-        with pytest.raises(RuntimeError):
-            await self.nodes[0].overlay.train_in_round(1)
-
     @pytest.mark.timeout(5)
     async def test_single_round(self):
         assert self.nodes[0].overlay.did_setup
@@ -153,6 +146,78 @@ class TestDFLCommunityOneNodeOneJoining(TestDFLCommunityBase):
 
 
 class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
+
+    @pytest.mark.timeout(5)
+    async def test_start_train_on_aggregated_model(self):
+        """
+        Test whether we are starting training when receiving an aggregated model.
+        """
+        self.nodes[0].overlay.sample_index_estimate = 1
+        model = self.nodes[1].overlay.model_manager.model
+        self.nodes[0].overlay.received_aggregated_model(self.nodes[0].overlay.my_peer, 2, model)
+        assert self.nodes[0].overlay.ongoing_training_task_name
+
+    @pytest.mark.timeout(5)
+    async def test_not_start_train_on_stale_model(self):
+        """
+        Test whether we are not starting training when receiving an old aggregated model.
+        """
+        self.nodes[0].overlay.sample_index_estimate = 5
+        model = self.nodes[1].overlay.model_manager.model
+        self.nodes[0].overlay.received_aggregated_model(self.nodes[0].overlay.my_peer, 2, model)
+        assert not self.nodes[0].overlay.ongoing_training_task_name
+
+    @pytest.mark.timeout(5)
+    async def test_interrupt_train_on_newer_aggregated_model(self):
+        """
+        Test whether we interrupt model training and start to training the newer model when receiving an aggregated model.
+        """
+        self.nodes[0].overlay.sample_index_estimate = 2
+        self.nodes[0].overlay.model_manager.train_time = 0.1
+        model = self.nodes[1].overlay.model_manager.model
+        self.nodes[0].overlay.received_aggregated_model(self.nodes[0].overlay.my_peer, 2, model)
+        assert self.nodes[0].overlay.ongoing_training_task_name == "round_2"
+
+        # New incoming model
+        self.nodes[0].overlay.received_aggregated_model(self.nodes[0].overlay.my_peer, 3, model)
+        assert not self.nodes[0].overlay.is_pending_task_active("round_2")
+        assert self.nodes[0].overlay.ongoing_training_task_name == "round_3"
+
+    @pytest.mark.timeout(5)
+    def test_start_aggregated_on_trained_model(self):
+        """
+        Test whether we start aggregating when receiving a trained model.
+        """
+        self.nodes[0].overlay.sample_index_estimate = 2
+        model = self.nodes[1].overlay.model_manager.model
+        self.nodes[0].overlay.received_trained_model(self.nodes[0].overlay.my_peer, 4, model)
+        assert self.nodes[0].overlay.ongoing_aggregation_task_name == "aggregate_4"
+
+    @pytest.mark.timeout(5)
+    def test_not_start_aggregated_on_stale_trained_model(self):
+        """
+        Test whether we do not start aggregating when receiving an older trained model.
+        """
+        self.nodes[0].overlay.sample_index_estimate = 5
+        model = self.nodes[1].overlay.model_manager.model
+        self.nodes[0].overlay.received_trained_model(self.nodes[0].overlay.my_peer, 4, model)
+        assert not self.nodes[0].overlay.ongoing_aggregation_task_name
+
+    @pytest.mark.timeout(5)
+    def test_interrupt_aggregate_on_newer_trained_model(self):
+        """
+        Test whether we interrupt an ongoing aggregation when receiving a newer trained model.
+        """
+        self.nodes[0].overlay.sample_index_estimate = 1
+        self.nodes[0].overlay.model_manager.parameters["sample_size"] = 2
+        model = self.nodes[1].overlay.model_manager.model
+        self.nodes[0].overlay.received_trained_model(self.nodes[0].overlay.my_peer, 2, model)
+        assert self.nodes[0].overlay.ongoing_aggregation_task_name == "aggregate_2"
+
+        # New incoming trained model
+        self.nodes[0].overlay.received_trained_model(self.nodes[0].overlay.my_peer, 3, model)
+        assert not self.nodes[0].overlay.is_pending_task_active("aggregate_2")
+        assert self.nodes[0].overlay.ongoing_aggregation_task_name == "aggregate_3"
 
     @pytest.mark.timeout(5)
     async def test_single_round(self):

@@ -4,7 +4,7 @@ import json
 import pickle
 import random
 import time
-from asyncio import Future, ensure_future
+from asyncio import Future, ensure_future, Task
 from binascii import unhexlify, hexlify
 from typing import Optional, Dict, List, Callable
 
@@ -53,8 +53,8 @@ class DFLCommunity(Community):
         self.is_active = False
         self.did_setup = False
         self.shutting_down = False
-        self.ongoing_training_task: Optional[str] = None
-        self.ongoing_aggregation_task: Optional[str] = None
+        self.ongoing_training_task_name: Optional[str] = None
+        self.ongoing_aggregation_task_name: Optional[str] = None
         self.sample_index_estimate: int = 0
         self.aggregation_future: Optional[Future] = None
 
@@ -293,12 +293,12 @@ class DFLCommunity(Community):
         cache.on_pong(payload.round)
 
     def train_in_round(self, round):
-        task_name = "round_%d" % round
-        self.ongoing_training_task = self.register_task(task_name, self.train_in_round_coroutine, round)
-        self.ongoing_training_task.add_done_callback(lambda f, r=round: self.on_train_completed(f, r))
+        self.ongoing_training_task_name = "round_%d" % round
+        task = self.register_task(self.ongoing_training_task_name, self.train_in_round_coroutine, round)
+        task.add_done_callback(lambda f, r=round: self.on_train_completed(f, r))
 
     def on_train_completed(self, _, round):
-        self.ongoing_training_task = None
+        self.ongoing_training_task_name = None
         self.logger.info("Participant %s completed round %d", self.peer_manager.get_my_short_id(), round)
         if self.round_complete_callback:
             ensure_future(self.round_complete_callback(round))
@@ -329,12 +329,12 @@ class DFLCommunity(Community):
             asyncio.get_event_loop().call_soon(self.received_trained_model, self.my_peer, round + 1, self.model_manager.model)
 
     def aggregate_in_round(self, round):
-        task_name = "aggregate_%d" % round
-        self.ongoing_aggregation_task = self.register_task(task_name, self.aggregate_in_round_coroutine, round)
-        self.ongoing_aggregation_task.add_done_callback(lambda f, r=round: self.on_aggregate_complete(f, r))
+        self.ongoing_aggregation_task_name = "aggregate_%d" % round
+        task = self.register_task(self.ongoing_aggregation_task_name, self.aggregate_in_round_coroutine, round)
+        task.add_done_callback(lambda f, r=round: self.on_aggregate_complete(f, r))
 
     def on_aggregate_complete(self, f, round):
-        self.ongoing_aggregation_task = None
+        self.ongoing_aggregation_task_name = None
         self.logger.info("Aggregator %s completed aggregation in round %d", self.peer_manager.get_my_short_id(), round)
         if self.aggregate_complete_callback:
             ensure_future(self.aggregate_complete_callback(round, f.result()))
@@ -476,19 +476,19 @@ class DFLCommunity(Community):
         self.schedule_eva_send_model(peer, serialized_response, binary_data, start_time)
 
     def cancel_current_aggregation_task(self):
-        if self.ongoing_aggregation_task and self.is_pending_task_active(self.ongoing_aggregation_task):
+        if self.ongoing_aggregation_task_name and self.is_pending_task_active(self.ongoing_aggregation_task_name):
             self.logger.info("Participant %s interrupting aggregation task %s",
-                             self.peer_manager.get_my_short_id(), self.ongoing_training_task)
-            self.cancel_pending_task(self.ongoing_aggregation_task)
+                             self.peer_manager.get_my_short_id(), self.ongoing_training_task_name)
+            self.cancel_pending_task(self.ongoing_aggregation_task_name)
             self.model_manager.reset_incoming_trained_models()
-            self.ongoing_aggregation_task = None
+            self.ongoing_aggregation_task_name = None
 
     def cancel_current_training_task(self):
-        if self.ongoing_training_task and self.is_pending_task_active(self.ongoing_training_task):
+        if self.ongoing_training_task_name and self.is_pending_task_active(self.ongoing_training_task_name):
             self.logger.info("Participant %s interrupting training task %s",
-                             self.peer_manager.get_my_short_id(), self.ongoing_training_task)
-            self.cancel_pending_task(self.ongoing_training_task)
-            self.ongoing_training_task = None
+                             self.peer_manager.get_my_short_id(), self.ongoing_training_task_name)
+            self.cancel_pending_task(self.ongoing_training_task_name)
+            self.ongoing_training_task_name = None
 
     async def on_receive(self, result: TransferResult):
         peer_pk = result.peer.public_key.key_to_bin()
@@ -552,7 +552,7 @@ class DFLCommunity(Community):
         if model_round > self.sample_index_estimate:
             self.cancel_current_training_task()
             self.sample_index_estimate = model_round
-        if model_round == self.sample_index_estimate and not self.ongoing_training_task:
+        if model_round == self.sample_index_estimate and not self.ongoing_training_task_name:
             self.model_manager.model = model
             self.train_in_round(model_round)
 
