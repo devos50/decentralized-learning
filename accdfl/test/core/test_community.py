@@ -107,11 +107,11 @@ class TestDFLCommunityOneNode(TestDFLCommunityBase):
 
     async def test_start_invalid_round(self):
         with pytest.raises(RuntimeError):
-            await self.nodes[0].overlay.participate_in_round(0)
+            await self.nodes[0].overlay.train_in_round(0)
 
         self.nodes[0].overlay.participating_in_rounds.add(1)
         with pytest.raises(RuntimeError):
-            await self.nodes[0].overlay.participate_in_round(1)
+            await self.nodes[0].overlay.train_in_round(1)
 
     @pytest.mark.timeout(5)
     async def test_single_round(self):
@@ -165,48 +165,6 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
         for node in self.nodes:
             node.overlay.start()
         await self.wait_for_round_completed(self.nodes[0], 5)
-
-    @pytest.mark.timeout(5)
-    async def test_wait_for_aggregated_models(self):
-        """
-        Test whether the aggregator proceeds when it has received sufficient valid models.
-        """
-        for node in self.nodes:
-            node.overlay.is_active = True
-
-        aggregator, other_node = self.nodes[0], self.nodes[1]
-        model = aggregator.overlay.model_manager.model
-
-        await sleep(0.1)
-
-        aggregator.overlay.received_trained_model(aggregator.overlay.my_peer, 1, model)
-        aggregator.overlay.received_trained_model(other_node.overlay.my_peer, 1, model)
-        await sleep(0.3)
-        assert 1 not in aggregator.overlay.aggregating_in_rounds
-        assert aggregator.overlay.last_aggregate_round_completed >= 1
-        assert 1 not in aggregator.overlay.model_manager.incoming_trained_models
-
-    @pytest.mark.timeout(5)
-    async def test_not_start_round_again(self):
-        """
-        Test whether we are not starting a round that we have already completed.
-        """
-        aggregator, other_node = self.nodes[0], self.nodes[1]
-        model = aggregator.overlay.model_manager.model
-        other_node.overlay.last_round_completed = 2
-        other_node.overlay.received_aggregated_model(aggregator.overlay.my_peer, 1, model)
-        assert not other_node.overlay.is_pending_task_active("round_2")
-
-    @pytest.mark.timeout(5)
-    async def test_not_start_aggregate_again(self):
-        """
-        Test whether we are not starting aggregation for a round that we have already completed.
-        """
-        aggregator, other_node = self.nodes[0], self.nodes[1]
-        model = other_node.overlay.model_manager.model
-        aggregator.overlay.last_aggregate_round_completed = 1
-        aggregator.overlay.received_trained_model(other_node.overlay.my_peer, 1, model)
-        assert not aggregator.overlay.is_pending_task_active("aggregate_1")
 
     @pytest.mark.timeout(5)
     async def test_ping_succeed(self):
