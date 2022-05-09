@@ -13,7 +13,7 @@ class PingRequestCache(NumberCache):
     This cache is used to determine the availability status of a particular peer.
     """
 
-    def __init__(self, community, ping_all_id: int, peer: Peer, round: int, ping_timeout: float):
+    def __init__(self, community, ping_all_id: int, peer: Peer, ping_timeout: float):
         peer_short_id = community.peer_manager.get_short_id(peer.public_key.key_to_bin())
         super().__init__(community.request_cache, "ping-%s" % peer_short_id, ping_all_id)
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -22,7 +22,6 @@ class PingRequestCache(NumberCache):
         self.ping_all_id = ping_all_id
         self.request_cache = community.request_cache
         self.ping_timeout = ping_timeout
-        self.round = round
         self.num_pings = 0
         self.future = Future()
         self.task_name = None
@@ -37,7 +36,7 @@ class PingRequestCache(NumberCache):
         self.num_pings += 1
         peer_id = self.community.peer_manager.get_short_id(self.peer.public_key.key_to_bin())
         self.logger.debug("Sending ping %d to participant %s", self.num_pings, peer_id)
-        self.community.send_ping(self.peer, self.round, self.number)
+        self.community.send_ping(self.peer, self.number)
 
     def on_interval(self):
         if self.future.done():
@@ -45,10 +44,10 @@ class PingRequestCache(NumberCache):
 
         self.send_ping()
 
-    def on_pong(self, round):
+    def on_pong(self):
         if self.task_name:
             self.community.cancel_pending_task(self.task_name)
-        self.future.set_result((self.peer.public_key.key_to_bin(), round, True))
+        self.future.set_result((self.peer.public_key.key_to_bin(), True))
 
     @property
     def timeout_delay(self) -> float:
@@ -57,7 +56,7 @@ class PingRequestCache(NumberCache):
     def on_timeout(self):
         if self.task_name:
             self.community.cancel_pending_task(self.task_name)
-        self.future.set_result((self.peer.public_key.key_to_bin(), self.round, False))
+        self.future.set_result((self.peer.public_key.key_to_bin(), False))
 
 
 class PingPeersRequestCache(RandomNumberCache):
@@ -95,7 +94,7 @@ class PingPeersRequestCache(RandomNumberCache):
             self.finish()
 
     def on_pong_response(self, future):
-        peer_pk, _, online = future.result()
+        peer_pk, online = future.result()
         if online:
             self.add_available_peer(peer_pk)
         else:
@@ -113,5 +112,5 @@ class PingPeersRequestCache(RandomNumberCache):
             return
 
         # Otherwise, queue a ping operation to this peer
-        future: Future = self.community.ping_peer(self._number, peer_pk, self.round)
+        future: Future = self.community.ping_peer(self._number, peer_pk)
         future.add_done_callback(self.on_pong_response)
