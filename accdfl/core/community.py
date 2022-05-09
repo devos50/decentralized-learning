@@ -470,6 +470,7 @@ class DFLCommunity(Community):
         else:
             self.logger.info("Participant %s ignoring incoming trained model of round %d",
                              self.peer_manager.get_my_short_id(), model_round)
+            return
 
         # Check whether we received enough incoming models
         if self.model_manager.has_enough_trained_models():
@@ -494,6 +495,12 @@ class DFLCommunity(Community):
             participants_ids = [self.peer_manager.get_short_id(peer_id) for peer_id in participants]
             self.logger.info("Participant %s determined %d available participants for round %d: %s",
                              self.peer_manager.get_my_short_id(), len(participants_ids), model_round, participants_ids)
+
+            # Is it still relevant what we're doing?
+            if self.aggregate_sample_estimate > model_round:
+                self.logger.warning("Work of participant %s for round %d not relevant anymore - stopping",
+                                    self.peer_manager.get_my_short_id(), model_round)
+                return
 
             # 3.3. Distribute the average model to the available participants in the sample.
             task_name = "send_aggregated_model_%s" % self.aggregate_sample_estimate

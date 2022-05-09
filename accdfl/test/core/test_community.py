@@ -384,7 +384,7 @@ class TestDFLCommunityFiveNodesOneLeaving(TestDFLCommunityBase):
         for ind in range(self.NUM_NODES):
             self.nodes[ind].overlay.start()
 
-        await sleep(0.5)  # Progress the network
+        await sleep(0.2)  # Progress the network
         self.nodes[0].overlay.go_offline(graceful=False)
 
         await self.wait_for_num_nodes_in_all_views(self.NUM_NODES - 1, exclude_node=self.nodes[0])
