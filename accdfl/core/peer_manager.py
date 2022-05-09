@@ -79,6 +79,14 @@ class PeerManager:
             self.merge_population_views(self.last_active_pending)
             self.last_active_pending = {}
 
+    def get_highest_round_in_population_view(self) -> int:
+        """
+        Return the highest round in the population view.
+        """
+        if not self.last_active:
+            return -1
+        return max([round for round, _ in self.last_active.values()])
+
     def merge_population_views(self, other_view: Dict[bytes, Tuple[int, Tuple[int, NodeMembershipChange]]]) -> None:
         """
         Reconcile the differences between two population views.

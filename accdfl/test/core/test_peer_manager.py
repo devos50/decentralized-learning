@@ -73,3 +73,12 @@ def test_get_my_short_id(peer_manager):
 def test_get_short_id(peer_manager):
     assert peer_manager.get_short_id(b"a" * 64)
     assert peer_manager.get_short_id(b"test") == peer_manager.get_my_short_id()
+
+
+def test_get_highest_round_in_population_view(peer_manager):
+    peer_manager.last_active = {}
+    assert peer_manager.get_highest_round_in_population_view() == -1
+    peer_manager.add_peer(b"test2", 2)
+    assert peer_manager.get_highest_round_in_population_view() == 2
+    peer_manager.add_peer(b"test3", 33)
+    assert peer_manager.get_highest_round_in_population_view() == 33

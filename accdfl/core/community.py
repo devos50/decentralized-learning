@@ -141,8 +141,11 @@ class DFLCommunity(Community):
         return None
 
     def get_round_estimate(self) -> int:
-        # TODO include max in population view in here
-        return max(self.train_sample_estimate, self.aggregate_sample_estimate)
+        """
+        Get the highest round estimation, based on our local estimations and the estimations in the population view.
+        """
+        max_round_in_population_view = self.peer_manager.get_highest_round_in_population_view()
+        return max(self.train_sample_estimate, self.aggregate_sample_estimate, max_round_in_population_view)
 
     def go_offline(self, graceful: bool = True) -> None:
         self.is_active = False
