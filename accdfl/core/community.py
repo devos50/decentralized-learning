@@ -516,7 +516,7 @@ class DFLCommunity(Community):
             # 4. Invoke the complete callback
             self.logger.info("Aggregator %s completed aggregation in round %d", self.peer_manager.get_my_short_id(), model_round)
             if self.aggregate_complete_callback:
-                ensure_future(self.aggregate_complete_callback(model_round, model_round))
+                ensure_future(self.aggregate_complete_callback(model_round, avg_model))
 
     def received_aggregated_model(self, peer: Peer, model_round: int, model: nn.Module) -> None:
         if self.shutting_down:
