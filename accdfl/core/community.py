@@ -336,7 +336,7 @@ class DFLCommunity(Community):
             return
 
         self.logger.info("Participant %s sending aggregated model of round %d to participants",
-                         self.peer_manager.get_my_short_id(), sample_index)
+                         self.peer_manager.get_my_short_id(), sample_index - 1)
 
         # For load balancing purposes, shuffle this list
         random.shuffle(participants)
@@ -452,7 +452,8 @@ class DFLCommunity(Community):
         elif json_data["type"] == "aggregated_model":
             self.received_aggregated_model(result.peer, json_data["round"], incoming_model)
 
-    async def received_trained_model(self, peer: Peer, model_round: int, model: nn.Module) -> None:
+    async def received_trained_model(self, peer: Peer, index: int, model: nn.Module) -> None:
+        model_round = index - 1  # The round associated with this model is one smaller than the sample index
         if self.shutting_down:
             self.logger.warning("Participant %s ignoring incoming trained model due to shutdown",
                                 self.peer_manager.get_my_short_id())
@@ -464,15 +465,15 @@ class DFLCommunity(Community):
         self.logger.info("Participant %s received trained model for round %d from participant %s",
                          self.peer_manager.get_my_short_id(), model_round, peer_id)
 
-        if model_round > self.aggregate_sample_estimate:
+        if index > self.aggregate_sample_estimate:
             self.logger.info("Participant %s received trained model for round %d for the first time - "
                              "starting to aggregate", self.peer_manager.get_my_short_id(), model_round)
-            self.aggregate_sample_estimate = model_round
+            self.aggregate_sample_estimate = index
             self.model_manager.reset_incoming_trained_models()
             self.aggregate_start_time = time.time()
             self.completed_aggregation = False
             self.model_manager.process_incoming_trained_model(peer_pk, model)
-        elif model_round == self.aggregate_sample_estimate and not self.completed_aggregation:
+        elif index == self.aggregate_sample_estimate and not self.completed_aggregation:
             self.model_manager.process_incoming_trained_model(peer_pk, model)
         else:
             self.logger.info("Participant %s ignoring incoming trained model of round %d",
@@ -504,7 +505,7 @@ class DFLCommunity(Community):
                              self.peer_manager.get_my_short_id(), len(participants_ids), model_round, participants_ids)
 
             # Is it still relevant what we're doing?
-            if self.aggregate_sample_estimate > model_round:
+            if self.aggregate_sample_estimate > index:
                 self.logger.warning("Work of participant %s for round %d not relevant anymore - stopping",
                                     self.peer_manager.get_my_short_id(), model_round)
                 return
@@ -514,7 +515,8 @@ class DFLCommunity(Community):
             self.register_task(task_name, self.send_aggregated_model_to_participants, participants, avg_model, self.aggregate_sample_estimate)
 
             # 4. Invoke the complete callback
-            self.logger.info("Aggregator %s completed aggregation in round %d", self.peer_manager.get_my_short_id(), model_round)
+            self.logger.info("Aggregator %s completed aggregation in round %d",
+                             self.peer_manager.get_my_short_id(), model_round)
             if self.aggregate_complete_callback:
                 ensure_future(self.aggregate_complete_callback(model_round, avg_model))
 

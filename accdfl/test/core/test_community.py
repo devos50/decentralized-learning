@@ -123,7 +123,7 @@ class TestDFLCommunityOneNode(TestDFLCommunityBase):
         test_future = Future()
 
         async def on_aggregate_complete(round, model):
-            assert round == 4
+            assert round == 3  # If we receive a trained model with sample index 4, we're aggregating for round 3.
             assert model
             test_future.set_result(None)
 
