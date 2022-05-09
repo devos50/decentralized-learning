@@ -1,13 +1,24 @@
-from asyncio import Future, sleep, ensure_future
+from asyncio import Future, sleep
 from binascii import hexlify
 
 import pytest
 
 from accdfl.core.community import DFLCommunity, TransmissionMethod
 from accdfl.core import NodeMembershipChange
+from accdfl.core.model_manager import ModelManager
 
 from ipv8.test.base import TestBase
 from ipv8.test.mocking.ipv8 import MockIPv8
+
+
+class FakeModelManager(ModelManager):
+    """
+    A model manager that does not actually train the model but simply sleeps.
+    """
+    train_time = 0.001
+
+    async def train(self, in_subprocess: bool = True):
+        await sleep(self.train_time)
 
 
 class TestDFLCommunityBase(TestBase):
@@ -60,6 +71,9 @@ class TestDFLCommunityBase(TestBase):
         for node in self.nodes:
             node.overlay.train_in_subprocess = False
             node.overlay.setup(self.experiment_data, None, transmission_method=self.TRANSMISSION_METHOD)
+            cur_model_mgr = node.overlay.model_manager
+            node.overlay.model_manager = FakeModelManager(cur_model_mgr.model, self.experiment_data,
+                                                          cur_model_mgr.participant_index)
 
     def wait_for_round_completed(self, node, round):
         round_completed_deferred = Future()
@@ -92,19 +106,17 @@ class TestDFLCommunityOneNode(TestDFLCommunityBase):
     SAMPLE_SIZE = NUM_NODES
     NODES_PER_CLASS = [TARGET_NUM_NODES] * 10
 
-    async def test_start_invalid_round(self):
-        with pytest.raises(RuntimeError):
-            await self.nodes[0].overlay.participate_in_round(0)
-
-        self.nodes[0].overlay.participating_in_rounds.add(1)
-        with pytest.raises(RuntimeError):
-            await self.nodes[0].overlay.participate_in_round(1)
-
     @pytest.mark.timeout(5)
     async def test_single_round(self):
         assert self.nodes[0].overlay.did_setup
         self.nodes[0].overlay.start()
         await self.wait_for_round_completed(self.nodes[0], 1)
+
+    @pytest.mark.timeout(5)
+    async def test_multiple_round(self):
+        assert self.nodes[0].overlay.did_setup
+        self.nodes[0].overlay.start()
+        await self.wait_for_round_completed(self.nodes[0], 5)
 
 
 class TestDFLCommunityOneNodeOneJoining(TestDFLCommunityBase):
@@ -136,6 +148,78 @@ class TestDFLCommunityOneNodeOneJoining(TestDFLCommunityBase):
 class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
 
     @pytest.mark.timeout(5)
+    async def test_start_train_on_aggregated_model(self):
+        """
+        Test whether we are starting training when receiving an aggregated model.
+        """
+        self.nodes[0].overlay.sample_index_estimate = 1
+        model = self.nodes[1].overlay.model_manager.model
+        self.nodes[0].overlay.received_aggregated_model(self.nodes[0].overlay.my_peer, 2, model)
+        assert self.nodes[0].overlay.ongoing_training_task_name
+
+    @pytest.mark.timeout(5)
+    async def test_not_start_train_on_stale_model(self):
+        """
+        Test whether we are not starting training when receiving an old aggregated model.
+        """
+        self.nodes[0].overlay.sample_index_estimate = 5
+        model = self.nodes[1].overlay.model_manager.model
+        self.nodes[0].overlay.received_aggregated_model(self.nodes[0].overlay.my_peer, 2, model)
+        assert not self.nodes[0].overlay.ongoing_training_task_name
+
+    @pytest.mark.timeout(5)
+    async def test_interrupt_train_on_newer_aggregated_model(self):
+        """
+        Test whether we interrupt model training and start to training the newer model when receiving an aggregated model.
+        """
+        self.nodes[0].overlay.sample_index_estimate = 2
+        self.nodes[0].overlay.model_manager.train_time = 0.1
+        model = self.nodes[1].overlay.model_manager.model
+        self.nodes[0].overlay.received_aggregated_model(self.nodes[0].overlay.my_peer, 2, model)
+        assert self.nodes[0].overlay.ongoing_training_task_name == "round_2"
+
+        # New incoming model
+        self.nodes[0].overlay.received_aggregated_model(self.nodes[0].overlay.my_peer, 3, model)
+        assert not self.nodes[0].overlay.is_pending_task_active("round_2")
+        assert self.nodes[0].overlay.ongoing_training_task_name == "round_3"
+
+    @pytest.mark.timeout(5)
+    def test_start_aggregated_on_trained_model(self):
+        """
+        Test whether we start aggregating when receiving a trained model.
+        """
+        self.nodes[0].overlay.sample_index_estimate = 2
+        model = self.nodes[1].overlay.model_manager.model
+        self.nodes[0].overlay.received_trained_model(self.nodes[0].overlay.my_peer, 4, model)
+        assert self.nodes[0].overlay.ongoing_aggregation_task_name == "aggregate_4"
+
+    @pytest.mark.timeout(5)
+    def test_not_start_aggregated_on_stale_trained_model(self):
+        """
+        Test whether we do not start aggregating when receiving an older trained model.
+        """
+        self.nodes[0].overlay.sample_index_estimate = 5
+        model = self.nodes[1].overlay.model_manager.model
+        self.nodes[0].overlay.received_trained_model(self.nodes[0].overlay.my_peer, 4, model)
+        assert not self.nodes[0].overlay.ongoing_aggregation_task_name
+
+    @pytest.mark.timeout(5)
+    def test_interrupt_aggregate_on_newer_trained_model(self):
+        """
+        Test whether we interrupt an ongoing aggregation when receiving a newer trained model.
+        """
+        self.nodes[0].overlay.sample_index_estimate = 1
+        self.nodes[0].overlay.model_manager.parameters["sample_size"] = 2
+        model = self.nodes[1].overlay.model_manager.model
+        self.nodes[0].overlay.received_trained_model(self.nodes[0].overlay.my_peer, 2, model)
+        assert self.nodes[0].overlay.ongoing_aggregation_task_name == "aggregate_2"
+
+        # New incoming trained model
+        self.nodes[0].overlay.received_trained_model(self.nodes[0].overlay.my_peer, 3, model)
+        assert not self.nodes[0].overlay.is_pending_task_active("aggregate_2")
+        assert self.nodes[0].overlay.ongoing_aggregation_task_name == "aggregate_3"
+
+    @pytest.mark.timeout(5)
     async def test_single_round(self):
         for node in self.nodes:
             node.overlay.start()
@@ -146,48 +230,6 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
         for node in self.nodes:
             node.overlay.start()
         await self.wait_for_round_completed(self.nodes[0], 5)
-
-    @pytest.mark.timeout(5)
-    async def test_wait_for_aggregated_models(self):
-        """
-        Test whether the aggregator proceeds when it has received sufficient valid models.
-        """
-        for node in self.nodes:
-            node.overlay.is_active = True
-
-        aggregator, other_node = self.nodes[0], self.nodes[1]
-        model = aggregator.overlay.model_manager.model
-
-        await sleep(0.1)
-
-        aggregator.overlay.received_trained_model(aggregator.overlay.my_peer, 1, model)
-        aggregator.overlay.received_trained_model(other_node.overlay.my_peer, 1, model)
-        await sleep(0.3)
-        assert 1 not in aggregator.overlay.aggregating_in_rounds
-        assert aggregator.overlay.last_aggregate_round_completed >= 1
-        assert 1 not in aggregator.overlay.model_manager.incoming_trained_models
-
-    @pytest.mark.timeout(5)
-    async def test_not_start_round_again(self):
-        """
-        Test whether we are not starting a round that we have already completed.
-        """
-        aggregator, other_node = self.nodes[0], self.nodes[1]
-        model = aggregator.overlay.model_manager.model
-        other_node.overlay.last_round_completed = 2
-        other_node.overlay.received_aggregated_model(aggregator.overlay.my_peer, 1, model)
-        assert not other_node.overlay.is_pending_task_active("round_2")
-
-    @pytest.mark.timeout(5)
-    async def test_not_start_aggregate_again(self):
-        """
-        Test whether we are not starting aggregation for a round that we have already completed.
-        """
-        aggregator, other_node = self.nodes[0], self.nodes[1]
-        model = other_node.overlay.model_manager.model
-        aggregator.overlay.last_aggregate_round_completed = 1
-        aggregator.overlay.received_trained_model(other_node.overlay.my_peer, 1, model)
-        assert not aggregator.overlay.is_pending_task_active("aggregate_1")
 
     @pytest.mark.timeout(5)
     async def test_ping_succeed(self):
@@ -222,6 +264,12 @@ class TestDFLCommunityFiveNodes(TestDFLCommunityBase):
         for node in self.nodes:
             node.overlay.start()
         await self.wait_for_round_completed(self.nodes[0], 1)
+
+    @pytest.mark.timeout(5)
+    async def test_multiple_rounds(self):
+        for node in self.nodes:
+            node.overlay.start()
+        await self.wait_for_round_completed(self.nodes[0], 5)
 
 
 class TestDFLCommunityFiveNodesOneJoining(TestDFLCommunityBase):

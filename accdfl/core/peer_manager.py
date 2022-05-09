@@ -76,20 +76,20 @@ class PeerManager:
         """
         if self.last_active_pending:
             self.logger.info("Participant %s flushing pending changes to population view", self.get_my_short_id())
-            self.update_last_active(self.last_active_pending)
+            self.merge_population_views(self.last_active_pending)
             self.last_active_pending = {}
 
-    def update_last_active(self, other_last_active: Dict[bytes, Tuple[int, Tuple[int, NodeMembershipChange]]]) -> None:
+    def merge_population_views(self, other_view: Dict[bytes, Tuple[int, Tuple[int, NodeMembershipChange]]]) -> None:
         """
         Reconcile the differences between two population views.
         """
-        for peer_pk, info in other_last_active.items():
+        for peer_pk, info in other_view.items():
             # Is this a new joining node?
             if peer_pk not in self.last_active:
                 # This seems to be a new node joining
                 self.logger.info("Participant %s adds peer %s to local view",
                                  self.get_my_short_id(), self.get_short_id(peer_pk))
-                self.last_active[peer_pk] = other_last_active[peer_pk]
+                self.last_active[peer_pk] = other_view[peer_pk]
                 continue
 
             # This peer is already in the view - take its latest information

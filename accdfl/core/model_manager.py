@@ -34,30 +34,24 @@ class ModelManager:
         self.model_trainer = None  # Only used when not training in a subprocess (e.g., in the unit tests)
 
         # Keeps track of the incoming trained models as aggregator
-        self.incoming_trained_models: Dict[int, Dict[bytes, nn.Module]] = {}
+        self.incoming_trained_models: Dict[bytes, nn.Module] = {}
 
-    def process_incoming_trained_model(self, peer_pk: bytes, round: int, incoming_model: nn.Module):
-        if round in self.incoming_trained_models and peer_pk in self.incoming_trained_models[round]:
+    def process_incoming_trained_model(self, peer_pk: bytes, incoming_model: nn.Module):
+        if peer_pk in self.incoming_trained_models:
             # We already processed this model
             return
 
-        if round not in self.incoming_trained_models:
-            self.incoming_trained_models[round] = {}
-        self.incoming_trained_models[round][peer_pk] = incoming_model
+        self.incoming_trained_models[peer_pk] = incoming_model
 
-    def has_enough_trained_models_of_round(self, round: int) -> bool:
-        if round not in self.incoming_trained_models:
-            return False
-        return len(self.incoming_trained_models[round]) >= (self.parameters["sample_size"] * self.parameters["success_fraction"])
+    def reset_incoming_trained_models(self):
+        self.incoming_trained_models = {}
 
-    def average_trained_models_of_round(self, round: int) -> Optional[nn.Module]:
-        if round not in self.incoming_trained_models:
-            return None
-        models = [model for model in self.incoming_trained_models[round].values()]
+    def has_enough_trained_models(self) -> bool:
+        return len(self.incoming_trained_models) >= (self.parameters["sample_size"] * self.parameters["success_fraction"])
+
+    def average_trained_models(self) -> Optional[nn.Module]:
+        models = [model for model in self.incoming_trained_models.values()]
         return self.average_models(models)
-
-    def remove_trained_models_of_round(self, round: int) -> None:
-        self.incoming_trained_models.pop(round)
 
     async def train(self, in_subprocess: bool = True):
         if in_subprocess:
