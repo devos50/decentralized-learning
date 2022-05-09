@@ -118,6 +118,21 @@ class TestDFLCommunityOneNode(TestDFLCommunityBase):
         self.nodes[0].overlay.start()
         await self.wait_for_round_completed(self.nodes[0], 5)
 
+    @pytest.mark.timeout(5)
+    async def test_aggregate_complete_callback(self):
+        test_future = Future()
+
+        async def on_aggregate_complete(round, model):
+            assert round == 4
+            assert model
+            test_future.set_result(None)
+
+        self.nodes[0].overlay.sample_index_estimate = 2
+        self.nodes[0].overlay.aggregate_complete_callback = on_aggregate_complete
+        model = self.nodes[0].overlay.model_manager.model
+        self.nodes[0].overlay.received_trained_model(self.nodes[0].overlay.my_peer, 4, model)
+        await test_future
+
 
 class TestDFLCommunityOneNodeOneJoining(TestDFLCommunityBase):
     NUM_NODES = 1
@@ -146,6 +161,18 @@ class TestDFLCommunityOneNodeOneJoining(TestDFLCommunityBase):
 
 
 class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
+
+    @pytest.mark.timeout(5)
+    async def test_eva_send_model(self):
+        """
+        Test an EVA model transfer between two nodes.
+        """
+        for node in self.nodes:
+            node.overlay.is_active = True
+
+        model = self.nodes[1].overlay.model_manager.model
+        res = await self.nodes[0].overlay.eva_send_model(1, model, "aggregated_model", {}, self.nodes[1].overlay.my_peer)
+        assert res
 
     @pytest.mark.timeout(5)
     async def test_start_train_on_aggregated_model(self):

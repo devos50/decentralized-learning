@@ -5,6 +5,7 @@ import pickle
 import random
 import time
 from asyncio import Future, ensure_future, Task
+from asyncio.exceptions import CancelledError
 from binascii import unhexlify, hexlify
 from typing import Optional, Dict, List, Callable
 
@@ -282,8 +283,9 @@ class DFLCommunity(Community):
 
     def train_in_round(self, round):
         self.ongoing_training_task_name = "round_%d" % round
-        task = self.register_task(self.ongoing_training_task_name, self.train_in_round_coroutine, round)
-        task.add_done_callback(lambda f, r=round: self.on_train_completed(f, r))
+        if not self.is_pending_task_active(self.ongoing_training_task_name):
+            task = self.register_task(self.ongoing_training_task_name, self.train_in_round_coroutine, round)
+            task.add_done_callback(lambda f, r=round: self.on_train_completed(f, r))
 
     def on_train_completed(self, _, round):
         self.ongoing_training_task_name = None
@@ -315,12 +317,14 @@ class DFLCommunity(Community):
 
         # 4. As last step, send the model to yourself. We want this task to be finished before doing so.
         if self.my_id in aggregators:
+            self.logger.info("Participant %s sending trained model to self", self.peer_manager.get_my_short_id())
             asyncio.get_event_loop().call_soon(self.received_trained_model, self.my_peer, round + 1, self.model_manager.model)
 
     def aggregate_in_round(self, round):
         self.ongoing_aggregation_task_name = "aggregate_%d" % round
-        task = self.register_task(self.ongoing_aggregation_task_name, self.aggregate_in_round_coroutine, round)
-        task.add_done_callback(lambda f, r=round: self.on_aggregate_complete(f, r))
+        if not self.is_pending_task_active(self.ongoing_aggregation_task_name):
+            task = self.register_task(self.ongoing_aggregation_task_name, self.aggregate_in_round_coroutine, round)
+            task.add_done_callback(lambda f, r=round: self.on_aggregate_complete(f, r))
 
     def on_aggregate_complete(self, f, round):
         self.ongoing_aggregation_task_name = None
@@ -375,6 +379,7 @@ class DFLCommunity(Community):
 
         # 4. As last step, send the model to yourself. We want this task to be finished before doing so.
         if self.my_id in participants:
+            self.logger.info("Participant %s sending aggregated model to self", self.peer_manager.get_my_short_id())
             model_cpy = copy.deepcopy(avg_model)
             asyncio.get_event_loop().call_soon(self.received_aggregated_model, self.my_peer, self.sample_index_estimate, model_cpy)
 
@@ -438,6 +443,9 @@ class DFLCommunity(Community):
         self.peer_manager.flush_last_active_pending()
 
     def on_eva_send_done(self, future: Future, peer: Peer, serialized_response: bytes, binary_data: bytes, start_time: float):
+        if future.cancelled():  # Do not reschedule if the future was cancelled
+            return
+
         if future.exception():
             peer_id = self.peer_manager.get_short_id(peer.public_key.key_to_bin())
             self.logger.warning("Transfer to participant %s failed, scheduling it again (Exception: %s)",
@@ -449,25 +457,25 @@ class DFLCommunity(Community):
             # The transfer seems to be completed - record the transfer time
             self.transfer_times.append(time.time() - start_time)
 
-    def schedule_eva_send_model(self, peer: Peer, serialized_response: bytes, binary_data: bytes, start_time: float):
+    def schedule_eva_send_model(self, peer: Peer, serialized_response: bytes, binary_data: bytes, start_time: float) -> Future:
         # Schedule the transfer
-        future = self.eva.send_binary(peer, serialized_response, binary_data)
-        ensure_future(future).add_done_callback(
-            lambda f: self.on_eva_send_done(f, peer, serialized_response, binary_data, start_time))
+        future = ensure_future(self.eva.send_binary(peer, serialized_response, binary_data))
+        future.add_done_callback(lambda f: self.on_eva_send_done(f, peer, serialized_response, binary_data, start_time))
+        return future
 
-    async def eva_send_model(self, round, model, type, population_view, peer):
+    def eva_send_model(self, round, model, type, population_view, peer):
         start_time = time.time()
         serialized_model = serialize_model(model)
         serialized_population_view = pickle.dumps(population_view)
         binary_data = serialized_model + serialized_population_view
         response = {"round": round, "type": type, "model_data_len": len(serialized_model)}
         serialized_response = json.dumps(response).encode()
-        self.schedule_eva_send_model(peer, serialized_response, binary_data, start_time)
+        return self.schedule_eva_send_model(peer, serialized_response, binary_data, start_time)
 
     def cancel_current_aggregation_task(self):
         if self.ongoing_aggregation_task_name and self.is_pending_task_active(self.ongoing_aggregation_task_name):
             self.logger.info("Participant %s interrupting aggregation task %s",
-                             self.peer_manager.get_my_short_id(), self.ongoing_training_task_name)
+                             self.peer_manager.get_my_short_id(), self.ongoing_aggregation_task_name)
             self.cancel_pending_task(self.ongoing_aggregation_task_name)
             self.model_manager.reset_incoming_trained_models()
             self.ongoing_aggregation_task_name = None
@@ -506,6 +514,8 @@ class DFLCommunity(Community):
 
     def received_trained_model(self, peer: Peer, model_round: int, model: nn.Module) -> None:
         if self.shutting_down:
+            self.logger.warning("Participant %s ignoring incoming trained model due to shutdown",
+                                self.peer_manager.get_my_short_id())
             return
 
         peer_pk = peer.public_key.key_to_bin()
@@ -527,9 +537,14 @@ class DFLCommunity(Community):
                 self.logger.info("Aggregator %s received sufficient trained models (%d) of round %d",
                                  self.peer_manager.get_my_short_id(), len(self.model_manager.incoming_trained_models), model_round)
                 self.aggregation_future.set_result(None)
+        else:
+            self.logger.info("Participant %s ignoring incoming trained model of round %d",
+                             self.peer_manager.get_my_short_id(), model_round)
 
     def received_aggregated_model(self, peer: Peer, model_round: int, model: nn.Module) -> None:
         if self.shutting_down:
+            self.logger.warning("Participant %s ignoring incoming aggregated model due to shutdown",
+                                self.peer_manager.get_my_short_id())
             return
 
         peer_pk = peer.public_key.key_to_bin()
@@ -541,9 +556,17 @@ class DFLCommunity(Community):
         if model_round > self.sample_index_estimate:
             self.cancel_current_training_task()
             self.sample_index_estimate = model_round
+        else:
+            self.logger.info("Participant %s ignoring incoming trained model of round %d (model_round <= sample_index_estimate)",
+                             self.peer_manager.get_my_short_id(), model_round)
+
         if model_round == self.sample_index_estimate and not self.ongoing_training_task_name:
+            self.logger.error("Participant %s will start training in round %s", self.peer_manager.get_my_short_id(), model_round)
             self.model_manager.model = model
             self.train_in_round(model_round)
+        else:
+            self.logger.info("Participant %s ignoring incoming aggregated model of round %d",
+                             self.peer_manager.get_my_short_id(), model_round)
 
     async def on_send_complete(self, result: TransferResult):
         peer_id = self.peer_manager.get_short_id(result.peer.public_key.key_to_bin())
