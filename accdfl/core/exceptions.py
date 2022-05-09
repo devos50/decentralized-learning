@@ -1,2 +1,0 @@
-class StopAggregationException(RuntimeError):
-    pass

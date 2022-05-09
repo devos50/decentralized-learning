@@ -1,4 +1,4 @@
-from asyncio import Future, sleep
+from asyncio import Future, sleep, ensure_future
 from binascii import hexlify
 
 import pytest
@@ -113,7 +113,7 @@ class TestDFLCommunityOneNode(TestDFLCommunityBase):
         await self.wait_for_round_completed(self.nodes[0], 1)
 
     @pytest.mark.timeout(5)
-    async def test_multiple_round(self):
+    async def test_multiple_rounds(self):
         assert self.nodes[0].overlay.did_setup
         self.nodes[0].overlay.start()
         await self.wait_for_round_completed(self.nodes[0], 5)
@@ -127,10 +127,10 @@ class TestDFLCommunityOneNode(TestDFLCommunityBase):
             assert model
             test_future.set_result(None)
 
-        self.nodes[0].overlay.sample_index_estimate = 2
+        self.nodes[0].overlay.aggregate_sample_estimate = 2
         self.nodes[0].overlay.aggregate_complete_callback = on_aggregate_complete
         model = self.nodes[0].overlay.model_manager.model
-        self.nodes[0].overlay.received_trained_model(self.nodes[0].overlay.my_peer, 4, model)
+        ensure_future(self.nodes[0].overlay.received_trained_model(self.nodes[0].overlay.my_peer, 4, model))
         await test_future
 
 
@@ -179,7 +179,7 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
         """
         Test whether we are starting training when receiving an aggregated model.
         """
-        self.nodes[0].overlay.sample_index_estimate = 1
+        self.nodes[0].overlay.train_sample_estimate = 1
         model = self.nodes[1].overlay.model_manager.model
         self.nodes[0].overlay.received_aggregated_model(self.nodes[0].overlay.my_peer, 2, model)
         assert self.nodes[0].overlay.ongoing_training_task_name
@@ -189,7 +189,7 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
         """
         Test whether we are not starting training when receiving an old aggregated model.
         """
-        self.nodes[0].overlay.sample_index_estimate = 5
+        self.nodes[0].overlay.train_sample_estimate = 5
         model = self.nodes[1].overlay.model_manager.model
         self.nodes[0].overlay.received_aggregated_model(self.nodes[0].overlay.my_peer, 2, model)
         assert not self.nodes[0].overlay.ongoing_training_task_name
@@ -199,7 +199,7 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
         """
         Test whether we interrupt model training and start to training the newer model when receiving an aggregated model.
         """
-        self.nodes[0].overlay.sample_index_estimate = 2
+        self.nodes[0].overlay.train_sample_estimate = 2
         self.nodes[0].overlay.model_manager.train_time = 0.1
         model = self.nodes[1].overlay.model_manager.model
         self.nodes[0].overlay.received_aggregated_model(self.nodes[0].overlay.my_peer, 2, model)
@@ -211,40 +211,42 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
         assert self.nodes[0].overlay.ongoing_training_task_name == "round_3"
 
     @pytest.mark.timeout(5)
-    def test_start_aggregated_on_trained_model(self):
+    async def test_start_aggregated_on_trained_model(self):
         """
         Test whether we start aggregating when receiving a trained model.
         """
-        self.nodes[0].overlay.sample_index_estimate = 2
+        self.nodes[0].overlay.aggregate_sample_estimate = 1
+        self.nodes[0].overlay.model_manager.parameters["sample_size"] = 2
         model = self.nodes[1].overlay.model_manager.model
-        self.nodes[0].overlay.received_trained_model(self.nodes[0].overlay.my_peer, 4, model)
-        assert self.nodes[0].overlay.ongoing_aggregation_task_name == "aggregate_4"
+        await self.nodes[0].overlay.received_trained_model(self.nodes[0].overlay.my_peer, 2, model)
+        assert self.nodes[0].overlay.aggregate_start_time
+        assert len(self.nodes[0].overlay.model_manager.incoming_trained_models) == 1
 
     @pytest.mark.timeout(5)
-    def test_not_start_aggregated_on_stale_trained_model(self):
+    async def test_not_start_aggregated_on_stale_trained_model(self):
         """
         Test whether we do not start aggregating when receiving an older trained model.
         """
-        self.nodes[0].overlay.sample_index_estimate = 5
+        self.nodes[0].overlay.aggregate_sample_estimate = 5
         model = self.nodes[1].overlay.model_manager.model
-        self.nodes[0].overlay.received_trained_model(self.nodes[0].overlay.my_peer, 4, model)
-        assert not self.nodes[0].overlay.ongoing_aggregation_task_name
+        await self.nodes[0].overlay.received_trained_model(self.nodes[0].overlay.my_peer, 4, model)
+        assert not self.nodes[0].overlay.aggregate_start_time
 
     @pytest.mark.timeout(5)
-    def test_interrupt_aggregate_on_newer_trained_model(self):
+    async def test_reset_aggregate_on_newer_trained_model(self):
         """
-        Test whether we interrupt an ongoing aggregation when receiving a newer trained model.
+        Test whether we reset an ongoing aggregation when receiving a newer trained model.
         """
-        self.nodes[0].overlay.sample_index_estimate = 1
+        self.nodes[0].overlay.aggregate_sample_estimate = 1
         self.nodes[0].overlay.model_manager.parameters["sample_size"] = 2
         model = self.nodes[1].overlay.model_manager.model
-        self.nodes[0].overlay.received_trained_model(self.nodes[0].overlay.my_peer, 2, model)
-        assert self.nodes[0].overlay.ongoing_aggregation_task_name == "aggregate_2"
+        await self.nodes[0].overlay.received_trained_model(self.nodes[0].overlay.my_peer, 2, model)
+        assert self.nodes[0].overlay.aggregate_start_time
+        assert len(self.nodes[0].overlay.model_manager.incoming_trained_models) == 1
 
-        # New incoming trained model
-        self.nodes[0].overlay.received_trained_model(self.nodes[0].overlay.my_peer, 3, model)
-        assert not self.nodes[0].overlay.is_pending_task_active("aggregate_2")
-        assert self.nodes[0].overlay.ongoing_aggregation_task_name == "aggregate_3"
+        # Another incoming trained model for a later round - this should reset the current aggregation
+        await self.nodes[0].overlay.received_trained_model(self.nodes[1].overlay.my_peer, 3, model)
+        assert len(self.nodes[0].overlay.model_manager.incoming_trained_models) == 1
 
     @pytest.mark.timeout(5)
     async def test_single_round(self):
@@ -292,11 +294,11 @@ class TestDFLCommunityFiveNodes(TestDFLCommunityBase):
             node.overlay.start()
         await self.wait_for_round_completed(self.nodes[0], 1)
 
-    @pytest.mark.timeout(5)
-    async def test_multiple_rounds(self):
+    @pytest.mark.timeout(10)
+    async def test_many_rounds(self):
         for node in self.nodes:
             node.overlay.start()
-        await self.wait_for_round_completed(self.nodes[0], 5)
+        await self.wait_for_round_completed(self.nodes[0], 50)
 
     @pytest.mark.timeout(5)
     async def test_get_available_peers(self):
@@ -310,7 +312,6 @@ class TestDFLCommunityFiveNodes(TestDFLCommunityBase):
         assert len(available_peers) == 1
 
         available_peers = await self.nodes[0].overlay.determine_available_peers_for_sample(1, 5)
-        print(available_peers)
         assert len(available_peers) == 5
 
         # Make two nodes unavailable

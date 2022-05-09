@@ -12,7 +12,6 @@ from torch import nn
 
 from accdfl.core import TransmissionMethod, NodeMembershipChange
 from accdfl.core.caches import PingPeersRequestCache, PingRequestCache
-from accdfl.core.exceptions import StopAggregationException
 from accdfl.core.model import serialize_model, unserialize_model, create_model
 from accdfl.core.model_manager import ModelManager
 from accdfl.core.payloads import AdvertiseMembership, PingPayload, PongPayload
@@ -54,10 +53,11 @@ class DFLCommunity(Community):
         self.did_setup = False
         self.shutting_down = False
         self.ongoing_training_task_name: Optional[str] = None
-        self.ongoing_aggregation_task_name: Optional[str] = None
         self.train_sample_estimate: int = 0
         self.aggregate_sample_estimate: int = 0
-        self.aggregation_future: Optional[Future] = None
+        self.aggregate_start_time = 0
+        self.completed_aggregation = False
+        self.completed_training = False
 
         # Components
         self.peer_manager: PeerManager = PeerManager(self.my_id, -1)
@@ -140,6 +140,7 @@ class DFLCommunity(Community):
         return None
 
     def get_round_estimate(self) -> int:
+        # TODO include max in population view in here
         return max(self.train_sample_estimate, self.aggregate_sample_estimate)
 
     def go_offline(self, graceful: bool = True) -> None:
@@ -149,7 +150,7 @@ class DFLCommunity(Community):
 
         if graceful:
             info = self.peer_manager.last_active[self.my_id]
-            self.peer_manager.last_active[self.my_id] = (info[0], (self.sample_index_estimate, NodeMembershipChange.LEAVE))
+            self.peer_manager.last_active[self.my_id] = (info[0], (self.get_round_estimate(), NodeMembershipChange.LEAVE))
             self.advertise_membership(NodeMembershipChange.LEAVE)
         else:
             self.cancel_all_pending_tasks()
@@ -177,7 +178,7 @@ class DFLCommunity(Community):
                               self.peer_manager.get_my_short_id(), self.peer_manager.get_short_id(peer_pk))
             global_time = self.claim_global_time()
             auth = BinMemberAuthenticationPayload(self.my_peer.public_key.key_to_bin())
-            payload = AdvertiseMembership(self.sample_index_estimate, change.value)
+            payload = AdvertiseMembership(self.get_round_estimate(), change.value)
             dist = GlobalTimeDistributionPayload(global_time)
             packet = self._ez_pack(self._prefix, AdvertiseMembership.msg_id, [auth, dist, payload])
             self.endpoint.send(peer.address, packet)
@@ -193,7 +194,7 @@ class DFLCommunity(Community):
                          self.peer_manager.get_my_short_id(), peer_id)
 
         change: NodeMembershipChange = NodeMembershipChange(payload.change)
-        latest_round = self.sample_index_estimate
+        latest_round = self.get_round_estimate()
         if change == NodeMembershipChange.JOIN:
             # Do not apply this immediately since we do not want the newly joined node to be part of the next sample just yet.
             self.peer_manager.last_active_pending[peer_pk] = (max(payload.round, latest_round), (payload.round, NodeMembershipChange.JOIN))
@@ -250,7 +251,7 @@ class DFLCommunity(Community):
 
         peer_pk = peer.public_key.key_to_bin()
         if peer_pk in self.peer_manager.last_active:
-            self.peer_manager.update_peer_activity(peer_pk, max(self.sample_index_estimate, payload.round))
+            self.peer_manager.update_peer_activity(peer_pk, max(self.get_round_estimate(), payload.round))
 
         self.send_pong(peer, payload.round, payload.identifier)
 
@@ -279,7 +280,7 @@ class DFLCommunity(Community):
             return
 
         self.peer_manager.update_peer_activity(peer.public_key.key_to_bin(),
-                                               max(self.sample_index_estimate, payload.round))
+                                               max(self.get_round_estimate(), payload.round))
 
         cache = self.request_cache.pop("ping-%s" % peer_short_id, payload.identifier)
         cache.on_pong(payload.round)
@@ -291,6 +292,7 @@ class DFLCommunity(Community):
             task.add_done_callback(lambda f, r=round: self.on_train_completed(f, r))
 
     def on_train_completed(self, _, round):
+        self.completed_training = True
         self.ongoing_training_task_name = None
         self.logger.info("Participant %s completed round %d", self.peer_manager.get_my_short_id(), round)
         if self.round_complete_callback:
@@ -304,6 +306,7 @@ class DFLCommunity(Community):
             raise RuntimeError("Round number %d invalid!" % round)
 
         self.logger.info("Participant %s starts participating in round %d", self.peer_manager.get_my_short_id(), round)
+        self.completed_training = False
 
         # 1. Train the model
         await self.model_manager.train(self.train_in_subprocess)
@@ -315,20 +318,9 @@ class DFLCommunity(Community):
         self.logger.info("Participant %s determined %d available aggregators in sample %d: %s",
                          self.peer_manager.get_my_short_id(), len(aggregator_ids), round + 1, aggregator_ids)
 
-        # 3. Send the model to the aggregators in the next sample
-        await self.send_trained_model_to_aggregators(aggregators, round + 1)
-
-    def aggregate_in_round(self, round):
-        self.ongoing_aggregation_task_name = "aggregate_%d" % round
-        if not self.is_pending_task_active(self.ongoing_aggregation_task_name):
-            task = self.register_task(self.ongoing_aggregation_task_name, self.aggregate_in_round_coroutine, round)
-            task.add_done_callback(lambda f, r=round: self.on_aggregate_complete(f, r))
-
-    def on_aggregate_complete(self, f, round):
-        self.ongoing_aggregation_task_name = None
-        self.logger.info("Aggregator %s completed aggregation in round %d", self.peer_manager.get_my_short_id(), round)
-        if self.aggregate_complete_callback:
-            ensure_future(self.aggregate_complete_callback(round, f.result()))
+        # 3. Send the trained model to the aggregators in the next sample
+        task_name = "send_trained_model_%s" % round
+        self.register_task(task_name, self.send_trained_model_to_aggregators, aggregators, round + 1)
 
     async def send_aggregated_model_to_participants(self, participants: List[bytes], model: nn.Module, sample_index: int) -> None:
         if not self.is_active:
@@ -379,7 +371,7 @@ class DFLCommunity(Community):
         for aggregator in aggregators:
             if aggregator == self.my_id:
                 self.logger.info("Participant %s sending trained model to self", self.peer_manager.get_my_short_id())
-                ensure_future(self.received_trained_model(self.my_peer, sample_index, self.model_manager.model))
+                await self.received_trained_model(self.my_peer, sample_index, self.model_manager.model)
                 continue
 
             peer = self.get_peer_by_pk(aggregator)
@@ -444,7 +436,7 @@ class DFLCommunity(Community):
         received_population_view = pickle.loads(serialized_population_view)
         self.peer_manager.merge_population_views(received_population_view)
         self.peer_manager.update_peer_activity(result.peer.public_key.key_to_bin(),
-                                               max(json_data["round"], self.sample_index_estimate))
+                                               max(json_data["round"], self.get_round_estimate()))
         self.update_population_view_history()
         incoming_model = unserialize_model(serialized_model, self.parameters["dataset"], self.parameters["model"])
 
@@ -469,8 +461,11 @@ class DFLCommunity(Community):
             self.logger.info("Participant %s received trained model for round %d for the first time - "
                              "starting to aggregate", self.peer_manager.get_my_short_id(), model_round)
             self.aggregate_sample_estimate = model_round
+            self.model_manager.reset_incoming_trained_models()
+            self.aggregate_start_time = time.time()
+            self.completed_aggregation = False
             self.model_manager.process_incoming_trained_model(peer_pk, model)
-        elif model_round == self.aggregate_sample_estimate:
+        elif model_round == self.aggregate_sample_estimate and not self.completed_aggregation:
             self.model_manager.process_incoming_trained_model(peer_pk, model)
         else:
             self.logger.info("Participant %s ignoring incoming trained model of round %d",
@@ -482,11 +477,13 @@ class DFLCommunity(Community):
                              self.peer_manager.get_my_short_id(), len(self.model_manager.incoming_trained_models),
                              model_round)
 
-            #self.aggregation_durations[model_round] = time.time() - start_time
+            self.aggregation_durations[model_round] = time.time() - self.aggregate_start_time
+            self.aggregate_start_time = 0
+            self.completed_aggregation = True
 
             # 3.1. Aggregate these models
             self.logger.info("Aggregator %s will average the models of round %d",
-                             self.peer_manager.get_my_short_id(), round)
+                             self.peer_manager.get_my_short_id(), model_round)
             avg_model = self.model_manager.average_trained_models()
 
             # 3.2. Remove these models from the model manager (they are not needed anymore)
@@ -499,7 +496,8 @@ class DFLCommunity(Community):
                              self.peer_manager.get_my_short_id(), len(participants_ids), model_round, participants_ids)
 
             # 3.3. Distribute the average model to the available participants in the sample.
-            ensure_future(self.send_aggregated_model_to_participants(participants, avg_model, self.aggregate_sample_estimate))
+            task_name = "send_aggregated_model_%s" % self.aggregate_sample_estimate
+            self.register_task(task_name, self.send_aggregated_model_to_participants, participants, avg_model, self.aggregate_sample_estimate)
 
             # 4. Invoke the complete callback
             self.logger.info("Aggregator %s completed aggregation in round %d", self.peer_manager.get_my_short_id(), model_round)
@@ -516,13 +514,13 @@ class DFLCommunity(Community):
         peer_id = self.peer_manager.get_short_id(peer_pk)
 
         self.logger.info("Participant %s received aggregated model of round %d from aggregator %s",
-                         self.peer_manager.get_my_short_id(), model_round, peer_id)
+                         self.peer_manager.get_my_short_id(), model_round - 1, peer_id)
 
         if model_round > self.train_sample_estimate:
             self.train_sample_estimate = model_round
             self.cancel_current_training_task()
-        if model_round == self.train_sample_estimate and not self.ongoing_training_task_name:
-            self.logger.error("Participant %s will start training in round %s", self.peer_manager.get_my_short_id(), model_round)
+            self.completed_training = False
+        if model_round == self.train_sample_estimate and not self.ongoing_training_task_name and not self.completed_training:
             self.model_manager.model = model
             self.train_in_round(model_round)
 
@@ -530,7 +528,7 @@ class DFLCommunity(Community):
         peer_id = self.peer_manager.get_short_id(result.peer.public_key.key_to_bin())
         my_peer_id = self.peer_manager.get_my_short_id()
         self.logger.info(f'Outgoing transfer {my_peer_id} -> {peer_id} has completed: {result.info.decode()}')
-        self.peer_manager.update_peer_activity(result.peer.public_key.key_to_bin(), self.sample_index_estimate)
+        self.peer_manager.update_peer_activity(result.peer.public_key.key_to_bin(), self.get_round_estimate())
 
     async def on_error(self, peer, exception):
         self.logger.error(f'An error has occurred in transfer to peer {peer}: {exception}')
