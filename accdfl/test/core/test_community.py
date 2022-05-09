@@ -267,8 +267,8 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
         """
         self.nodes[0].overlay.is_active = True
         self.nodes[1].overlay.is_active = True
-        res = await self.nodes[0].overlay.ping_peer(1234, self.nodes[1].overlay.my_peer.public_key.key_to_bin(), 1)
-        assert res[2]
+        res = await self.nodes[0].overlay.ping_peer(1234, self.nodes[1].overlay.my_peer.public_key.key_to_bin())
+        assert res[1]
 
     @pytest.mark.timeout(5)
     async def test_ping_fail(self):
@@ -276,8 +276,8 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
         Test pinging a single peer.
         """
         self.nodes[0].overlay.is_active = True
-        res = await self.nodes[0].overlay.ping_peer(1234, self.nodes[1].overlay.my_peer.public_key.key_to_bin(), 1)
-        assert not res[2]
+        res = await self.nodes[0].overlay.ping_peer(1234, self.nodes[1].overlay.my_peer.public_key.key_to_bin())
+        assert not res[1]
 
 
 class TestDFLCommunityFiveNodes(TestDFLCommunityBase):

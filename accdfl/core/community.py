@@ -222,26 +222,26 @@ class DFLCommunity(Community):
         cache.start()
         return cache.future
 
-    def ping_peer(self, ping_all_id: int, peer_pk: bytes, round: int) -> Future:
-        self.logger.debug("Participant %s pinging participant %s for round %d",
-                          self.peer_manager.get_my_short_id(), self.peer_manager.get_short_id(peer_pk), round)
+    def ping_peer(self, ping_all_id: int, peer_pk: bytes) -> Future:
+        self.logger.debug("Participant %s pinging participant %s",
+                          self.peer_manager.get_my_short_id(), self.peer_manager.get_short_id(peer_pk))
         peer_short_id = self.peer_manager.get_short_id(peer_pk)
         peer = self.get_peer_by_pk(peer_pk)
         if not peer:
             self.logger.warning("Wanted to ping participant %s but cannot find Peer object!", peer_short_id)
             return succeed((peer_pk, False))
 
-        cache = PingRequestCache(self, ping_all_id, peer, round, self.parameters["ping_timeout"])
+        cache = PingRequestCache(self, ping_all_id, peer, self.parameters["ping_timeout"])
         self.request_cache.add(cache)
         cache.start()
         return cache.future
 
-    def send_ping(self, peer: Peer, round: int, identifier: int) -> None:
+    def send_ping(self, peer: Peer, identifier: int) -> None:
         """
         Send a ping message with an identifier to a specific peer.
         """
         auth = BinMemberAuthenticationPayload(self.my_peer.public_key.key_to_bin())
-        payload = PingPayload(round, identifier)
+        payload = PingPayload(self.get_round_estimate(), identifier)
 
         packet = self._ez_pack(self._prefix, PingPayload.msg_id, [auth, payload])
         self.endpoint.send(peer.address, packet)
@@ -260,14 +260,14 @@ class DFLCommunity(Community):
         if peer_pk in self.peer_manager.last_active:
             self.peer_manager.update_peer_activity(peer_pk, max(self.get_round_estimate(), payload.round))
 
-        self.send_pong(peer, payload.round, payload.identifier)
+        self.send_pong(peer, payload.identifier)
 
-    def send_pong(self, peer: Peer, round: int, identifier: int) -> None:
+    def send_pong(self, peer: Peer, identifier: int) -> None:
         """
         Send a pong message with an identifier to a specific peer.
         """
         auth = BinMemberAuthenticationPayload(self.my_peer.public_key.key_to_bin())
-        payload = PongPayload(round, identifier)
+        payload = PongPayload(self.get_round_estimate(), identifier)
 
         packet = self._ez_pack(self._prefix, PongPayload.msg_id, [auth, payload])
         self.endpoint.send(peer.address, packet)
@@ -290,7 +290,7 @@ class DFLCommunity(Community):
                                                max(self.get_round_estimate(), payload.round))
 
         cache = self.request_cache.pop("ping-%s" % peer_short_id, payload.identifier)
-        cache.on_pong(payload.round)
+        cache.on_pong()
 
     def train_in_round(self, round):
         self.ongoing_training_task_name = "round_%d" % round
