@@ -352,7 +352,7 @@ class DFLCommunity(Community):
             if not peer:
                 self.logger.warning("Could not find peer with public key %s", hexlify(peer_pk).decode())
                 continue
-            await self.eva_send_model(sample_index, model, "aggregated_model", population_view, peer)
+            ensure_future(self.eva_send_model(sample_index, model, "aggregated_model", population_view, peer))
 
         # Flush pending changes to the local view
         self.peer_manager.flush_last_active_pending()
@@ -378,14 +378,14 @@ class DFLCommunity(Community):
         for aggregator in aggregators:
             if aggregator == self.my_id:
                 self.logger.info("Participant %s sending trained model to self", self.peer_manager.get_my_short_id())
-                await self.received_trained_model(self.my_peer, sample_index, self.model_manager.model)
+                ensure_future(self.received_trained_model(self.my_peer, sample_index, self.model_manager.model))
                 continue
 
             peer = self.get_peer_by_pk(aggregator)
             if not peer:
                 self.logger.warning("Could not find aggregator peer with public key %s", hexlify(aggregator).decode())
                 continue
-            await self.eva_send_model(sample_index, self.model_manager.model, "trained_model", population_view, peer)
+            ensure_future(self.eva_send_model(sample_index, self.model_manager.model, "trained_model", population_view, peer))
 
         # Flush pending changes to the local view
         self.peer_manager.flush_last_active_pending()
