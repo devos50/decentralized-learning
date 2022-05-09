@@ -196,28 +196,16 @@ class DFLCommunity(Community):
         else:
             self.peer_manager.last_active[peer_pk] = (max(payload.round, latest_round), (payload.round, NodeMembershipChange.LEAVE))
 
-    def determine_available_aggregators_for_round(self, round: int) -> Future:
-        if self.fixed_aggregator:
-            candidate_aggregators = [self.fixed_aggregator]
+    def determine_available_peers_for_sample(self, sample: int, count: int, getting_aggregators: bool = False) -> Future:
+        if getting_aggregators and self.fixed_aggregator:
+            candidate_peers = [self.fixed_aggregator]
         else:
-            candidate_aggregators = self.sample_manager.get_ordered_sample_list(
-                round, self.peer_manager.get_active_peers(round))
-        self.logger.info("Participant %s starts to determine %d available aggregators for round %d (candidates: %d)",
-                         self.peer_manager.get_my_short_id(), self.parameters["num_aggregators"], round,
-                         len(candidate_aggregators))
-        cache = PingPeersRequestCache(self, candidate_aggregators, self.parameters["num_aggregators"], round)
-        self.request_cache.add(cache)
-        cache.start()
-        return cache.future
-
-    def determine_available_participants_for_round(self, round: int) -> Future:
-        candidate_participants = self.sample_manager.get_ordered_sample_list(round, self.peer_manager.get_active_peers(round))
-        candidate_participants_ids = [self.peer_manager.get_short_id(peer_id) for peer_id in candidate_participants]
-        self.logger.info("Aggregator %s starts to determine %d available participants for round %d (candidates: %d)",
-                         self.peer_manager.get_my_short_id(), self.parameters["sample_size"], round,
-                         len(candidate_participants))
-        self.logger.debug("Candidates for participating in round %d: %s", round, candidate_participants_ids)
-        cache = PingPeersRequestCache(self, candidate_participants, self.parameters["sample_size"], round)
+            candidate_peers = self.sample_manager.get_ordered_sample_list(
+                sample, self.peer_manager.get_active_peers(sample))
+        self.logger.info("Participant %s starts to determine %d available peers in sample %d (candidates: %d)",
+                         self.peer_manager.get_my_short_id(), count, sample,
+                         len(candidate_peers))
+        cache = PingPeersRequestCache(self, candidate_peers, count, sample)
         self.request_cache.add(cache)
         cache.start()
         return cache.future
@@ -316,7 +304,8 @@ class DFLCommunity(Community):
         await self.model_manager.train(self.train_in_subprocess)
 
         # 2. Determine the aggregators of the next sample that are available
-        aggregators = await self.determine_available_aggregators_for_round(round + 1)
+        aggregators = await self.determine_available_peers_for_sample(round + 1, self.parameters["num_aggregators"],
+                                                                      getting_aggregators=True)
         aggregator_ids = [self.peer_manager.get_short_id(peer_id) for peer_id in aggregators]
         self.logger.info("Participant %s determined %d available aggregators in sample %d: %s",
                          self.peer_manager.get_my_short_id(), len(aggregator_ids), round + 1, aggregator_ids)
@@ -376,7 +365,7 @@ class DFLCommunity(Community):
         self.model_manager.reset_incoming_trained_models()
 
         # 3. Determine the aggregators of the next sample that are available
-        participants = await self.determine_available_participants_for_round(round + 1)
+        participants = await self.determine_available_peers_for_sample(round + 1, self.parameters["sample_size"])
         participants_ids = [self.peer_manager.get_short_id(peer_id) for peer_id in participants]
         self.logger.info("Participant %s determined %d available participants for round %d: %s",
                          self.peer_manager.get_my_short_id(), len(participants_ids), round + 1, participants_ids)

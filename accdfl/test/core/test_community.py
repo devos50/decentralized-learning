@@ -271,6 +271,28 @@ class TestDFLCommunityFiveNodes(TestDFLCommunityBase):
             node.overlay.start()
         await self.wait_for_round_completed(self.nodes[0], 5)
 
+    @pytest.mark.timeout(5)
+    async def test_get_available_peers(self):
+        """
+        Test getting available participants in a sample.
+        """
+        for node in self.nodes:
+            node.overlay.is_active = True
+
+        available_peers = await self.nodes[0].overlay.determine_available_peers_for_sample(1, 1)
+        assert len(available_peers) == 1
+
+        available_peers = await self.nodes[0].overlay.determine_available_peers_for_sample(1, 5)
+        print(available_peers)
+        assert len(available_peers) == 5
+
+        # Make two nodes unavailable
+        self.nodes[0].overlay.is_active = False
+        self.nodes[1].overlay.is_active = False
+        available_peers = await self.nodes[2].overlay.determine_available_peers_for_sample(1, 3)
+        assert self.nodes[0].overlay.my_peer.public_key.key_to_bin() not in available_peers
+        assert self.nodes[1].overlay.my_peer.public_key.key_to_bin() not in available_peers
+
 
 class TestDFLCommunityFiveNodesOneJoining(TestDFLCommunityBase):
     NUM_NODES = 5
