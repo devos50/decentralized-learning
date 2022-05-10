@@ -43,8 +43,8 @@ class ModelTrainer:
         optimizer = SGDOptimizer(model, self.parameters["learning_rate"], self.parameters["momentum"])
         train_set = self.dataset.get_trainset(batch_size=self.parameters["batch_size"], shuffle=True)
         train_set_it = iter(train_set)
-        local_steps = len(train_set) // self.parameters["batch_size"]
-        if len(train_set) % self.parameters["batch_size"] != 0:
+        local_steps = len(train_set.dataset) // self.parameters["batch_size"]
+        if len(train_set.dataset) % self.parameters["batch_size"] != 0:
             local_steps += 1
 
         self.logger.info("Will perform %d local steps of training (batch size: %d)", local_steps, self.parameters["batch_size"])
