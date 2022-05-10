@@ -97,11 +97,6 @@ class DFLCommunity(Community):
 
     def setup(self, parameters: Dict, data_dir: str, transmission_method: TransmissionMethod = TransmissionMethod.EVA,
               aggregator: Optional[bytes] = None):
-        if parameters["data_distribution"] == "iid":
-            assert parameters["target_participants"] * parameters["local_classes"] == sum(parameters["nodes_per_class"])
-        else:
-            assert parameters["target_participants"] * parameters["local_shards"] * parameters["shard_size"] == sum(parameters["samples_per_class"])
-
         self.parameters = parameters
         self.data_dir = data_dir
         self.fixed_aggregator = aggregator
@@ -115,7 +110,7 @@ class DFLCommunity(Community):
         self.sample_manager = SampleManager(self.peer_manager, parameters["sample_size"], parameters["num_aggregators"])
 
         # Initialize the model
-        model = create_model(parameters["dataset"], parameters["model"])
+        model = create_model(parameters["dataset"])
         participant_index = parameters["all_participants"].index(hexlify(self.my_id).decode())
         self.model_manager = ModelManager(model, parameters, participant_index)
 
@@ -445,7 +440,7 @@ class DFLCommunity(Community):
         self.peer_manager.update_peer_activity(result.peer.public_key.key_to_bin(),
                                                max(json_data["round"], self.get_round_estimate()))
         self.update_population_view_history()
-        incoming_model = unserialize_model(serialized_model, self.parameters["dataset"], self.parameters["model"])
+        incoming_model = unserialize_model(serialized_model, self.parameters["dataset"])
 
         if json_data["type"] == "trained_model":
             await self.received_trained_model(result.peer, json_data["round"], incoming_model)

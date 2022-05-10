@@ -10,7 +10,7 @@ from binascii import hexlify
 
 import yappi
 
-from accdfl.core.evaluator import Evaluator
+from accdfl.core.model_evaluator import ModelEvaluator
 
 from ipv8.configuration import ConfigBuilder
 from ipv8_service import IPv8
@@ -127,7 +127,7 @@ class ADFLSimulation:
             node.overlays[0].setup(experiment_data, None, transmission_method=self.settings.transmission_method)
             node.overlays[0].start()
 
-        self.evaluator = Evaluator(os.path.join(os.environ["HOME"], "dfl-data"), experiment_data)
+        self.evaluator = ModelEvaluator(os.path.join(os.environ["HOME"], "dfl-data"), experiment_data)
 
         if self.settings.profile:
             yappi.start(builtins=True)

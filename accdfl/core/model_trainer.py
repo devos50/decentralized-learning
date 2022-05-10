@@ -1,10 +1,11 @@
-import itertools
 import logging
+import os
 
 import torch.nn.functional as F
 from torch.autograd import Variable
 
-from accdfl.core.dataset import TrainDataset
+from accdfl.core.datasets.Shakespeare import Shakespeare
+from accdfl.core.mappings import Linear
 from accdfl.core.optimizer.sgd import SGDOptimizer
 
 trainer = None
@@ -29,7 +30,14 @@ class ModelTrainer:
     def __init__(self, data_dir, parameters, participant_index):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.parameters = parameters
-        self.dataset = TrainDataset(data_dir, parameters, participant_index)
+
+        train_dir = os.path.join(data_dir, "per_user_data", "train")
+
+        if parameters["dataset"] == "shakespeare":
+            mapping = Linear(1, parameters["target_participants"])
+            self.dataset = Shakespeare(participant_index, 0, mapping, train_dir=train_dir)
+        else:
+            raise RuntimeError("Unknown dataset %s" % parameters["dataset"])
 
     def train(self, model) -> int:
         """
@@ -37,19 +45,14 @@ class ModelTrainer:
         """
         optimizer = SGDOptimizer(model, self.parameters["learning_rate"], self.parameters["momentum"])
 
-        def it_has_next(iterable):
-            try:
-                first = next(iterable)
-            except StopIteration:
-                return None
-            return itertools.chain([first], iterable)
-
-        local_steps = len(self.dataset.train_set) // self.parameters["batch_size"]
-        if len(self.dataset.train_set) % self.parameters["batch_size"] != 0:
+        train_set = self.dataset.get_trainset(batch_size=self.parameters["batch_size"], shuffle=True)
+        train_set_it = iter(train_set)
+        local_steps = len(train_set) // self.parameters["batch_size"]
+        if len(train_set) % self.parameters["batch_size"] != 0:
             local_steps += 1
 
         for local_step in range(local_steps):
-            data, target = self.dataset.iterator.__next__()
+            data, target = next(train_set_it)
             model.train()
             data, target = Variable(data), Variable(target)
             optimizer.optimizer.zero_grad()
@@ -59,13 +62,5 @@ class ModelTrainer:
             self.logger.info('d-sgd.next node backward propagation')
             loss.backward()
             optimizer.optimizer.step()
-
-        # Are we at the end of the epoch?
-        res = it_has_next(self.dataset.iterator)
-        if res is None:
-            self.logger.info("Epoch done - resetting dataset iterator")
-            self.dataset.reset_train_iterator()
-        else:
-            self.dataset.iterator = res
 
         return model

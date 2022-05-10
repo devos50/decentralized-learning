@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 
 
-from accdfl.core.evaluator import setup_evaluator, evaluate_accuracy
+from accdfl.core.model_evaluator import setup_evaluator, evaluate_accuracy
 from accdfl.core.model_trainer import setup_trainer, train_model, ModelTrainer
 
 
@@ -24,7 +24,7 @@ class ModelManager:
         self.parameters = parameters
         self.participant_index = participant_index
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.data_dir = os.path.join(os.environ["HOME"], "dfl-data")
+        self.data_dir = os.path.join(os.environ["HOME"], "leaf", self.parameters["dataset"])
         self.acc_check_executor = ProcessPoolExecutor(initializer=setup_evaluator,
                                                       initargs=(self.data_dir, parameters,),
                                                       max_workers=2)

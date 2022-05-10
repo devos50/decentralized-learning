@@ -2,7 +2,7 @@ import concurrent.futures
 import os
 from asyncio import get_event_loop, ensure_future
 
-from accdfl.core.evaluator import Evaluator
+from accdfl.core.model_evaluator import ModelEvaluator
 from accdfl.core.model import create_model
 
 evaluator = None
@@ -10,7 +10,7 @@ evaluator = None
 
 def init_globals(parameters):
     global evaluator
-    evaluator = Evaluator(os.path.join(os.environ["HOME"], "dfl-data"), parameters)
+    evaluator = ModelEvaluator(os.path.join(os.environ["HOME"], "dfl-data"), parameters)
 
 
 def evaluate_accuracy(model):

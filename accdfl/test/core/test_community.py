@@ -31,8 +31,7 @@ class TestDFLCommunityBase(TestBase):
     TOTAL_SAMPLES_PER_CLASS = 6
     SAMPLES_PER_CLASS = [TOTAL_SAMPLES_PER_CLASS] * 10
     NODES_PER_CLASS = [TARGET_NUM_NODES] * 10
-    DATASET = "mnist"
-    MODEL = "linear"
+    DATASET = "shakespeare"
     TRANSMISSION_METHOD = TransmissionMethod.EVA
     INACTIVITY_THRESHOLD = 10
 
@@ -46,7 +45,6 @@ class TestDFLCommunityBase(TestBase):
         self.initialize(DFLCommunity, self.NUM_NODES)
 
         self.experiment_data = {
-            "classes": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
             "learning_rate": 0.1,
             "momentum": 0.0,
             "batch_size": self.batch_size,
@@ -65,7 +63,6 @@ class TestDFLCommunityBase(TestBase):
             "local_classes": self.LOCAL_CLASSES,
             "nodes_per_class": self.NODES_PER_CLASS,
             "dataset": self.DATASET,
-            "model": self.MODEL,
             "data_distribution": "iid",
         }
         for node in self.nodes:
