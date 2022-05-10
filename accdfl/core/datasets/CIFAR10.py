@@ -25,7 +25,7 @@ class CIFAR10(Dataset):
         Loads the training set. Partitions it if needed.
 
         """
-        logging.info("Loading training set.")
+        logging.info("Loading training set from directory %s", self.train_dir)
         trainset = torchvision.datasets.CIFAR10(
             root=self.train_dir, train=True, download=True, transform=self.transform
         )
@@ -58,7 +58,7 @@ class CIFAR10(Dataset):
         Loads the testing set.
 
         """
-        logging.info("Loading testing set.")
+        logging.info("Loading testing set from data directory %s", self.test_dir)
 
         self.testset = torchvision.datasets.CIFAR10(
             root=self.test_dir, train=False, download=True, transform=self.transform
@@ -203,7 +203,7 @@ class CIFAR10(Dataset):
             count = 0
             for elems, labels in testloader:
                 outputs = model(elems)
-                loss_val += nn.NLLLoss(outputs, labels, reduction="sum").item()
+                loss_val += F.nll_loss(outputs, labels, reduction="sum").item()
                 count += 1
                 _, predictions = torch.max(outputs, 1)
                 for label, prediction in zip(labels, predictions):
