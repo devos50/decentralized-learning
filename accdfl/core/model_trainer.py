@@ -30,7 +30,10 @@ class ModelTrainer:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.parameters = parameters
 
-        train_dir = os.path.join(data_dir, "per_user_data", "train")
+        if parameters["dataset"] in ["cifar10", "mnist"]:
+            train_dir = data_dir
+        else:
+            train_dir = os.path.join(data_dir, "per_user_data", "train")
         self.dataset = create_dataset(parameters, participant_index=participant_index, train_dir=train_dir)
 
     def train(self, model) -> int:

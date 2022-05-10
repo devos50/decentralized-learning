@@ -25,7 +25,7 @@ class ModelManager:
         self.participant_index = participant_index
         self.logger = logging.getLogger(self.__class__.__name__)
 
-        if self.parameters["dataset"] == "cifar10" or self.parameters["dataset"] == "mnist":
+        if self.parameters["dataset"] in ["cifar10", "mnist"]:
             self.data_dir = os.path.join(os.environ["HOME"], "dfl-data")
         else:
             # The LEAF dataset
