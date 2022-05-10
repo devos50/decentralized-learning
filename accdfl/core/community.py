@@ -546,5 +546,6 @@ class DFLCommunity(Community):
 
     async def unload(self):
         self.shutting_down = True
+        self.model_manager.model_train_executor.shutdown(wait=False)
         await self.request_cache.shutdown()
         await super().unload()

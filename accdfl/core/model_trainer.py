@@ -54,10 +54,10 @@ class ModelTrainer:
             model.train()
             data, target = Variable(data), Variable(target)
             optimizer.optimizer.zero_grad()
-            self.logger.info('d-sgd.next node forward propagation')
+            self.logger.info('d-sgd.next node forward propagation (step %d/%d)', local_step, local_steps)
             output = model.forward(data)
             loss = F.nll_loss(output, target)
-            self.logger.info('d-sgd.next node backward propagation')
+            self.logger.info('d-sgd.next node backward propagation (step %d/%d)', local_step, local_steps)
             loss.backward()
             optimizer.optimizer.step()
 
