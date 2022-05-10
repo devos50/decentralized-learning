@@ -51,7 +51,7 @@ class CIFAR10(Dataset):
                 all_trainset, self.sizes, shards=self.shards
             ).use(self.uid)
 
-        self.logger.info("Train dataset initialization done! Total samples: %d", len(self.trainset))
+        self.logger.info("Train dataset initialization done! UID: %d. Total samples: %d", self.uid, len(self.trainset))
 
     def load_testset(self):
         """
