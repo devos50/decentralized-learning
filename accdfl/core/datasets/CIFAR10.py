@@ -1,5 +1,3 @@
-import logging
-
 import torch
 import torch.nn.functional as F
 import torchvision
@@ -25,7 +23,7 @@ class CIFAR10(Dataset):
         Loads the training set. Partitions it if needed.
 
         """
-        logging.info("Loading training set from directory %s", self.train_dir)
+        self.logger.info("Loading training set from directory %s", self.train_dir)
         trainset = torchvision.datasets.CIFAR10(
             root=self.train_dir, train=True, download=True, transform=self.transform
         )
@@ -36,7 +34,7 @@ class CIFAR10(Dataset):
             frac = e / c_len
             self.sizes = [frac] * self.n_procs
             self.sizes[-1] += 1.0 - frac * self.n_procs
-            logging.debug("Size fractions: {}".format(self.sizes))
+            self.logger.debug("Size fractions: {}".format(self.sizes))
 
         self.uid = self.mapping.get_uid(self.rank, self.machine_id)
 
@@ -53,16 +51,20 @@ class CIFAR10(Dataset):
                 all_trainset, self.sizes, shards=self.shards
             ).use(self.uid)
 
+        self.logger.info("Train dataset initialization done! Total samples: %d", len(self.trainset))
+
     def load_testset(self):
         """
         Loads the testing set.
 
         """
-        logging.info("Loading testing set from data directory %s", self.test_dir)
+        self.logger.info("Loading testing set from data directory %s", self.test_dir)
 
         self.testset = torchvision.datasets.CIFAR10(
             root=self.test_dir, train=False, download=True, transform=self.transform
         )
+
+        self.logger.info("Test dataset initialization done! Total samples: %d", len(self.testset))
 
     def __init__(
         self,
@@ -190,7 +192,7 @@ class CIFAR10(Dataset):
         """
         testloader = self.get_testset()
 
-        logging.debug("Test Loader instantiated.")
+        self.logger.debug("Test Loader instantiated.")
 
         correct_pred = [0 for _ in range(NUM_CLASSES)]
         total_pred = [0 for _ in range(NUM_CLASSES)]
@@ -207,25 +209,25 @@ class CIFAR10(Dataset):
                 count += 1
                 _, predictions = torch.max(outputs, 1)
                 for label, prediction in zip(labels, predictions):
-                    logging.debug("{} predicted as {}".format(label, prediction))
+                    self.logger.debug("{} predicted as {}".format(label, prediction))
                     if label == prediction:
                         correct_pred[label] += 1
                         total_correct += 1
                     total_pred[label] += 1
                     total_predicted += 1
 
-        logging.debug("Predicted on the test set")
+        self.logger.debug("Predicted on the test set")
 
         for key, value in enumerate(correct_pred):
             if total_pred[key] != 0:
                 accuracy = 100 * float(value) / total_pred[key]
             else:
                 accuracy = 100.0
-            logging.debug("Accuracy for class {} is: {:.1f} %".format(key, accuracy))
+            self.logger.debug("Accuracy for class {} is: {:.1f} %".format(key, accuracy))
 
         accuracy = 100 * float(total_correct) / total_predicted
         loss_val = loss_val / count
-        logging.info("Overall accuracy is: {:.1f} %".format(accuracy))
+        self.logger.info("Overall accuracy is: {:.1f} %".format(accuracy))
         return accuracy, loss_val
 
 

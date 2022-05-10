@@ -1,3 +1,5 @@
+import logging
+
 from accdfl.util import utils
 from accdfl.core.mappings.Mapping import Mapping
 
@@ -43,6 +45,7 @@ class Dataset:
             Batch size during testing. Default value is 64
 
         """
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.rank = rank
         self.machine_id = machine_id
         self.mapping = mapping

@@ -47,6 +47,8 @@ class ModelTrainer:
         if len(train_set) % self.parameters["batch_size"] != 0:
             local_steps += 1
 
+        self.logger.info("Will perform %d local steps of training (batch size: %d)", local_steps, self.parameters["batch_size"])
+
         for local_step in range(local_steps):
             data, target = next(train_set_it)
             model.train()
