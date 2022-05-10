@@ -24,7 +24,13 @@ class ModelManager:
         self.parameters = parameters
         self.participant_index = participant_index
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.data_dir = os.path.join(os.environ["HOME"], "leaf", self.parameters["dataset"])
+
+        if self.parameters["dataset"] == "cifar10" or self.parameters["dataset"] == "mnist":
+            self.data_dir = os.path.join(os.environ["HOME"], "dfl-data")
+        else:
+            # The LEAF dataset
+            self.data_dir = os.path.join(os.environ["HOME"], "leaf", self.parameters["dataset"])
+
         self.acc_check_executor = ProcessPoolExecutor(initializer=setup_evaluator,
                                                       initargs=(self.data_dir, parameters,),
                                                       max_workers=2)

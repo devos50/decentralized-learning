@@ -171,7 +171,7 @@ class CIFAR10(Dataset):
             return DataLoader(self.testset, batch_size=self.test_batch_size)
         raise RuntimeError("Test set not initialized!")
 
-    def test(self, model, loss):
+    def test(self, model):
         """
         Function to evaluate model on the test dataset.
 
@@ -203,7 +203,7 @@ class CIFAR10(Dataset):
             count = 0
             for elems, labels in testloader:
                 outputs = model(elems)
-                loss_val += loss(outputs, labels).item()
+                loss_val += nn.NLLLoss(outputs, labels, reduction="sum").item()
                 count += 1
                 _, predictions = torch.max(outputs, 1)
                 for label, prediction in zip(labels, predictions):
