@@ -193,41 +193,21 @@ class CIFAR10(Dataset):
 
         self.logger.debug("Test Loader instantiated.")
 
-        correct_pred = [0 for _ in range(NUM_CLASSES)]
-        total_pred = [0 for _ in range(NUM_CLASSES)]
-
-        total_correct = 0
-        total_predicted = 0
+        correct = example_number = total_loss = num_batches = 0
+        model.eval()
 
         with torch.no_grad():
-            loss_val = 0.0
-            count = 0
-            for elems, labels in testloader:
-                outputs = model(elems)
-                loss_val += F.nll_loss(outputs, labels, reduction="sum").item()
-                count += 1
-                _, predictions = torch.max(outputs, 1)
-                for label, prediction in zip(labels, predictions):
-                    self.logger.debug("{} predicted as {}".format(label, prediction))
-                    if label == prediction:
-                        correct_pred[label] += 1
-                        total_correct += 1
-                    total_pred[label] += 1
-                    total_predicted += 1
+            for data, target in iter(testloader):
+                output = model.forward(data)
+                total_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
+                pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
+                correct += pred.eq(target.view_as(pred)).sum().item()
+                example_number += target.size(0)
+                num_batches += 1
 
-        self.logger.debug("Predicted on the test set")
-
-        for key, value in enumerate(correct_pred):
-            if total_pred[key] != 0:
-                accuracy = 100 * float(value) / total_pred[key]
-            else:
-                accuracy = 100.0
-            self.logger.debug("Accuracy for class {} is: {:.1f} %".format(key, accuracy))
-
-        accuracy = 100 * float(total_correct) / total_predicted
-        loss_val = loss_val / count
-        self.logger.info("Overall accuracy is: {:.1f} %".format(accuracy))
-        return accuracy, loss_val
+        accuracy = float(correct) / float(example_number)
+        loss = total_loss / float(example_number)
+        return accuracy, loss
 
 
 class CNN(Model):
