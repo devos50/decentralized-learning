@@ -5,11 +5,13 @@ import os
 import random
 import shutil
 import time
+from asyncio import ensure_future
 from binascii import hexlify
 
 import yappi
 
-from core.evaluator import Evaluator
+from accdfl.core.evaluator import Evaluator
+
 from ipv8.configuration import ConfigBuilder
 from ipv8_service import IPv8
 
@@ -62,15 +64,15 @@ class ADFLSimulation:
 
     def ipv8_discover_peers(self) -> None:
         for node_a in self.nodes:
-            connect_nodes = random.sample(self.nodes, min(100, len(self.nodes)))
-            for node_b in connect_nodes:
+            for node_b in self.nodes:
                 if node_a == node_b:
                     continue
 
-                node_a.overlays[0].walk_to(node_b.endpoint.wan_address)
+                node_a.network.verified_peers.add(node_b.overlays[0].my_peer)
+                node_a.network.discover_services(node_b.overlays[0].my_peer, [node_a.overlays[0].community_id, ])
         print("IPv8 peer discovery complete")
 
-    def on_round_complete(self, ind, round_nr):
+    async def on_round_complete(self, ind, round_nr):
         self.peers_rounds_completed[ind] = round_nr
         if all([n >= self.settings.num_rounds for n in self.peers_rounds_completed]):
             exit(0)
@@ -88,6 +90,7 @@ class ADFLSimulation:
 
         # Inject our nodes array in the Simulated DFL community
         for node in self.nodes:
+            node.overlays[0].train_in_subprocess = False
             node.overlays[0].nodes = self.nodes
 
         with open(os.path.join(self.data_dir, "accuracies.csv"), "w") as out_file:
@@ -100,11 +103,15 @@ class ADFLSimulation:
             "momentum": self.settings.momentum,
             "batch_size": self.settings.batch_size,
             "participants": [hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
+            "all_participants": [hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
             "rounds": self.settings.num_rounds,
             "sample_size": self.settings.sample_size,
             "target_participants": len(self.nodes),
             "num_aggregators": self.settings.num_aggregators,
             "aggregation_timeout": 2.0,
+            "ping_timeout": 5,
+            "inactivity_threshold": 1000,
+            "success_fraction": 1.0,
 
             # These parameters are not available in a deployed environment - only for experimental purposes.
             "samples_per_class": self.settings.samples_per_class,
@@ -115,7 +122,7 @@ class ADFLSimulation:
             "data_distribution": "iid",
         }
         for ind, node in enumerate(self.nodes):
-            node.overlays[0].round_complete_callback = lambda round_nr, i=ind: self.on_round_complete(i, round_nr)
+            node.overlays[0].round_complete_callback = lambda round_nr, i=ind: ensure_future(self.on_round_complete(i, round_nr))
             node.overlays[0].aggregate_complete_callback = lambda round_nr, i=ind: self.on_aggregate_complete(i, round_nr)
             node.overlays[0].setup(experiment_data, None, transmission_method=self.settings.transmission_method)
             node.overlays[0].start()

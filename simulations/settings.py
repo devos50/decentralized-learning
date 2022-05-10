@@ -7,11 +7,11 @@ class SimulationSettings:
 
     def __init__(self):
         self.peers: int = 10
-        self.sample_size: int = 5
+        self.sample_size: int = 10
         self.batch_size: int = 500
         self.learning_rate: float = 0.002
         self.momentum: float = 0.9
-        self.num_rounds: int = 5000
+        self.num_rounds: int = 10
         self.num_aggregators: int = 1
         self.duration: int = 50000  # Simulation duration in sections
         self.profile: bool = False
