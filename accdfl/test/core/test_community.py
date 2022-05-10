@@ -31,7 +31,7 @@ class TestDFLCommunityBase(TestBase):
     TOTAL_SAMPLES_PER_CLASS = 6
     SAMPLES_PER_CLASS = [TOTAL_SAMPLES_PER_CLASS] * 10
     NODES_PER_CLASS = [TARGET_NUM_NODES] * 10
-    DATASET = "shakespeare"
+    DATASET = "celeba"
     TRANSMISSION_METHOD = TransmissionMethod.EVA
     INACTIVITY_THRESHOLD = 10
 

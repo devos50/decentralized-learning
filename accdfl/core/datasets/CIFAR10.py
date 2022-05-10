@@ -7,10 +7,10 @@ import torchvision.transforms as transforms
 from torch import nn
 from torch.utils.data import DataLoader
 
-from decentralizepy.datasets.Dataset import Dataset
-from decentralizepy.datasets.Partitioner import DataPartitioner, KShardDataPartitioner
-from decentralizepy.mappings.Mapping import Mapping
-from decentralizepy.models.Model import Model
+from accdfl.core.datasets.Dataset import Dataset
+from accdfl.core.datasets.Partitioner import DataPartitioner, KShardDataPartitioner
+from accdfl.core.mappings.Mapping import Mapping
+from accdfl.core.models.Model import Model
 
 NUM_CLASSES = 10
 
@@ -18,7 +18,6 @@ NUM_CLASSES = 10
 class CIFAR10(Dataset):
     """
     Class for the CIFAR10 dataset
-
     """
 
     def load_trainset(self):
@@ -279,7 +278,6 @@ class LeNet(Model):
     """
     Class for a LeNet Model for CIFAR10
     Inspired by original LeNet network for MNIST: https://ieeexplore.ieee.org/abstract/document/726791
-
     """
 
     def __init__(self):

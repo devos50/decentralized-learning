@@ -10,10 +10,10 @@ import torch
 from sklearn import metrics
 from torch.utils.data import DataLoader
 
-from decentralizepy.datasets.Data import Data
-from decentralizepy.datasets.Dataset import Dataset
-from decentralizepy.mappings import Mapping
-from decentralizepy.models.Model import Model
+from accdfl.core.datasets.Data import Data
+from accdfl.core.datasets.Dataset import Dataset
+from accdfl.core.mappings import Mapping
+from accdfl.core.models.Model import Model
 
 
 class MovieLens(Dataset):

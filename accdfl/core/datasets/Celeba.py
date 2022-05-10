@@ -10,12 +10,12 @@ from PIL import Image
 from torch import nn
 from torch.utils.data import DataLoader
 
-import decentralizepy.utils as utils
-from decentralizepy.datasets.Data import Data
-from decentralizepy.datasets.Dataset import Dataset
-from decentralizepy.datasets.Partitioner import DataPartitioner
-from decentralizepy.mappings.Mapping import Mapping
-from decentralizepy.models.Model import Model
+import accdfl.util.utils as utils
+from accdfl.core.datasets.Data import Data
+from accdfl.core.datasets.Dataset import Dataset
+from accdfl.core.datasets.Partitioner import DataPartitioner
+from accdfl.core.mappings.Mapping import Mapping
+from accdfl.core.models.Model import Model
 
 IMAGE_DIM = 84
 CHANNELS = 3
@@ -25,7 +25,6 @@ NUM_CLASSES = 2
 class Celeba(Dataset):
     """
     Class for the Celeba dataset
-
     """
 
     def __read_file__(self, file_path):

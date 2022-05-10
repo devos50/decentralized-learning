@@ -4,8 +4,7 @@ import os
 import torch.nn.functional as F
 from torch.autograd import Variable
 
-from accdfl.core.datasets.Shakespeare import Shakespeare
-from accdfl.core.mappings import Linear
+from accdfl.core.datasets import create_dataset
 from accdfl.core.optimizer.sgd import SGDOptimizer
 
 trainer = None
@@ -32,19 +31,13 @@ class ModelTrainer:
         self.parameters = parameters
 
         train_dir = os.path.join(data_dir, "per_user_data", "train")
-
-        if parameters["dataset"] == "shakespeare":
-            mapping = Linear(1, parameters["target_participants"])
-            self.dataset = Shakespeare(participant_index, 0, mapping, train_dir=train_dir)
-        else:
-            raise RuntimeError("Unknown dataset %s" % parameters["dataset"])
+        self.dataset = create_dataset(parameters, participant_index=participant_index, train_dir=train_dir)
 
     def train(self, model) -> int:
         """
         Train the model on a batch. Return an integer that indicates how many local steps we have done.
         """
         optimizer = SGDOptimizer(model, self.parameters["learning_rate"], self.parameters["momentum"])
-
         train_set = self.dataset.get_trainset(batch_size=self.parameters["batch_size"], shuffle=True)
         train_set_it = iter(train_set)
         local_steps = len(train_set) // self.parameters["batch_size"]

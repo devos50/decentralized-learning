@@ -9,12 +9,12 @@ import torch.nn.functional as F
 from torch import nn
 from torch.utils.data import DataLoader
 
-from decentralizepy.datasets.Data import Data
-from decentralizepy.datasets.Dataset import Dataset
-from decentralizepy.datasets.Partitioner import DataPartitioner
-from decentralizepy.mappings.Mapping import Mapping
-from decentralizepy.models.Model import Model
-from decentralizepy.models.Resnet import BasicBlock, Bottleneck, conv1x1
+from accdfl.core.datasets.Data import Data
+from accdfl.core.datasets.Dataset import Dataset
+from accdfl.core.datasets.Partitioner import DataPartitioner
+from accdfl.core.mappings.Mapping import Mapping
+from accdfl.core.models.Model import Model
+from accdfl.core.models.Resnet import BasicBlock, Bottleneck, conv1x1
 
 NUM_CLASSES = 62
 IMAGE_SIZE = (28, 28)

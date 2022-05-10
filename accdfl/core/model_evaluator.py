@@ -3,8 +3,7 @@ import os
 import torch
 import torch.nn.functional as F
 
-from accdfl.core.datasets.Shakespeare import Shakespeare
-from accdfl.core.mappings import Linear
+from accdfl.core.datasets import create_dataset
 
 evaluator = None
 
@@ -27,12 +26,7 @@ class ModelEvaluator:
 
     def __init__(self, data_dir, parameters):
         test_dir = os.path.join(data_dir, "data", "test")
-
-        if parameters["dataset"] == "shakespeare":
-            mapping = Linear(1, parameters["target_participants"])
-            self.dataset = Shakespeare(0, 0, mapping, test_dir=test_dir)
-        else:
-            raise RuntimeError("Unknown dataset %s" % parameters["dataset"])
+        self.dataset = create_dataset(parameters, test_dir=test_dir)
 
     def evaluate_accuracy(self, model):
         correct = example_number = total_loss = num_batches = 0

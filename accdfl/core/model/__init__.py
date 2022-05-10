@@ -2,9 +2,7 @@ import pickle
 
 import torch
 
-from accdfl.core.datasets.Shakespeare import LSTM
 from accdfl.core.model.linear import LinearModel
-from accdfl.core.model.gn_lenet import GNLeNet
 
 
 def serialize_model(model: torch.nn.Module) -> bytes:
@@ -13,7 +11,20 @@ def serialize_model(model: torch.nn.Module) -> bytes:
 
 def create_model(dataset: str):
     if dataset == "shakespeare":
+        from accdfl.core.datasets.Shakespeare import LSTM
         return LSTM()
+    elif dataset == "cifar10":
+        from accdfl.core.model.gn_lenet import GNLeNet
+        return GNLeNet(input_channel=3, output=10, model_input=(32, 32))
+    elif dataset == "celeba":
+        from accdfl.core.datasets.Celeba import CNN
+        return CNN()
+    elif dataset == "femnist":
+        from accdfl.core.datasets.Femnist import CNN
+        return CNN()
+    elif dataset == "movielens":
+        from accdfl.core.datasets.MovieLens import MatrixFactorization
+        return MatrixFactorization()
     else:
         raise RuntimeError("Unknown dataset %s" %dataset)
 
