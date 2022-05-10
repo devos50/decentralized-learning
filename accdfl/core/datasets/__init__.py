@@ -6,7 +6,7 @@ from accdfl.core.mappings import Linear
 
 def create_dataset(parameters: Dict, participant_index: int = 0, train_dir: Optional[str] = None, test_dir: Optional[str] = None) -> Dataset:
     mapping = Linear(1, parameters["target_participants"])
-    if parameters["dataset"] == "shakespeare":
+    if parameters["dataset"] in ["shakespeare", "shakespeare_sub", "shakespeare_sub96"]:
         from accdfl.core.datasets.Shakespeare import Shakespeare
         return Shakespeare(participant_index, 0, mapping, train_dir=train_dir, test_dir=test_dir)
     elif parameters["dataset"] == "cifar10":

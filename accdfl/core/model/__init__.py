@@ -10,7 +10,7 @@ def serialize_model(model: torch.nn.Module) -> bytes:
 
 
 def create_model(dataset: str):
-    if dataset == "shakespeare":
+    if dataset in ["shakespeare", "shakespeare_sub", "shakespeare_sub96"]:
         from accdfl.core.datasets.Shakespeare import LSTM
         return LSTM()
     elif dataset == "cifar10":
