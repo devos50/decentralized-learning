@@ -4,6 +4,7 @@ import time
 
 import torch.nn.functional as F
 from torch.autograd import Variable
+from torch.nn import CrossEntropyLoss
 
 from accdfl.core.datasets import create_dataset
 from accdfl.core.optimizer.sgd import SGDOptimizer
@@ -62,7 +63,8 @@ class ModelTrainer:
             optimizer.optimizer.zero_grad()
             self.logger.info('d-sgd.next node forward propagation (step %d/%d)', local_step, local_steps)
             output = model.forward(data)
-            loss = F.nll_loss(output, target)
+            lossf = CrossEntropyLoss()
+            loss = lossf(output, target)
             self.logger.info('d-sgd.next node backward propagation (step %d/%d)', local_step, local_steps)
             loss.backward()
             optimizer.optimizer.step()
