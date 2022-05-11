@@ -69,7 +69,6 @@ class DFLCommunity(Community):
         self.eva = EVAProtocol(self, self.on_receive, self.on_send_complete, self.on_error)
         self.data_dir = None
         self.transmission_method = TransmissionMethod.EVA
-        self.eva_max_retry_attempts = 20
         self.transfer_times = []
 
         self.add_message_handler(AdvertiseMembership, self.on_membership_advertisement)
@@ -119,7 +118,7 @@ class DFLCommunity(Community):
         if self.transmission_method == TransmissionMethod.EVA:
             self.logger.info("Setting up EVA protocol")
             self.eva.settings.block_size = 60000
-            self.eva.settings.window_size = 64
+            self.eva.settings.window_size = 16
             self.eva.settings.retransmit_attempt_count = 10
             self.eva.settings.retransmit_interval_in_sec = 1
             self.eva.settings.timeout_interval_in_sec = 10
