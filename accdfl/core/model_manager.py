@@ -1,7 +1,11 @@
+import asyncio
 import copy
+import json
 import logging
 import os
+import random
 from asyncio import get_event_loop
+from binascii import hexlify
 from concurrent.futures import ProcessPoolExecutor
 from typing import Dict, Optional, List
 
@@ -61,13 +65,41 @@ class ModelManager:
 
     async def train(self, in_subprocess: bool = True):
         if in_subprocess:
-            trained_model = await get_event_loop().run_in_executor(self.model_train_executor, train_model, self.model)
+            # Dump the model to a file
+            model_id = random.randint(1, 1000000)
+            model_path = os.path.join(os.getcwd(), "%d.model" % model_id)
+            torch.save(self.model.state_dict(), model_path)
+
+            # Get full path to the script
+            import accdfl.util as autil
+            script_dir = os.path.join(os.path.abspath(os.path.dirname(autil.__file__)), "train_model.py")
+            self.logger.error(script_dir)
+            serialized_params = hexlify(json.dumps(self.parameters).encode()).decode()
+            cmd = "python3 %s %s %s %s %s" % (script_dir, model_path, self.data_dir, serialized_params, self.participant_index)
+            proc = await asyncio.create_subprocess_shell(
+                cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE)
+
+            stdout, stderr = await proc.communicate()
+
+            self.logger.info(f'[{cmd!r} exited with {proc.returncode}]')
+            if stdout:
+                self.logger.error(f'[stdout]\n{stdout.decode()}')
+            if stderr:
+                self.logger.error(f'[stderr]\n{stderr.decode()}')
+
+            # Read the new model and adopt it
+            self.model.load_state_dict(torch.load(model_path))
+            os.unlink(model_path)
+
+            #trained_model = await get_event_loop().run_in_executor(self.model_train_executor, train_model, self.model)
         else:
             if not self.model_trainer:
                 # Lazy initialize the model trainer
                 self.model_trainer = ModelTrainer(self.data_dir, self.parameters, self.participant_index)
             trained_model = self.model_trainer.train(self.model)
-        self.model = trained_model
+        #self.model = trained_model
 
     @staticmethod
     def average_models(models: List[nn.Module]) -> nn.Module:

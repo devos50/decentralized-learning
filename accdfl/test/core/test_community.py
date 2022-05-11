@@ -66,11 +66,11 @@ class TestDFLCommunityBase(TestBase):
             "data_distribution": "iid",
         }
         for node in self.nodes:
-            node.overlay.train_in_subprocess = False
+            #node.overlay.train_in_subprocess = False
             node.overlay.setup(self.experiment_data, None, transmission_method=self.TRANSMISSION_METHOD)
-            cur_model_mgr = node.overlay.model_manager
-            node.overlay.model_manager = FakeModelManager(cur_model_mgr.model, self.experiment_data,
-                                                          cur_model_mgr.participant_index)
+            # cur_model_mgr = node.overlay.model_manager
+            # node.overlay.model_manager = FakeModelManager(cur_model_mgr.model, self.experiment_data,
+            #                                               cur_model_mgr.participant_index)
 
     def wait_for_round_completed(self, node, round):
         round_completed_deferred = Future()
@@ -99,11 +99,11 @@ class TestDFLCommunityBase(TestBase):
 
 class TestDFLCommunityOneNode(TestDFLCommunityBase):
     NUM_NODES = 1
-    TARGET_NUM_NODES = NUM_NODES
+    TARGET_NUM_NODES = 100
     SAMPLE_SIZE = NUM_NODES
     NODES_PER_CLASS = [TARGET_NUM_NODES] * 10
 
-    @pytest.mark.timeout(5)
+    @pytest.mark.timeout(50)
     async def test_single_round(self):
         assert self.nodes[0].overlay.did_setup
         self.nodes[0].overlay.start()
