@@ -35,12 +35,6 @@ class ModelManager:
             # The LEAF dataset
             self.data_dir = os.path.join(os.environ["HOME"], "leaf", self.parameters["dataset"])
 
-        self.acc_check_executor = ProcessPoolExecutor(initializer=setup_evaluator,
-                                                      initargs=(self.data_dir, parameters,),
-                                                      max_workers=2)
-        self.model_train_executor = ProcessPoolExecutor(initializer=setup_trainer,
-                                                        initargs=(self.data_dir, parameters, participant_index,),
-                                                        max_workers=1)
         self.model_trainer = None  # Only used when not training in a subprocess (e.g., in the unit tests)
 
         # Keeps track of the incoming trained models as aggregator
@@ -119,5 +113,32 @@ class ModelManager:
         Optionally, one can provide a custom iterator to compute the accuracy on a custom dataset.
         """
         self.logger.info("Computing accuracy of model")
-        accuracy, loss = await get_event_loop().run_in_executor(self.acc_check_executor, evaluate_accuracy, model)
-        return accuracy, loss
+
+        # Dump the model to a file
+        model_id = random.randint(1, 1000000)
+        model_path = os.path.join(os.getcwd(), "%d.model" % model_id)
+        torch.save(model.state_dict(), model_path)
+
+        # Get full path to the script
+        import accdfl.util as autil
+        script_dir = os.path.join(os.path.abspath(os.path.dirname(autil.__file__)), "evaluate_model.py")
+        self.logger.error(script_dir)
+        serialized_params = hexlify(json.dumps(self.parameters).encode()).decode()
+        cmd = "python3 %s %s %s %s %s" % (
+        script_dir, model_path, self.data_dir, serialized_params, self.participant_index)
+        proc = await asyncio.create_subprocess_shell(
+            cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE)
+
+        stdout, stderr = await proc.communicate()
+
+        self.logger.info(f'[{cmd!r} exited with {proc.returncode}]')
+        if stdout:
+            self.logger.error(f'[stdout]\n{stdout.decode()}')
+        if stderr:
+            self.logger.error(f'[stderr]\n{stderr.decode()}')
+
+        os.unlink(model_path)
+
+        return 0, 0
