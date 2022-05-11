@@ -4,6 +4,7 @@ import time
 from binascii import unhexlify
 
 import torch
+torch.set_num_threads(16)
 
 from accdfl.core.model import create_model
 from accdfl.core.model_trainer import ModelTrainer
