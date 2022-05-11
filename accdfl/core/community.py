@@ -8,6 +8,7 @@ from asyncio import Future, ensure_future
 from binascii import unhexlify, hexlify
 from typing import Optional, Dict, List, Callable
 
+import torch
 from torch import nn
 
 from accdfl.core import TransmissionMethod, NodeMembershipChange
@@ -109,6 +110,7 @@ class DFLCommunity(Community):
         self.sample_manager = SampleManager(self.peer_manager, parameters["sample_size"], parameters["num_aggregators"])
 
         # Initialize the model
+        torch.manual_seed(0)
         model = create_model(parameters["dataset"])
         participant_index = parameters["all_participants"].index(hexlify(self.my_id).decode())
         self.model_manager = ModelManager(model, parameters, participant_index)
