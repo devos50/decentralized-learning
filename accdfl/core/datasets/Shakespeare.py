@@ -352,7 +352,8 @@ class Shakespeare(Dataset):
             count = 0
             for elems, labels in testloader:
                 outputs = model(elems)
-                loss_val += CrossEntropyLoss(outputs, labels).item()
+                loss = CrossEntropyLoss()
+                loss_val += loss(outputs, labels).item()
                 count += 1
                 _, predictions = torch.max(outputs, 1)
                 for label, prediction in zip(labels, predictions):
