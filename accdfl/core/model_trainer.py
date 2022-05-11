@@ -44,6 +44,7 @@ class ModelTrainer:
         """
         optimizer = SGDOptimizer(model, self.parameters["learning_rate"], self.parameters["momentum"])
         train_set = self.dataset.get_trainset(batch_size=self.parameters["batch_size"], shuffle=True)
+        print(len(train_set.dataset))
         train_set_it = iter(train_set)
         local_steps = len(train_set.dataset) // self.parameters["batch_size"]
         if len(train_set.dataset) % self.parameters["batch_size"] != 0:
@@ -57,16 +58,19 @@ class ModelTrainer:
         for local_step in range(local_steps):
             with open("train_step.txt", "a") as progress_file:
                 progress_file.write("%f,%d,%d\n" % (time.time(), local_step, local_steps))
-            data, target = next(train_set_it)
-            model.train()
-            data, target = Variable(data), Variable(target)
-            optimizer.optimizer.zero_grad()
-            self.logger.info('d-sgd.next node forward propagation (step %d/%d)', local_step, local_steps)
-            output = model.forward(data)
-            lossf = CrossEntropyLoss()
-            loss = lossf(output, target)
-            self.logger.info('d-sgd.next node backward propagation (step %d/%d)', local_step, local_steps)
-            loss.backward()
-            optimizer.optimizer.step()
+            try:
+                data, target = next(train_set_it)
+                model.train()
+                data, target = Variable(data), Variable(target)
+                optimizer.optimizer.zero_grad()
+                self.logger.info('d-sgd.next node forward propagation (step %d/%d)', local_step, local_steps)
+                output = model.forward(data)
+                lossf = CrossEntropyLoss()
+                loss = lossf(output, target)
+                self.logger.info('d-sgd.next node backward propagation (step %d/%d)', local_step, local_steps)
+                loss.backward()
+                optimizer.optimizer.step()
+            except StopIteration:
+                pass
 
         return model
