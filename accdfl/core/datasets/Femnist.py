@@ -7,6 +7,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
+from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader
 
 from accdfl.core.datasets.Data import Data
@@ -318,7 +319,7 @@ class Femnist(Dataset):
             )
         raise RuntimeError("Test set not initialized!")
 
-    def test(self, model, loss):
+    def test(self, model):
         """
         Function to evaluate model on the test dataset.
 
@@ -326,8 +327,6 @@ class Femnist(Dataset):
         ----------
         model : decentralizepy.models.Model
             Model to evaluate
-        loss : torch.nn.loss
-            Loss function to evaluate
 
         Returns
         -------
@@ -350,7 +349,8 @@ class Femnist(Dataset):
             count = 0
             for elems, labels in testloader:
                 outputs = model(elems)
-                loss_val += loss(outputs, labels).item()
+                lossf = CrossEntropyLoss()
+                loss_val += lossf(outputs, labels).item()
                 count += 1
                 _, predictions = torch.max(outputs, 1)
                 for label, prediction in zip(labels, predictions):
