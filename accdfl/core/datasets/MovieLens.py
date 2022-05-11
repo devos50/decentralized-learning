@@ -8,6 +8,7 @@ import pandas as pd
 import requests
 import torch
 from sklearn import metrics
+from torch.nn import MSELoss
 from torch.utils.data import DataLoader
 
 from accdfl.core.datasets.Data import Data
@@ -122,7 +123,7 @@ class MovieLens(Dataset):
             return DataLoader(Data(test_x, test_y), batch_size=self.test_batch_size)
         raise RuntimeError("Test set not initialized!")
 
-    def test(self, model, loss):
+    def test(self, model):
         test_set = self.get_testset()
         logging.debug("Test Loader instantiated.")
 
@@ -138,7 +139,8 @@ class MovieLens(Dataset):
 
             for test_x, test_y in test_set:
                 output = model(test_x)
-                loss_val += loss(output, test_y).item()
+                lossf = MSELoss()
+                loss_val += lossf(output, test_y).item()
                 count += 1
 
                 # threshold values to range [0.5, 5.0]

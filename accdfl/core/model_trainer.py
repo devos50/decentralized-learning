@@ -4,7 +4,7 @@ import time
 
 import torch.nn.functional as F
 from torch.autograd import Variable
-from torch.nn import CrossEntropyLoss
+from torch.nn import CrossEntropyLoss, MSELoss, NLLLoss
 
 from accdfl.core.datasets import create_dataset
 from accdfl.core.optimizer.sgd import SGDOptimizer
@@ -32,7 +32,7 @@ class ModelTrainer:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.parameters = parameters
 
-        if parameters["dataset"] in ["cifar10", "mnist"]:
+        if parameters["dataset"] in ["cifar10", "mnist", "movielens"]:
             train_dir = data_dir
         else:
             train_dir = os.path.join(data_dir, "per_user_data", "train")
@@ -65,7 +65,14 @@ class ModelTrainer:
                 optimizer.optimizer.zero_grad()
                 self.logger.info('d-sgd.next node forward propagation (step %d/%d)', local_step, local_steps)
                 output = model.forward(data)
-                lossf = CrossEntropyLoss()
+
+                if self.parameters["dataset"] == "movielens":
+                    lossf = MSELoss()
+                elif self.parameters["dataset"] == "cifar10":
+                    lossf = NLLLoss()
+                else:
+                    lossf = CrossEntropyLoss()
+
                 loss = lossf(output, target)
                 self.logger.info('d-sgd.next node backward propagation (step %d/%d)', local_step, local_steps)
                 loss.backward()
