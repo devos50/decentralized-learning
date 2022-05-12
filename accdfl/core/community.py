@@ -155,9 +155,11 @@ class DFLCommunity(Community):
             self.cancel_all_pending_tasks()
 
     def update_population_view_history(self):
-        num_active_peers = self.peer_manager.get_num_peers(self.get_round_estimate())
-        if not self.active_peers_history or (self.active_peers_history[-1][1] != num_active_peers):  # It's the first entry or it has changed
-            self.active_peers_history.append((time.time(), num_active_peers))
+        active_peers = self.peer_manager.get_active_peers()
+        active_peers = [self.peer_manager.get_short_id(peer_pk) for peer_pk in active_peers]
+
+        if not self.active_peers_history or (self.active_peers_history[-1][1] != active_peers):  # It's the first entry or it has changed
+            self.active_peers_history.append((time.time(), active_peers))
 
     def advertise_membership(self, change: NodeMembershipChange):
         """
