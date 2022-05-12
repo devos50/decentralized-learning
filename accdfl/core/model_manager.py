@@ -64,12 +64,15 @@ class ModelManager:
             script_dir = os.path.join(os.path.abspath(os.path.dirname(autil.__file__)), "train_model.py")
             self.logger.error(script_dir)
             cmd = "python3 %s %s %s %s %d" % (script_dir, model_path, self.data_dir, self.participant_index, torch.get_num_threads())
+            train_start_time = time.time()
             proc = await asyncio.create_subprocess_shell(
                 cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE)
 
             stdout, stderr = await proc.communicate()
+
+            self.training_times.append(time.time() - train_start_time)
 
             self.logger.info(f'Training exited with {proc.returncode}]')
             if stdout:
@@ -118,15 +121,12 @@ class ModelManager:
         script_dir = os.path.join(os.path.abspath(os.path.dirname(autil.__file__)), "evaluate_model.py")
         self.logger.error(script_dir)
         cmd = "python3 %s %d %s %s" % (script_dir, model_id, model_path, self.data_dir)
-        train_start_time = time.time()
         proc = await asyncio.create_subprocess_shell(
             cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE)
 
         stdout, stderr = await proc.communicate()
-
-        self.training_times.append(time.time() - train_start_time)
 
         self.logger.info(f'Accuracy evaluator exited with {proc.returncode}]')
         if stdout:
