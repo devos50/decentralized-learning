@@ -10,7 +10,7 @@ class ModelEvaluator:
     """
 
     def __init__(self, data_dir, parameters):
-        if parameters["dataset"] in ["cifar10", "mnist", "movielens"]:
+        if parameters["dataset"] in ["cifar10", "cifar10_niid", "mnist", "movielens"]:
             test_dir = data_dir
         else:
             test_dir = os.path.join(data_dir, "data", "test")

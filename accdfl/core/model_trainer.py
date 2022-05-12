@@ -19,7 +19,7 @@ class ModelTrainer:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.parameters = parameters
 
-        if parameters["dataset"] in ["cifar10", "mnist", "movielens"]:
+        if parameters["dataset"] in ["cifar10", "cifar10_niid", "mnist", "movielens"]:
             train_dir = data_dir
         else:
             train_dir = os.path.join(data_dir, "per_user_data", "train")
@@ -54,7 +54,7 @@ class ModelTrainer:
 
                 if self.parameters["dataset"] == "movielens":
                     lossf = MSELoss()
-                elif self.parameters["dataset"] == "cifar10":
+                elif self.parameters["dataset"] in ["cifar10", "cifar10_niid"]:
                     lossf = NLLLoss()
                 else:
                     lossf = CrossEntropyLoss()

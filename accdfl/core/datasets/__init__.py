@@ -13,6 +13,10 @@ def create_dataset(parameters: Dict, participant_index: int = 0, train_dir: Opti
     elif parameters["dataset"] == "cifar10":
         from accdfl.core.datasets.CIFAR10 import CIFAR10
         return CIFAR10(participant_index, 0, mapping, train_dir=train_dir, test_dir=test_dir)
+    elif parameters["dataset"] == "cifar10_niid":
+        from accdfl.core.datasets.CIFAR10 import CIFAR10
+        return CIFAR10(participant_index, 0, mapping, train_dir=train_dir, test_dir=test_dir, partition_niid=True,
+                       shards=parameters["target_participants"])
     elif parameters["dataset"] == "celeba":
         from accdfl.core.datasets.Celeba import Celeba
         img_dir = None

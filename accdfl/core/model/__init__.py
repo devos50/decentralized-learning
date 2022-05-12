@@ -13,7 +13,7 @@ def create_model(dataset: str):
     if dataset in ["shakespeare", "shakespeare_sub", "shakespeare_sub96"]:
         from accdfl.core.datasets.Shakespeare import LSTM
         return LSTM()
-    elif dataset == "cifar10":
+    elif dataset == "cifar10" or dataset == "cifar10_niid":
         from accdfl.core.model.gn_lenet import GNLeNet
         return GNLeNet(input_channel=3, output=10, model_input=(32, 32))
     elif dataset == "celeba":
