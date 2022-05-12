@@ -64,7 +64,7 @@ class ModelManager:
             script_dir = os.path.join(os.path.abspath(os.path.dirname(autil.__file__)), "train_model.py")
             self.logger.error(script_dir)
             serialized_params = hexlify(json.dumps(self.parameters).encode()).decode()
-            cmd = "python3 %s %s %s %s %s" % (script_dir, model_path, self.data_dir, serialized_params, self.participant_index)
+            cmd = "python3 %s %s %s %s %s %d" % (script_dir, model_path, self.data_dir, serialized_params, self.participant_index, torch.get_num_threads())
             proc = await asyncio.create_subprocess_shell(
                 cmd,
                 stdout=asyncio.subprocess.PIPE,

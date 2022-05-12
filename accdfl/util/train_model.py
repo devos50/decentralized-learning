@@ -4,7 +4,6 @@ import time
 from binascii import unhexlify
 
 import torch
-torch.set_num_threads(16)
 
 from accdfl.core.model import create_model
 from accdfl.core.model_trainer import ModelTrainer
@@ -17,6 +16,8 @@ if __name__ == "__main__":
     datadir = sys.argv[2]
     parameters = json.loads(unhexlify(sys.argv[3]))
     participant_index = int(sys.argv[4])
+    torch.set_num_threads(int(sys.argv[5]))
+
     model = create_model(parameters["dataset"])
 
     with open("time_stats.txt", "a") as time_stats:

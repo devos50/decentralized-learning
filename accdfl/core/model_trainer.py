@@ -2,24 +2,11 @@ import logging
 import os
 import time
 
-import torch.nn.functional as F
 from torch.autograd import Variable
 from torch.nn import CrossEntropyLoss, MSELoss, NLLLoss
 
 from accdfl.core.datasets import create_dataset
 from accdfl.core.optimizer.sgd import SGDOptimizer
-
-trainer = None
-
-
-def setup_trainer(data_dir, parameters, participant_index):
-    global trainer
-    trainer = ModelTrainer(data_dir, parameters, participant_index)
-
-
-def train_model(model):
-    global trainer
-    return trainer.train(model)
 
 
 class ModelTrainer:
@@ -44,7 +31,6 @@ class ModelTrainer:
         """
         optimizer = SGDOptimizer(model, self.parameters["learning_rate"], self.parameters["momentum"])
         train_set = self.dataset.get_trainset(batch_size=self.parameters["batch_size"], shuffle=True)
-        print(len(train_set.dataset))
         train_set_it = iter(train_set)
         local_steps = len(train_set.dataset) // self.parameters["batch_size"]
         if len(train_set.dataset) % self.parameters["batch_size"] != 0:
