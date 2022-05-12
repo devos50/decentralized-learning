@@ -4,17 +4,13 @@ import json
 import logging
 import os
 import random
-from asyncio import get_event_loop
 from binascii import hexlify
-from concurrent.futures import ProcessPoolExecutor
 from typing import Dict, Optional, List
 
 import torch
 import torch.nn as nn
 
-
-from accdfl.core.model_evaluator import setup_evaluator, evaluate_accuracy
-from accdfl.core.model_trainer import setup_trainer, train_model, ModelTrainer
+from accdfl.core.model_trainer import ModelTrainer
 
 
 class ModelManager:
@@ -24,7 +20,6 @@ class ModelManager:
 
     def __init__(self, model, parameters, participant_index: int):
         self.model = model
-        self.epoch = 1
         self.parameters = parameters
         self.participant_index = participant_index
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -124,8 +119,7 @@ class ModelManager:
         script_dir = os.path.join(os.path.abspath(os.path.dirname(autil.__file__)), "evaluate_model.py")
         self.logger.error(script_dir)
         serialized_params = hexlify(json.dumps(self.parameters).encode()).decode()
-        cmd = "python3 %s %s %s %s %s" % (
-        script_dir, model_path, self.data_dir, serialized_params, self.participant_index)
+        cmd = "python3 %s %d %s %s %s" % (script_dir, model_id, model_path, self.data_dir, serialized_params)
         proc = await asyncio.create_subprocess_shell(
             cmd,
             stdout=asyncio.subprocess.PIPE,
@@ -141,4 +135,9 @@ class ModelManager:
 
         os.unlink(model_path)
 
-        return 0, 0
+        # Read the accuracy and the loss from the file
+        results_file = os.path.join(os.getcwd(), "%d_results.csv")
+        with open(results_file) as in_file:
+            content = in_file.read().strip().split(",")
+
+        return float(content[0]), float(content[1])

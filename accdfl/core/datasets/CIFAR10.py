@@ -205,7 +205,7 @@ class CIFAR10(Dataset):
                 example_number += target.size(0)
                 num_batches += 1
 
-        accuracy = float(correct) / float(example_number)
+        accuracy = float(correct) / float(example_number) * 100.0
         loss = total_loss / float(example_number)
         return accuracy, loss
 

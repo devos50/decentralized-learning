@@ -2,18 +2,6 @@ import os
 
 from accdfl.core.datasets import create_dataset
 
-evaluator = None
-
-
-def setup_evaluator(data_dir, parameters):
-    global evaluator
-    evaluator = ModelEvaluator(data_dir, parameters)
-
-
-def evaluate_accuracy(model):
-    global evaluator
-    return evaluator.evaluate_accuracy(model)
-
 
 class ModelEvaluator:
     """

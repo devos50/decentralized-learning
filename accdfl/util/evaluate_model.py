@@ -15,9 +15,10 @@ if __name__ == "__main__":
     with open("time_stats.txt", "a") as time_stats:
         time_stats.write("start,%f\n" % time.time())
 
-    model_path = sys.argv[1]
-    datadir = sys.argv[2]
-    parameters = json.loads(unhexlify(sys.argv[3]))
+    model_id = int(sys.argv[1])
+    model_path = sys.argv[2]
+    datadir = sys.argv[3]
+    parameters = json.loads(unhexlify(sys.argv[4]))
     model = create_model(parameters["dataset"])
 
     with open("time_stats.txt", "a") as time_stats:
@@ -35,8 +36,8 @@ if __name__ == "__main__":
         time_stats.write("model_evaluated,%f\n" % time.time())
 
     # Save the accuracies
-    with open("accs.txt", "a") as out_file:
+    with open("%d_results.csv", "w") as out_file:
         out_file.write("%s,%s\n" % (acc, loss))
 
-    with open("time_stats.txt", "a") as time_stats:
-        time_stats.write("model_saved,%f\n" % time.time())
+    with open("accs.txt", "a") as out_file:
+        out_file.write("%s,%s\n" % (acc, loss))
