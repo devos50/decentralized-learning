@@ -42,6 +42,7 @@ class DFLCommunity(Community):
         # Statistics
         self.active_peers_history = []
         self.aggregation_durations: Dict[int, float] = {}
+        self.bandwidth_statistics: Dict[str, int] = {"lm_model_bytes": 0, "lm_midas_bytes": 0, "ping_bytes": 0, "pong_bytes": 0}
 
         # Settings
         self.parameters = None
@@ -240,6 +241,7 @@ class DFLCommunity(Community):
         payload = PingPayload(self.get_round_estimate(), identifier)
 
         packet = self._ez_pack(self._prefix, PingPayload.msg_id, [auth, payload])
+        self.bandwidth_statistics["ping_bytes"] += len(packet)
         self.endpoint.send(peer.address, packet)
 
     @lazy_wrapper(PingPayload)
@@ -266,6 +268,7 @@ class DFLCommunity(Community):
         payload = PongPayload(self.get_round_estimate(), identifier)
 
         packet = self._ez_pack(self._prefix, PongPayload.msg_id, [auth, payload])
+        self.bandwidth_statistics["pong_bytes"] += len(packet)
         self.endpoint.send(peer.address, packet)
 
     @lazy_wrapper(PongPayload)
@@ -411,6 +414,8 @@ class DFLCommunity(Community):
         start_time = time.time()
         serialized_model = serialize_model(model)
         serialized_population_view = pickle.dumps(population_view)
+        self.bandwidth_statistics["lm_model_bytes"] += len(serialized_model)
+        self.bandwidth_statistics["lm_midas_bytes"] += len(serialized_population_view)
         binary_data = serialized_model + serialized_population_view
         response = {"round": round, "type": type, "model_data_len": len(serialized_model)}
         serialized_response = json.dumps(response).encode()

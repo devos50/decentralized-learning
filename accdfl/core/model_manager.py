@@ -1,10 +1,9 @@
 import asyncio
 import copy
-import json
 import logging
 import os
 import random
-from binascii import hexlify
+import time
 from typing import Dict, Optional, List
 
 import torch
@@ -23,6 +22,7 @@ class ModelManager:
         self.parameters = parameters
         self.participant_index = participant_index
         self.logger = logging.getLogger(self.__class__.__name__)
+        self.training_times: List[float] = []
 
         if self.parameters["dataset"] in ["cifar10", "mnist"]:
             self.data_dir = os.path.join(os.environ["HOME"], "dfl-data")
@@ -118,12 +118,15 @@ class ModelManager:
         script_dir = os.path.join(os.path.abspath(os.path.dirname(autil.__file__)), "evaluate_model.py")
         self.logger.error(script_dir)
         cmd = "python3 %s %d %s %s" % (script_dir, model_id, model_path, self.data_dir)
+        train_start_time = time.time()
         proc = await asyncio.create_subprocess_shell(
             cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE)
 
         stdout, stderr = await proc.communicate()
+
+        self.training_times.append(time.time() - train_start_time)
 
         self.logger.info(f'Accuracy evaluator exited with {proc.returncode}]')
         if stdout:
