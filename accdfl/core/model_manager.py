@@ -136,8 +136,10 @@ class ModelManager:
         os.unlink(model_path)
 
         # Read the accuracy and the loss from the file
-        results_file = os.path.join(os.getcwd(), "%d_results.csv")
+        results_file = os.path.join(os.getcwd(), "%d_results.csv" % model_id)
         with open(results_file) as in_file:
             content = in_file.read().strip().split(",")
+
+        os.unlink(results_file)
 
         return float(content[0]), float(content[1])

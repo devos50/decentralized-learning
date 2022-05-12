@@ -36,7 +36,7 @@ if __name__ == "__main__":
         time_stats.write("model_evaluated,%f\n" % time.time())
 
     # Save the accuracies
-    with open("%d_results.csv", "w") as out_file:
+    with open("%d_results.csv" % model_id, "w") as out_file:
         out_file.write("%s,%s\n" % (acc, loss))
 
     with open("accs.txt", "a") as out_file:
