@@ -14,9 +14,11 @@ if __name__ == "__main__":
 
     model_path = sys.argv[1]
     datadir = sys.argv[2]
-    parameters = json.loads(unhexlify(sys.argv[3]))
-    participant_index = int(sys.argv[4])
-    torch.set_num_threads(int(sys.argv[5]))
+    participant_index = int(sys.argv[3])
+    torch.set_num_threads(int(sys.argv[4]))
+
+    with open("experiment.json") as in_file:
+        parameters = json.loads(in_file.read())
 
     model = create_model(parameters["dataset"])
 

@@ -18,7 +18,10 @@ if __name__ == "__main__":
     model_id = int(sys.argv[1])
     model_path = sys.argv[2]
     datadir = sys.argv[3]
-    parameters = json.loads(unhexlify(sys.argv[4]))
+
+    with open("experiment.json") as in_file:
+        parameters = json.loads(in_file.read())
+
     model = create_model(parameters["dataset"])
 
     with open("time_stats.txt", "a") as time_stats:
