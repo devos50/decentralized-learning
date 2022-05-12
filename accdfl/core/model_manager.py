@@ -72,7 +72,7 @@ class ModelManager:
 
             stdout, stderr = await proc.communicate()
 
-            self.logger.info(f'[{cmd!r} exited with {proc.returncode}]')
+            self.logger.info(f'Training exited with {proc.returncode}]')
             if stdout:
                 self.logger.error(f'[stdout]\n{stdout.decode()}')
             if stderr:
@@ -127,7 +127,7 @@ class ModelManager:
 
         stdout, stderr = await proc.communicate()
 
-        self.logger.info(f'[{cmd!r} exited with {proc.returncode}]')
+        self.logger.info(f'Accuracy evaluator exited with {proc.returncode}]')
         if stdout:
             self.logger.error(f'[stdout]\n{stdout.decode()}')
         if stderr:
