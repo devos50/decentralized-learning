@@ -1,5 +1,3 @@
-import os
-
 from accdfl.core.datasets.MovieLens import MovieLens, MatrixFactorization
 from accdfl.core.mappings import Linear
 from accdfl.core.model_trainer import ModelTrainer
@@ -15,10 +13,16 @@ parameters = {
 
 data_dir = "/Users/martijndevos/leaf/movielens"
 
-mapping = Linear(1, 1)
-s = MovieLens(0, 0, mapping, train_dir=data_dir, test_dir=data_dir)
+mapping = Linear(1, 100)
+s = MovieLens(1, 0, mapping, train_dir=data_dir, test_dir=data_dir)
 
 print("Datasets prepared")
+
+train_dataset = s.get_trainset()
+test_dataset = s.get_testset()
+
+print("Train dataset items: %d" % len(train_dataset.dataset))
+print("Test dataset items: %d" % len(test_dataset.dataset))
 
 # Model
 model = MatrixFactorization()

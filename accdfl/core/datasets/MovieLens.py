@@ -100,9 +100,9 @@ class MovieLens(Dataset):
             my_train_data = pd.concat(
                 [my_train_data, train_data[train_data["user_id"] == i + 1]]
             )
-            my_test_data = pd.concat(
-                [my_test_data, test_data[test_data["user_id"] == i + 1]]
-            )
+        my_test_data = pd.concat(
+            [my_test_data, test_data]
+        )
 
         logging.info("Data split for test and train.")
         return my_train_data, my_test_data
