@@ -26,6 +26,7 @@ def create_dataset(parameters: Dict, participant_index: int = 0, train_dir: Opti
         return Femnist(participant_index, 0, mapping, train_dir=train_dir, test_dir=test_dir)
     elif parameters["dataset"] == "movielens":
         from accdfl.core.datasets.MovieLens import MovieLens
-        return MovieLens(participant_index, 0, mapping, train_dir=train_dir, test_dir=test_dir)
+        data_dir = train_dir or test_dir
+        return MovieLens(participant_index, 0, mapping, train_dir=data_dir, test_dir=data_dir)
     else:
         raise RuntimeError("Unknown dataset %s" % parameters["dataset"])
