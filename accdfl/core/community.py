@@ -43,6 +43,7 @@ class DFLCommunity(Community):
         self.active_peers_history = []
         self.aggregation_durations: Dict[int, float] = {}
         self.bandwidth_statistics: Dict[str, int] = {"lm_model_bytes": 0, "lm_midas_bytes": 0, "ping_bytes": 0, "pong_bytes": 0}
+        self.determine_sample_durations = []
 
         # Settings
         self.parameters = None
@@ -556,6 +557,5 @@ class DFLCommunity(Community):
 
     async def unload(self):
         self.shutting_down = True
-        self.model_manager.model_train_executor.shutdown(wait=False)
         await self.request_cache.shutdown()
         await super().unload()
