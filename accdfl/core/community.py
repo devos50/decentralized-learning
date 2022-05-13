@@ -283,6 +283,8 @@ class DFLCommunity(Community):
                                 my_peer_id, peer_short_id)
             return
 
+        self.logger.debug("Participant %s receiving pong message from participant %s", my_peer_id, peer_short_id)
+
         if not self.request_cache.has("ping-%s" % peer_short_id, payload.identifier):
             self.logger.warning("ping cache with id %s not found", payload.identifier)
             return
