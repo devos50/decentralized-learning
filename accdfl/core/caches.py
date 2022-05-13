@@ -88,7 +88,7 @@ class PingPeersRequestCache(RandomNumberCache):
     def finish(self):
         if self.community.request_cache.has(self.prefix, self._number):
             self.community.request_cache.pop(self.prefix, self._number)
-        self.community.determine_sample_durations.append(time.time() - self.start_time)
+        self.community.determine_sample_durations.append((self.start_time, time.time()))
         self.future.set_result(self.available_peers)
 
     def add_available_peer(self, peer_pk):
