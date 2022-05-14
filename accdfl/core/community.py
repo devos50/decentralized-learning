@@ -525,6 +525,10 @@ class DFLCommunity(Community):
                              self.peer_manager.get_my_short_id(), model_round)
             if self.aggregate_complete_callback:
                 ensure_future(self.aggregate_complete_callback(model_round, avg_model))
+        else:
+            self.logger.info("Aggregator %s has not enough trained models (%d) of round %d yet",
+                             self.peer_manager.get_my_short_id(), len(self.model_manager.incoming_trained_models),
+                             model_round)
 
     def received_aggregated_model(self, peer: Peer, model_round: int, model: nn.Module) -> None:
         if self.shutting_down:
