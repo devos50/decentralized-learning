@@ -31,8 +31,7 @@ class TestDFLCommunityBase(TestBase):
     TOTAL_SAMPLES_PER_CLASS = 6
     SAMPLES_PER_CLASS = [TOTAL_SAMPLES_PER_CLASS] * 10
     NODES_PER_CLASS = [TARGET_NUM_NODES] * 10
-    DATASET = "mnist"
-    MODEL = "linear"
+    DATASET = "cifar10"
     TRANSMISSION_METHOD = TransmissionMethod.EVA
     INACTIVITY_THRESHOLD = 10
 
@@ -46,7 +45,6 @@ class TestDFLCommunityBase(TestBase):
         self.initialize(DFLCommunity, self.NUM_NODES)
 
         self.experiment_data = {
-            "classes": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
             "learning_rate": 0.1,
             "momentum": 0.0,
             "batch_size": self.batch_size,
@@ -65,7 +63,6 @@ class TestDFLCommunityBase(TestBase):
             "local_classes": self.LOCAL_CLASSES,
             "nodes_per_class": self.NODES_PER_CLASS,
             "dataset": self.DATASET,
-            "model": self.MODEL,
             "data_distribution": "iid",
         }
         for node in self.nodes:
@@ -102,11 +99,11 @@ class TestDFLCommunityBase(TestBase):
 
 class TestDFLCommunityOneNode(TestDFLCommunityBase):
     NUM_NODES = 1
-    TARGET_NUM_NODES = NUM_NODES
+    TARGET_NUM_NODES = 100
     SAMPLE_SIZE = NUM_NODES
     NODES_PER_CLASS = [TARGET_NUM_NODES] * 10
 
-    @pytest.mark.timeout(5)
+    @pytest.mark.timeout(50)
     async def test_single_round(self):
         assert self.nodes[0].overlay.did_setup
         self.nodes[0].overlay.start()
@@ -149,6 +146,9 @@ class TestDFLCommunityOneNodeOneJoining(TestDFLCommunityBase):
         self.experiment_data["participants"].append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
         self.experiment_data["all_participants"].append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
         new_node.overlay.setup(self.experiment_data, None, transmission_method=self.TRANSMISSION_METHOD)
+        cur_model_mgr = new_node.overlay.model_manager
+        new_node.overlay.model_manager = FakeModelManager(cur_model_mgr.model, self.experiment_data,
+                                                          cur_model_mgr.participant_index)
         new_node.overlay.advertise_membership(NodeMembershipChange.JOIN)
 
         # Perform some rounds so the membership has propagated
@@ -334,6 +334,7 @@ class TestDFLCommunityFiveNodesOneJoining(TestDFLCommunityBase):
         new_node = self.create_node()
         self.add_node_to_experiment(new_node)
         await self.introduce_nodes()
+        new_node.overlay.train_in_subprocess = False
 
         # Start all nodes
         for ind in range(self.NUM_NODES):
@@ -342,6 +343,10 @@ class TestDFLCommunityFiveNodesOneJoining(TestDFLCommunityBase):
         self.experiment_data["participants"].append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
         self.experiment_data["all_participants"].append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
         new_node.overlay.setup(self.experiment_data, None, transmission_method=self.TRANSMISSION_METHOD)
+        cur_model_mgr = new_node.overlay.model_manager
+        new_node.overlay.model_manager = FakeModelManager(cur_model_mgr.model, self.experiment_data,
+                                                          cur_model_mgr.participant_index)
+        new_node.overlay.advertise_membership(NodeMembershipChange.JOIN)
         self.nodes[-1].overlay.start(advertise_join=True)
 
         await self.wait_for_num_nodes_in_all_views(self.TARGET_NUM_NODES, exclude_node=self.nodes[-1])

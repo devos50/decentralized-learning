@@ -8,6 +8,7 @@ from asyncio import Future, ensure_future
 from binascii import unhexlify, hexlify
 from typing import Optional, Dict, List, Callable
 
+import torch
 from torch import nn
 
 from accdfl.core import TransmissionMethod, NodeMembershipChange
@@ -41,6 +42,8 @@ class DFLCommunity(Community):
         # Statistics
         self.active_peers_history = []
         self.aggregation_durations: Dict[int, float] = {}
+        self.bandwidth_statistics: Dict[str, int] = {"lm_model_bytes": 0, "lm_midas_bytes": 0, "ping_bytes": 0, "pong_bytes": 0}
+        self.determine_sample_durations = []
 
         # Settings
         self.parameters = None
@@ -69,7 +72,6 @@ class DFLCommunity(Community):
         self.eva = EVAProtocol(self, self.on_receive, self.on_send_complete, self.on_error)
         self.data_dir = None
         self.transmission_method = TransmissionMethod.EVA
-        self.eva_max_retry_attempts = 20
         self.transfer_times = []
 
         self.add_message_handler(AdvertiseMembership, self.on_membership_advertisement)
@@ -97,11 +99,6 @@ class DFLCommunity(Community):
 
     def setup(self, parameters: Dict, data_dir: str, transmission_method: TransmissionMethod = TransmissionMethod.EVA,
               aggregator: Optional[bytes] = None):
-        if parameters["data_distribution"] == "iid":
-            assert parameters["target_participants"] * parameters["local_classes"] == sum(parameters["nodes_per_class"])
-        else:
-            assert parameters["target_participants"] * parameters["local_shards"] * parameters["shard_size"] == sum(parameters["samples_per_class"])
-
         self.parameters = parameters
         self.data_dir = data_dir
         self.fixed_aggregator = aggregator
@@ -115,7 +112,8 @@ class DFLCommunity(Community):
         self.sample_manager = SampleManager(self.peer_manager, parameters["sample_size"], parameters["num_aggregators"])
 
         # Initialize the model
-        model = create_model(parameters["dataset"], parameters["model"])
+        torch.manual_seed(0)
+        model = create_model(parameters["dataset"])
         participant_index = parameters["all_participants"].index(hexlify(self.my_id).decode())
         self.model_manager = ModelManager(model, parameters, participant_index)
 
@@ -124,7 +122,7 @@ class DFLCommunity(Community):
         if self.transmission_method == TransmissionMethod.EVA:
             self.logger.info("Setting up EVA protocol")
             self.eva.settings.block_size = 60000
-            self.eva.settings.window_size = 64
+            self.eva.settings.window_size = 16
             self.eva.settings.retransmit_attempt_count = 10
             self.eva.settings.retransmit_interval_in_sec = 1
             self.eva.settings.timeout_interval_in_sec = 10
@@ -158,9 +156,11 @@ class DFLCommunity(Community):
             self.cancel_all_pending_tasks()
 
     def update_population_view_history(self):
-        num_active_peers = self.peer_manager.get_num_peers(self.get_round_estimate())
-        if not self.active_peers_history or (self.active_peers_history[-1][1] != num_active_peers):  # It's the first entry or it has changed
-            self.active_peers_history.append((time.time(), num_active_peers))
+        active_peers = self.peer_manager.get_active_peers()
+        active_peers = [self.peer_manager.get_short_id(peer_pk) for peer_pk in active_peers]
+
+        if not self.active_peers_history or (self.active_peers_history[-1][1] != active_peers):  # It's the first entry or it has changed
+            self.active_peers_history.append((time.time(), active_peers))
 
     def advertise_membership(self, change: NodeMembershipChange):
         """
@@ -244,6 +244,7 @@ class DFLCommunity(Community):
         payload = PingPayload(self.get_round_estimate(), identifier)
 
         packet = self._ez_pack(self._prefix, PingPayload.msg_id, [auth, payload])
+        self.bandwidth_statistics["ping_bytes"] += len(packet)
         self.endpoint.send(peer.address, packet)
 
     @lazy_wrapper(PingPayload)
@@ -270,6 +271,7 @@ class DFLCommunity(Community):
         payload = PongPayload(self.get_round_estimate(), identifier)
 
         packet = self._ez_pack(self._prefix, PongPayload.msg_id, [auth, payload])
+        self.bandwidth_statistics["pong_bytes"] += len(packet)
         self.endpoint.send(peer.address, packet)
 
     @lazy_wrapper(PongPayload)
@@ -281,6 +283,8 @@ class DFLCommunity(Community):
             self.logger.warning("Participant %s ignoring ping message from %s due to inactivity",
                                 my_peer_id, peer_short_id)
             return
+
+        self.logger.debug("Participant %s receiving pong message from participant %s", my_peer_id, peer_short_id)
 
         if not self.request_cache.has("ping-%s" % peer_short_id, payload.identifier):
             self.logger.warning("ping cache with id %s not found", payload.identifier)
@@ -415,6 +419,8 @@ class DFLCommunity(Community):
         start_time = time.time()
         serialized_model = serialize_model(model)
         serialized_population_view = pickle.dumps(population_view)
+        self.bandwidth_statistics["lm_model_bytes"] += len(serialized_model)
+        self.bandwidth_statistics["lm_midas_bytes"] += len(serialized_population_view)
         binary_data = serialized_model + serialized_population_view
         response = {"round": round, "type": type, "model_data_len": len(serialized_model)}
         serialized_response = json.dumps(response).encode()
@@ -445,7 +451,7 @@ class DFLCommunity(Community):
         self.peer_manager.update_peer_activity(result.peer.public_key.key_to_bin(),
                                                max(json_data["round"], self.get_round_estimate()))
         self.update_population_view_history()
-        incoming_model = unserialize_model(serialized_model, self.parameters["dataset"], self.parameters["model"])
+        incoming_model = unserialize_model(serialized_model, self.parameters["dataset"])
 
         if json_data["type"] == "trained_model":
             await self.received_trained_model(result.peer, json_data["round"], incoming_model)
@@ -519,6 +525,10 @@ class DFLCommunity(Community):
                              self.peer_manager.get_my_short_id(), model_round)
             if self.aggregate_complete_callback:
                 ensure_future(self.aggregate_complete_callback(model_round, avg_model))
+        else:
+            self.logger.info("Aggregator %s has not enough trained models (%d) of round %d yet",
+                             self.peer_manager.get_my_short_id(), len(self.model_manager.incoming_trained_models),
+                             model_round)
 
     def received_aggregated_model(self, peer: Peer, model_round: int, model: nn.Module) -> None:
         if self.shutting_down:

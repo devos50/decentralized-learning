@@ -1,16 +1,15 @@
+import asyncio
 import copy
 import logging
 import os
-from asyncio import get_event_loop
-from concurrent.futures import ProcessPoolExecutor
+import random
+import time
 from typing import Dict, Optional, List
 
 import torch
 import torch.nn as nn
 
-
-from accdfl.core.evaluator import setup_evaluator, evaluate_accuracy
-from accdfl.core.model_trainer import setup_trainer, train_model, ModelTrainer
+from accdfl.core.model_trainer import ModelTrainer
 
 
 class ModelManager:
@@ -20,17 +19,17 @@ class ModelManager:
 
     def __init__(self, model, parameters, participant_index: int):
         self.model = model
-        self.epoch = 1
         self.parameters = parameters
         self.participant_index = participant_index
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.data_dir = os.path.join(os.environ["HOME"], "dfl-data")
-        self.acc_check_executor = ProcessPoolExecutor(initializer=setup_evaluator,
-                                                      initargs=(self.data_dir, parameters,),
-                                                      max_workers=2)
-        self.model_train_executor = ProcessPoolExecutor(initializer=setup_trainer,
-                                                        initargs=(self.data_dir, parameters, participant_index,),
-                                                        max_workers=1)
+        self.training_times: List[float] = []
+
+        if self.parameters["dataset"] in ["cifar10", "cifar10_niid", "mnist"]:
+            self.data_dir = os.path.join(os.environ["HOME"], "dfl-data")
+        else:
+            # The LEAF dataset
+            self.data_dir = os.path.join(os.environ["HOME"], "leaf", self.parameters["dataset"])
+
         self.model_trainer = None  # Only used when not training in a subprocess (e.g., in the unit tests)
 
         # Keeps track of the incoming trained models as aggregator
@@ -55,13 +54,43 @@ class ModelManager:
 
     async def train(self, in_subprocess: bool = True):
         if in_subprocess:
-            trained_model = await get_event_loop().run_in_executor(self.model_train_executor, train_model, self.model)
+            # Dump the model to a file
+            model_id = random.randint(1, 1000000)
+            model_path = os.path.join(os.getcwd(), "%d.model" % model_id)
+            torch.save(self.model.state_dict(), model_path)
+
+            # Get full path to the script
+            import accdfl.util as autil
+            script_dir = os.path.join(os.path.abspath(os.path.dirname(autil.__file__)), "train_model.py")
+            self.logger.error(script_dir)
+            cmd = "python3 %s %s %s %s %d" % (script_dir, model_path, self.data_dir, self.participant_index, torch.get_num_threads())
+            train_start_time = time.time()
+            proc = await asyncio.create_subprocess_shell(
+                cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE)
+
+            stdout, stderr = await proc.communicate()
+
+            self.training_times.append(time.time() - train_start_time)
+
+            self.logger.info(f'Training exited with {proc.returncode}]')
+            if stdout:
+                self.logger.error(f'[stdout]\n{stdout.decode()}')
+            if stderr:
+                self.logger.error(f'[stderr]\n{stderr.decode()}')
+
+            # Read the new model and adopt it
+            self.model.load_state_dict(torch.load(model_path))
+            os.unlink(model_path)
+
+            #trained_model = await get_event_loop().run_in_executor(self.model_train_executor, train_model, self.model)
         else:
             if not self.model_trainer:
                 # Lazy initialize the model trainer
                 self.model_trainer = ModelTrainer(self.data_dir, self.parameters, self.participant_index)
             trained_model = self.model_trainer.train(self.model)
-        self.model = trained_model
+        #self.model = trained_model
 
     @staticmethod
     def average_models(models: List[nn.Module]) -> nn.Module:
@@ -81,5 +110,37 @@ class ModelManager:
         Optionally, one can provide a custom iterator to compute the accuracy on a custom dataset.
         """
         self.logger.info("Computing accuracy of model")
-        accuracy, loss = await get_event_loop().run_in_executor(self.acc_check_executor, evaluate_accuracy, model)
-        return accuracy, loss
+
+        # Dump the model to a file
+        model_id = random.randint(1, 1000000)
+        model_path = os.path.join(os.getcwd(), "%d.model" % model_id)
+        torch.save(model.state_dict(), model_path)
+
+        # Get full path to the script
+        import accdfl.util as autil
+        script_dir = os.path.join(os.path.abspath(os.path.dirname(autil.__file__)), "evaluate_model.py")
+        self.logger.error(script_dir)
+        cmd = "python3 %s %d %s %s" % (script_dir, model_id, model_path, self.data_dir)
+        proc = await asyncio.create_subprocess_shell(
+            cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE)
+
+        stdout, stderr = await proc.communicate()
+
+        self.logger.info(f'Accuracy evaluator exited with {proc.returncode}]')
+        if stdout:
+            self.logger.error(f'[stdout]\n{stdout.decode()}')
+        if stderr:
+            self.logger.error(f'[stderr]\n{stderr.decode()}')
+
+        os.unlink(model_path)
+
+        # Read the accuracy and the loss from the file
+        results_file = os.path.join(os.getcwd(), "%d_results.csv" % model_id)
+        with open(results_file) as in_file:
+            content = in_file.read().strip().split(",")
+
+        os.unlink(results_file)
+
+        return float(content[0]), float(content[1])
