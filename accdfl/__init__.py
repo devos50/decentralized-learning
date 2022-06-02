@@ -1,3 +1,3 @@
 """
-Contains code related to the accountable DFL framework.
+Contains code related to the DFL framework.
 """

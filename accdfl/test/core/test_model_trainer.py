@@ -11,7 +11,7 @@ def parameters():
     return {
         "batch_size": 20,
         "target_participants": 100,
-        "dataset": "shakespeare",
+        "dataset": "cifar10",
         "nodes_per_class": [1] * 10,
         "samples_per_class": [50] * 10,
         "local_classes": 10,
@@ -28,7 +28,7 @@ def model(parameters):
 
 @pytest.fixture
 def model_trainer(parameters):
-    return ModelTrainer(os.path.join(os.environ["HOME"], "leaf", parameters["dataset"]), parameters, 0)
+    return ModelTrainer(os.path.join(os.environ["HOME"], "dfl-data"), parameters, 0)
 
 
 def test_train(parameters, model, model_trainer):
