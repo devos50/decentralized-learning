@@ -6,12 +6,14 @@ import os
 import random
 import sys
 import time
+from dataclasses import asdict
 from typing import Dict, Optional, List
 
 import torch
 import torch.nn as nn
 
 from accdfl.core.model_trainer import ModelTrainer
+from accdfl.core.session_settings import SessionSettings
 
 
 class ModelManager:
@@ -19,18 +21,18 @@ class ModelManager:
     This class manages the current ML model and training.
     """
 
-    def __init__(self, model, parameters, participant_index: int):
-        self.model = model
-        self.parameters = parameters
-        self.participant_index = participant_index
+    def __init__(self, model: nn.Module, settings: SessionSettings, participant_index: int):
+        self.model: nn.Module = model
+        self.settings: SessionSettings = settings
+        self.participant_index: int = participant_index
         self.logger = logging.getLogger(self.__class__.__name__)
         self.training_times: List[float] = []
 
-        if self.parameters["dataset"] in ["cifar10", "cifar10_niid", "mnist"]:
+        if self.settings.dataset in ["cifar10", "cifar10_niid", "mnist"]:
             self.data_dir = os.path.join(os.environ["HOME"], "dfl-data")
         else:
             # The LEAF dataset
-            self.data_dir = os.path.join(os.environ["HOME"], "leaf", self.parameters["dataset"])
+            self.data_dir = os.path.join(os.environ["HOME"], "leaf", self.settings.dataset)
 
         self.model_trainer = None  # Only used when not training in a subprocess (e.g., in the unit tests)
 
@@ -48,33 +50,33 @@ class ModelManager:
         self.incoming_trained_models = {}
 
     def has_enough_trained_models(self) -> bool:
-        return len(self.incoming_trained_models) >= (self.parameters["sample_size"] * self.parameters["success_fraction"])
+        return len(self.incoming_trained_models) >= (self.settings.dfl.sample_size * self.settings.dfl.success_fraction)
 
     def average_trained_models(self) -> Optional[nn.Module]:
         models = [model for model in self.incoming_trained_models.values()]
         return self.average_models(models)
 
-    def dump_parameters(self):
+    def dump_settings(self):
         """
-        Dump the experiment parameters if they do not exist yet.
+        Dump the session settings if they do not exist yet.
         """
-        parameters_file_path = os.path.join(self.parameters["work_dir"], "parameters.json")
-        if not os.path.exists(parameters_file_path):
-            with open(parameters_file_path, "w") as parameters_file:
-                parameters_file.write(json.dumps(self.parameters))
+        settings_file_path = os.path.join(self.settings.work_dir, "settings.json")
+        if not os.path.exists(settings_file_path):
+            with open(settings_file_path, "w") as settings_file:
+                settings_file.write(self.settings.to_json())
 
     async def train(self, in_subprocess: bool = True):
         if in_subprocess:
-            # Dump the model and parameters to a file
+            # Dump the model and settings to a file
             model_file_name = "%d.model" % random.randint(1, 1000000)
-            model_path = os.path.join(self.parameters["work_dir"], model_file_name)
+            model_path = os.path.join(self.settings.work_dir, model_file_name)
             torch.save(self.model.state_dict(), model_path)
-            self.dump_parameters()
+            self.dump_settings()
 
             # Get full path to the script
             import accdfl.util as autil
             script_dir = os.path.join(os.path.abspath(os.path.dirname(autil.__file__)), "train_model.py")
-            cmd = "%s %s %s %s %s %s %d" % (sys.executable, script_dir, self.parameters["work_dir"], model_file_name,
+            cmd = "%s %s %s %s %s %s %d" % (sys.executable, script_dir, self.settings.work_dir, model_file_name,
                                             self.data_dir, self.participant_index, torch.get_num_threads())
             train_start_time = time.time()
             proc = await asyncio.create_subprocess_shell(
@@ -101,7 +103,7 @@ class ModelManager:
         else:
             if not self.model_trainer:
                 # Lazy initialize the model trainer
-                self.model_trainer = ModelTrainer(self.data_dir, self.parameters, self.participant_index)
+                self.model_trainer = ModelTrainer(self.data_dir, self.settings, self.participant_index)
             self.model_trainer.train(self.model)
 
     @staticmethod
@@ -123,18 +125,17 @@ class ModelManager:
         """
         self.logger.info("Computing accuracy of model")
 
-        # Dump the model and parameters to a file
+        # Dump the model and settings to a file
         model_id = random.randint(1, 1000000)
         model_file_name = "%d.model" % model_id
-        model_path = os.path.join(self.parameters["work_dir"], model_file_name)
+        model_path = os.path.join(self.settings.work_dir, model_file_name)
         torch.save(model.state_dict(), model_path)
-        self.dump_parameters()
+        self.dump_settings()
 
         # Get full path to the script
         import accdfl.util as autil
         script_dir = os.path.join(os.path.abspath(os.path.dirname(autil.__file__)), "evaluate_model.py")
-        self.logger.error(script_dir)
-        cmd = "%s %s %s %d %s %d" % (sys.executable, script_dir, self.parameters["work_dir"], model_id,
+        cmd = "%s %s %s %d %s %d" % (sys.executable, script_dir, self.settings.work_dir, model_id,
                                      self.data_dir, torch.get_num_threads())
         proc = await asyncio.create_subprocess_shell(
             cmd,
@@ -155,7 +156,7 @@ class ModelManager:
         os.unlink(model_path)
 
         # Read the accuracy and the loss from the file
-        results_file = os.path.join(os.getcwd(), "%d_results.csv" % model_id)
+        results_file = os.path.join(self.settings.work_dir, "%d_results.csv" % model_id)
         with open(results_file) as in_file:
             content = in_file.read().strip().split(",")
 

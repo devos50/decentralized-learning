@@ -18,6 +18,7 @@ from accdfl.core.model_manager import ModelManager
 from accdfl.core.payloads import AdvertiseMembership, PingPayload, PongPayload
 from accdfl.core.peer_manager import PeerManager
 from accdfl.core.sample_manager import SampleManager
+from accdfl.core.session_settings import SessionSettings
 from accdfl.util.eva.protocol import EVAProtocol
 from accdfl.util.eva.result import TransferResult
 
@@ -46,8 +47,7 @@ class DFLCommunity(Community):
         self.determine_sample_durations = []
 
         # Settings
-        self.parameters = None
-        self.model_send_delay = 1.0
+        self.settings: Optional[SessionSettings] = None
         self.fixed_aggregator = None
         self.train_in_subprocess = True
 
@@ -97,25 +97,24 @@ class DFLCommunity(Community):
         else:
             self.logger.info("Participant %s won't participate in round 1", self.peer_manager.get_my_short_id())
 
-    def setup(self, parameters: Dict, data_dir: str, transmission_method: TransmissionMethod = TransmissionMethod.EVA,
-              aggregator: Optional[bytes] = None):
-        self.parameters = parameters
+    def setup(self, settings: SessionSettings, data_dir: str,
+              transmission_method: TransmissionMethod = TransmissionMethod.EVA, aggregator: Optional[bytes] = None):
+        self.settings = settings
         self.data_dir = data_dir
         self.fixed_aggregator = aggregator
         self.logger.info("Setting up experiment with %d initial participants and sample size %d (I am participant %s)" %
-                         (len(parameters["participants"]), parameters["sample_size"],
-                          self.peer_manager.get_my_short_id()))
+                         (len(settings.participants), settings.dfl.sample_size, self.peer_manager.get_my_short_id()))
 
-        self.peer_manager.inactivity_threshold = parameters["inactivity_threshold"]
-        for participant in parameters["participants"]:
+        self.peer_manager.inactivity_threshold = settings.dfl.inactivity_threshold
+        for participant in settings.participants:
             self.peer_manager.add_peer(unhexlify(participant))
-        self.sample_manager = SampleManager(self.peer_manager, parameters["sample_size"], parameters["num_aggregators"])
+        self.sample_manager = SampleManager(self.peer_manager, settings.dfl.sample_size, settings.dfl.num_aggregators)
 
         # Initialize the model
-        torch.manual_seed(0)
-        model = create_model(parameters["dataset"])
-        participant_index = parameters["all_participants"].index(hexlify(self.my_id).decode())
-        self.model_manager = ModelManager(model, parameters, participant_index)
+        torch.manual_seed(settings.model_seed)
+        model = create_model(settings.dataset)
+        participant_index = settings.all_participants.index(hexlify(self.my_id).decode())
+        self.model_manager = ModelManager(model, settings, participant_index)
 
         # Setup the model transmission
         self.transmission_method = transmission_method
@@ -231,7 +230,7 @@ class DFLCommunity(Community):
             self.logger.warning("Wanted to ping participant %s but cannot find Peer object!", peer_short_id)
             return succeed((peer_pk, False))
 
-        cache = PingRequestCache(self, ping_all_id, peer, self.parameters["ping_timeout"])
+        cache = PingRequestCache(self, ping_all_id, peer, self.settings.dfl.ping_timeout)
         self.request_cache.add(cache)
         cache.start()
         return cache.future
@@ -323,7 +322,7 @@ class DFLCommunity(Community):
         await self.model_manager.train(self.train_in_subprocess)
 
         # 2. Determine the aggregators of the next sample that are available
-        aggregators = await self.determine_available_peers_for_sample(round + 1, self.parameters["num_aggregators"],
+        aggregators = await self.determine_available_peers_for_sample(round + 1, self.settings.dfl.num_aggregators,
                                                                       getting_aggregators=True)
         aggregator_ids = [self.peer_manager.get_short_id(peer_id) for peer_id in aggregators]
         self.logger.info("Participant %s determined %d available aggregators in sample %d: %s",
@@ -403,7 +402,7 @@ class DFLCommunity(Community):
             self.logger.warning("Transfer to participant %s failed, scheduling it again (Exception: %s)",
                                 peer_id, future.exception())
             # The transfer failed - try it again after some delay
-            ensure_future(asyncio.sleep(self.model_send_delay)).add_done_callback(
+            ensure_future(asyncio.sleep(self.settings.model_send_delay)).add_done_callback(
                 lambda _: self.schedule_eva_send_model(peer, serialized_response, binary_data, start_time))
         else:
             # The transfer seems to be completed - record the transfer time
@@ -451,7 +450,7 @@ class DFLCommunity(Community):
         self.peer_manager.update_peer_activity(result.peer.public_key.key_to_bin(),
                                                max(json_data["round"], self.get_round_estimate()))
         self.update_population_view_history()
-        incoming_model = unserialize_model(serialized_model, self.parameters["dataset"])
+        incoming_model = unserialize_model(serialized_model, self.settings.dataset)
 
         if json_data["type"] == "trained_model":
             await self.received_trained_model(result.peer, json_data["round"], incoming_model)
@@ -505,7 +504,7 @@ class DFLCommunity(Community):
             self.model_manager.reset_incoming_trained_models()
 
             # 3. Determine the aggregators of the next sample that are available
-            participants = await self.determine_available_peers_for_sample(self.aggregate_sample_estimate, self.parameters["sample_size"])
+            participants = await self.determine_available_peers_for_sample(self.aggregate_sample_estimate, self.settings.dfl.sample_size)
             participants_ids = [self.peer_manager.get_short_id(peer_id) for peer_id in participants]
             self.logger.info("Participant %s determined %d available participants for round %d: %s",
                              self.peer_manager.get_my_short_id(), len(participants_ids), model_round, participants_ids)

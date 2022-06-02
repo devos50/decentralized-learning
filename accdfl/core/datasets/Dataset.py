@@ -69,7 +69,7 @@ class Dataset:
         else:
             self.__testing__ = False
 
-    def get_trainset(self):
+    def get_trainset(self, batch_size=1, shuffle=False):
         """
         Function to get the training set
 

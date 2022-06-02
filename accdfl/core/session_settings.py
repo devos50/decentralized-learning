@@ -1,0 +1,45 @@
+from dataclasses import dataclass
+from typing import List, Optional
+
+from dataclasses_json import dataclass_json
+
+
+@dataclass
+class LearningSettings:
+    """
+    Settings related to the learning process.
+    """
+    learning_rate: float
+    momentum: float
+    batch_size: int
+
+
+@dataclass
+class DFLSettings:
+    """
+    Setting related to sample-based decentralized federated learning.
+    """
+    sample_size: int
+    num_aggregators: int
+    success_fraction: float = 1
+    aggregation_timeout: float = 5
+    ping_timeout: float = 5
+    inactivity_threshold: int = 50
+
+
+@dataclass_json
+@dataclass
+class SessionSettings:
+    """
+    All settings related to a training session.
+    """
+    work_dir: str
+    dataset: str
+    learning: LearningSettings
+    participants: List[str]
+    all_participants: List[str]
+    target_participants: int
+    dfl: Optional[DFLSettings] = None
+    data_distribution: str = "iid"
+    model_seed: int = 0
+    model_send_delay: float = 1.0

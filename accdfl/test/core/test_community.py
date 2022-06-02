@@ -6,6 +6,7 @@ import pytest
 from accdfl.core.community import DFLCommunity, TransmissionMethod
 from accdfl.core import NodeMembershipChange
 from accdfl.core.model_manager import ModelManager
+from accdfl.core.session_settings import SessionSettings, LearningSettings, DFLSettings
 
 from ipv8.test.base import TestBase
 from ipv8.test.mocking.ipv8 import MockIPv8
@@ -44,33 +45,37 @@ class TestDFLCommunityBase(TestBase):
 
         self.initialize(DFLCommunity, self.NUM_NODES)
 
-        self.experiment_data = {
-            "learning_rate": 0.1,
-            "momentum": 0.0,
-            "batch_size": self.batch_size,
-            "participants": [hexlify(node.my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
-            "all_participants": [hexlify(node.my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
-            "sample_size": self.SAMPLE_SIZE,
-            "num_aggregators": self.NUM_AGGREGATORS,
-            "success_fraction": self.SUCCESS_FRACTION,
-            "aggregation_timeout": 0.5,
-            "ping_timeout": 0.1,
-            "inactivity_threshold": self.INACTIVITY_THRESHOLD,
+        learning_settings = LearningSettings(
+            learning_rate=0.1,
+            momentum=0.0,
+            batch_size=self.batch_size
+        )
 
-            # These parameters are not available in a deployed environment - only for experimental purposes.
-            "target_participants": self.TARGET_NUM_NODES,
-            "samples_per_class": self.SAMPLES_PER_CLASS,
-            "local_classes": self.LOCAL_CLASSES,
-            "nodes_per_class": self.NODES_PER_CLASS,
-            "dataset": self.DATASET,
-            "data_distribution": "iid",
-            "work_dir": self.temporary_directory()
-        }
+        dfl_settings = DFLSettings(
+            sample_size=self.SAMPLE_SIZE,
+            num_aggregators=self.NUM_AGGREGATORS,
+            success_fraction=self.SUCCESS_FRACTION,
+            aggregation_timeout=0.5,
+            ping_timeout=0.1,
+            inactivity_threshold=self.INACTIVITY_THRESHOLD
+        )
+
+        self.settings = SessionSettings(
+            dataset=self.DATASET,
+            work_dir=self.temporary_directory(),
+            learning=learning_settings,
+            participants=[hexlify(node.my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
+            all_participants=[hexlify(node.my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
+            target_participants=self.TARGET_NUM_NODES,
+            data_distribution="iid",
+            dfl=dfl_settings
+        )
+
         for node in self.nodes:
             node.overlay.train_in_subprocess = False
-            node.overlay.setup(self.experiment_data, None, transmission_method=self.TRANSMISSION_METHOD)
+            node.overlay.setup(self.settings, None, transmission_method=self.TRANSMISSION_METHOD)
             cur_model_mgr = node.overlay.model_manager
-            node.overlay.model_manager = FakeModelManager(cur_model_mgr.model, self.experiment_data,
+            node.overlay.model_manager = FakeModelManager(cur_model_mgr.model, self.settings,
                                                           cur_model_mgr.participant_index)
 
     def wait_for_round_completed(self, node, round):
@@ -144,11 +149,11 @@ class TestDFLCommunityOneNodeOneJoining(TestDFLCommunityBase):
         self.add_node_to_experiment(new_node)
         await self.introduce_nodes()
 
-        self.experiment_data["participants"].append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
-        self.experiment_data["all_participants"].append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
-        new_node.overlay.setup(self.experiment_data, None, transmission_method=self.TRANSMISSION_METHOD)
+        self.settings.participants.append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
+        self.settings.all_participants.append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
+        new_node.overlay.setup(self.settings, None, transmission_method=self.TRANSMISSION_METHOD)
         cur_model_mgr = new_node.overlay.model_manager
-        new_node.overlay.model_manager = FakeModelManager(cur_model_mgr.model, self.experiment_data,
+        new_node.overlay.model_manager = FakeModelManager(cur_model_mgr.model, self.settings,
                                                           cur_model_mgr.participant_index)
         new_node.overlay.advertise_membership(NodeMembershipChange.JOIN)
 
@@ -217,7 +222,7 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
         Test whether we start aggregating when receiving a trained model.
         """
         self.nodes[0].overlay.aggregate_sample_estimate = 1
-        self.nodes[0].overlay.model_manager.parameters["sample_size"] = 2
+        self.nodes[0].overlay.model_manager.settings.dfl.sample_size = 2
         model = self.nodes[1].overlay.model_manager.model
         await self.nodes[0].overlay.received_trained_model(self.nodes[0].overlay.my_peer, 2, model)
         assert self.nodes[0].overlay.aggregate_start_time
@@ -239,7 +244,7 @@ class TestDFLCommunityTwoNodes(TestDFLCommunityBase):
         Test whether we reset an ongoing aggregation when receiving a newer trained model.
         """
         self.nodes[0].overlay.aggregate_sample_estimate = 1
-        self.nodes[0].overlay.model_manager.parameters["sample_size"] = 2
+        self.nodes[0].overlay.model_manager.settings.dfl.sample_size = 2
         model = self.nodes[1].overlay.model_manager.model
         await self.nodes[0].overlay.received_trained_model(self.nodes[0].overlay.my_peer, 2, model)
         assert self.nodes[0].overlay.aggregate_start_time
@@ -341,11 +346,11 @@ class TestDFLCommunityFiveNodesOneJoining(TestDFLCommunityBase):
         for ind in range(self.NUM_NODES):
             self.nodes[ind].overlay.start()
 
-        self.experiment_data["participants"].append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
-        self.experiment_data["all_participants"].append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
-        new_node.overlay.setup(self.experiment_data, None, transmission_method=self.TRANSMISSION_METHOD)
+        self.settings.participants.append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
+        self.settings.all_participants.append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
+        new_node.overlay.setup(self.settings, None, transmission_method=self.TRANSMISSION_METHOD)
         cur_model_mgr = new_node.overlay.model_manager
-        new_node.overlay.model_manager = FakeModelManager(cur_model_mgr.model, self.experiment_data,
+        new_node.overlay.model_manager = FakeModelManager(cur_model_mgr.model, self.settings,
                                                           cur_model_mgr.participant_index)
         new_node.overlay.advertise_membership(NodeMembershipChange.JOIN)
         self.nodes[-1].overlay.start(advertise_join=True)
