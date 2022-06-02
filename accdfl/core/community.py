@@ -68,7 +68,6 @@ class DFLCommunity(Community):
 
         # Model exchange parameters
         self.eva = EVAProtocol(self, self.on_receive, self.on_send_complete, self.on_error)
-        self.data_dir = None
         self.transfer_times = []
 
         self.add_message_handler(AdvertiseMembership, self.on_membership_advertisement)
@@ -94,9 +93,8 @@ class DFLCommunity(Community):
         else:
             self.logger.info("Participant %s won't participate in round 1", self.peer_manager.get_my_short_id())
 
-    def setup(self, settings: SessionSettings, data_dir: str):
+    def setup(self, settings: SessionSettings):
         self.settings = settings
-        self.data_dir = data_dir
         self.logger.info("Setting up experiment with %d initial participants and sample size %d (I am participant %s)" %
                          (len(settings.participants), settings.dfl.sample_size, self.peer_manager.get_my_short_id()))
 

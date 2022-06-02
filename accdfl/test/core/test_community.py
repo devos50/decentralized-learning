@@ -72,7 +72,7 @@ class TestDFLCommunityBase(TestBase):
         )
 
         for node in self.nodes:
-            node.overlay.setup(self.settings, None)
+            node.overlay.setup(self.settings)
             cur_model_mgr = node.overlay.model_manager
             node.overlay.model_manager = FakeModelManager(cur_model_mgr.model, self.settings,
                                                           cur_model_mgr.participant_index)
@@ -150,7 +150,7 @@ class TestDFLCommunityOneNodeOneJoining(TestDFLCommunityBase):
 
         self.settings.participants.append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
         self.settings.all_participants.append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
-        new_node.overlay.setup(self.settings, None)
+        new_node.overlay.setup(self.settings)
         cur_model_mgr = new_node.overlay.model_manager
         new_node.overlay.model_manager = FakeModelManager(cur_model_mgr.model, self.settings,
                                                           cur_model_mgr.participant_index)
@@ -346,7 +346,7 @@ class TestDFLCommunityFiveNodesOneJoining(TestDFLCommunityBase):
 
         self.settings.participants.append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
         self.settings.all_participants.append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
-        new_node.overlay.setup(self.settings, None)
+        new_node.overlay.setup(self.settings)
         cur_model_mgr = new_node.overlay.model_manager
         new_node.overlay.model_manager = FakeModelManager(cur_model_mgr.model, self.settings,
                                                           cur_model_mgr.participant_index)
