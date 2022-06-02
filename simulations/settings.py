@@ -1,7 +1,5 @@
 from typing import List
 
-from accdfl.core.community import TransmissionMethod
-
 
 class SimulationSettings:
 
@@ -21,5 +19,4 @@ class SimulationSettings:
         self.nodes_per_class: List[int] = [self.peers] * 10
         self.dataset = "cifar10"
         self.model = "gnlenet"
-        self.transmission_method = TransmissionMethod.EVA
         self.accuracy_logging_interval = 1

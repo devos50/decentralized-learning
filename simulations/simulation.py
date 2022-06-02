@@ -90,7 +90,6 @@ class ADFLSimulation:
 
         # Inject our nodes array in the Simulated DFL community
         for node in self.nodes:
-            node.overlays[0].train_in_subprocess = False
             node.overlays[0].nodes = self.nodes
 
         with open(os.path.join(self.data_dir, "accuracies.csv"), "w") as out_file:

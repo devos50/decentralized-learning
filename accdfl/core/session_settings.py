@@ -3,6 +3,8 @@ from typing import List, Optional
 
 from dataclasses_json import dataclass_json
 
+from accdfl.core import TransmissionMethod
+
 
 @dataclass
 class LearningSettings:
@@ -43,3 +45,5 @@ class SessionSettings:
     data_distribution: str = "iid"
     model_seed: int = 0
     model_send_delay: float = 1.0
+    train_in_subprocess: bool = False
+    transmission_method: TransmissionMethod = TransmissionMethod.EVA

@@ -49,7 +49,6 @@ class DFLCommunity(Community):
         # Settings
         self.settings: Optional[SessionSettings] = None
         self.fixed_aggregator = None
-        self.train_in_subprocess = True
 
         # State
         self.is_active = False
@@ -71,7 +70,6 @@ class DFLCommunity(Community):
         # Model exchange parameters
         self.eva = EVAProtocol(self, self.on_receive, self.on_send_complete, self.on_error)
         self.data_dir = None
-        self.transmission_method = TransmissionMethod.EVA
         self.transfer_times = []
 
         self.add_message_handler(AdvertiseMembership, self.on_membership_advertisement)
@@ -97,8 +95,7 @@ class DFLCommunity(Community):
         else:
             self.logger.info("Participant %s won't participate in round 1", self.peer_manager.get_my_short_id())
 
-    def setup(self, settings: SessionSettings, data_dir: str,
-              transmission_method: TransmissionMethod = TransmissionMethod.EVA, aggregator: Optional[bytes] = None):
+    def setup(self, settings: SessionSettings, data_dir: str, aggregator: Optional[bytes] = None):
         self.settings = settings
         self.data_dir = data_dir
         self.fixed_aggregator = aggregator
@@ -117,14 +114,15 @@ class DFLCommunity(Community):
         self.model_manager = ModelManager(model, settings, participant_index)
 
         # Setup the model transmission
-        self.transmission_method = transmission_method
-        if self.transmission_method == TransmissionMethod.EVA:
+        if self.settings.transmission_method == TransmissionMethod.EVA:
             self.logger.info("Setting up EVA protocol")
             self.eva.settings.block_size = 60000
             self.eva.settings.window_size = 16
             self.eva.settings.retransmit_attempt_count = 10
             self.eva.settings.retransmit_interval_in_sec = 1
             self.eva.settings.timeout_interval_in_sec = 10
+        else:
+            raise RuntimeError("Unsupported transmission method %s", self.settings.transmission_method)
 
         self.update_population_view_history()
 
@@ -319,7 +317,7 @@ class DFLCommunity(Community):
         self.completed_training = False
 
         # 1. Train the model
-        await self.model_manager.train(self.train_in_subprocess)
+        await self.model_manager.train()
 
         # 2. Determine the aggregators of the next sample that are available
         aggregators = await self.determine_available_peers_for_sample(round + 1, self.settings.dfl.num_aggregators,

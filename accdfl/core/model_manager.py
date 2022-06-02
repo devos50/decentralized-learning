@@ -1,12 +1,10 @@
 import asyncio
 import copy
-import json
 import logging
 import os
 import random
 import sys
 import time
-from dataclasses import asdict
 from typing import Dict, Optional, List
 
 import torch
@@ -65,8 +63,8 @@ class ModelManager:
             with open(settings_file_path, "w") as settings_file:
                 settings_file.write(self.settings.to_json())
 
-    async def train(self, in_subprocess: bool = True):
-        if in_subprocess:
+    async def train(self):
+        if self.settings.train_in_subprocess:
             # Dump the model and settings to a file
             model_file_name = "%d.model" % random.randint(1, 1000000)
             model_path = os.path.join(self.settings.work_dir, model_file_name)
