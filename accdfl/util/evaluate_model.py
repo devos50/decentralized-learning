@@ -1,46 +1,33 @@
 import json
+import os
 import sys
-import time
-from binascii import unhexlify
 
 import torch
 
+from accdfl.core.model import create_model
 from accdfl.core.model_evaluator import ModelEvaluator
 
-torch.set_num_threads(16)
-
-from accdfl.core.model import create_model
-
 if __name__ == "__main__":
-    with open("time_stats.txt", "a") as time_stats:
-        time_stats.write("start,%f\n" % time.time())
-
-    model_id = int(sys.argv[1])
-    model_path = sys.argv[2]
+    work_dir = sys.argv[1]
+    model_id = int(sys.argv[2])
+    model_name = "%d.model" % model_id
     datadir = sys.argv[3]
+    num_threads = int(sys.argv[4])
+    torch.set_num_threads(num_threads)
 
-    with open("experiment.json") as in_file:
+    model_path = os.path.join(work_dir, model_name)
+    if not os.path.exists(model_path):
+        raise RuntimeError("Model %s does not exist!" % model_path)
+
+    with open(os.path.join(work_dir, "parameters.json")) as in_file:
         parameters = json.loads(in_file.read())
 
     model = create_model(parameters["dataset"])
-
-    with open("time_stats.txt", "a") as time_stats:
-        time_stats.write("model_created,%f\n" % time.time())
-
     model.load_state_dict(torch.load(model_path))
-
-    with open("time_stats.txt", "a") as time_stats:
-        time_stats.write("model_loaded,%f\n" % time.time())
 
     evaluator = ModelEvaluator(datadir, parameters)
     acc, loss = evaluator.evaluate_accuracy(model)
 
-    with open("time_stats.txt", "a") as time_stats:
-        time_stats.write("model_evaluated,%f\n" % time.time())
-
     # Save the accuracies
     with open("%d_results.csv" % model_id, "w") as out_file:
-        out_file.write("%s,%s\n" % (acc, loss))
-
-    with open("accs.txt", "a") as out_file:
         out_file.write("%s,%s\n" % (acc, loss))

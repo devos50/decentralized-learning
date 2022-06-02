@@ -64,6 +64,7 @@ class TestDFLCommunityBase(TestBase):
             "nodes_per_class": self.NODES_PER_CLASS,
             "dataset": self.DATASET,
             "data_distribution": "iid",
+            "work_dir": self.temporary_directory()
         }
         for node in self.nodes:
             node.overlay.train_in_subprocess = False

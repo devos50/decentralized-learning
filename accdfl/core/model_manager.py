@@ -1,8 +1,10 @@
 import asyncio
 import copy
+import json
 import logging
 import os
 import random
+import sys
 import time
 from typing import Dict, Optional, List
 
@@ -52,18 +54,28 @@ class ModelManager:
         models = [model for model in self.incoming_trained_models.values()]
         return self.average_models(models)
 
+    def dump_parameters(self):
+        """
+        Dump the experiment parameters if they do not exist yet.
+        """
+        parameters_file_path = os.path.join(self.parameters["work_dir"], "parameters.json")
+        if not os.path.exists(parameters_file_path):
+            with open(parameters_file_path, "w") as parameters_file:
+                parameters_file.write(json.dumps(self.parameters))
+
     async def train(self, in_subprocess: bool = True):
         if in_subprocess:
-            # Dump the model to a file
-            model_id = random.randint(1, 1000000)
-            model_path = os.path.join(os.getcwd(), "%d.model" % model_id)
+            # Dump the model and parameters to a file
+            model_file_name = "%d.model" % random.randint(1, 1000000)
+            model_path = os.path.join(self.parameters["work_dir"], model_file_name)
             torch.save(self.model.state_dict(), model_path)
+            self.dump_parameters()
 
             # Get full path to the script
             import accdfl.util as autil
             script_dir = os.path.join(os.path.abspath(os.path.dirname(autil.__file__)), "train_model.py")
-            self.logger.error(script_dir)
-            cmd = "python3 %s %s %s %s %d" % (script_dir, model_path, self.data_dir, self.participant_index, torch.get_num_threads())
+            cmd = "%s %s %s %s %s %s %d" % (sys.executable, script_dir, self.parameters["work_dir"], model_file_name,
+                                            self.data_dir, self.participant_index, torch.get_num_threads())
             train_start_time = time.time()
             proc = await asyncio.create_subprocess_shell(
                 cmd,
@@ -71,26 +83,26 @@ class ModelManager:
                 stderr=asyncio.subprocess.PIPE)
 
             stdout, stderr = await proc.communicate()
+            self.logger.info(f'Training exited with {proc.returncode}]')
 
             self.training_times.append(time.time() - train_start_time)
 
-            self.logger.info(f'Training exited with {proc.returncode}]')
-            if stdout:
-                self.logger.error(f'[stdout]\n{stdout.decode()}')
-            if stderr:
-                self.logger.error(f'[stderr]\n{stderr.decode()}')
+            if proc.returncode != 0:
+                if stdout:
+                    self.logger.error(f'[stdout]\n{stdout.decode()}')
+                if stderr:
+                    self.logger.error(f'[stderr]\n{stderr.decode()}')
+                raise RuntimeError("Training subprocess exited with non-zero exit code %d: %s" %
+                                   (proc.returncode, stderr.decode()))
 
             # Read the new model and adopt it
             self.model.load_state_dict(torch.load(model_path))
             os.unlink(model_path)
-
-            #trained_model = await get_event_loop().run_in_executor(self.model_train_executor, train_model, self.model)
         else:
             if not self.model_trainer:
                 # Lazy initialize the model trainer
                 self.model_trainer = ModelTrainer(self.data_dir, self.parameters, self.participant_index)
-            trained_model = self.model_trainer.train(self.model)
-        #self.model = trained_model
+            self.model_trainer.train(self.model)
 
     @staticmethod
     def average_models(models: List[nn.Module]) -> nn.Module:
@@ -111,28 +123,34 @@ class ModelManager:
         """
         self.logger.info("Computing accuracy of model")
 
-        # Dump the model to a file
+        # Dump the model and parameters to a file
         model_id = random.randint(1, 1000000)
-        model_path = os.path.join(os.getcwd(), "%d.model" % model_id)
+        model_file_name = "%d.model" % model_id
+        model_path = os.path.join(self.parameters["work_dir"], model_file_name)
         torch.save(model.state_dict(), model_path)
+        self.dump_parameters()
 
         # Get full path to the script
         import accdfl.util as autil
         script_dir = os.path.join(os.path.abspath(os.path.dirname(autil.__file__)), "evaluate_model.py")
         self.logger.error(script_dir)
-        cmd = "python3 %s %d %s %s" % (script_dir, model_id, model_path, self.data_dir)
+        cmd = "%s %s %s %d %s %d" % (sys.executable, script_dir, self.parameters["work_dir"], model_id,
+                                     self.data_dir, torch.get_num_threads())
         proc = await asyncio.create_subprocess_shell(
             cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE)
 
         stdout, stderr = await proc.communicate()
-
         self.logger.info(f'Accuracy evaluator exited with {proc.returncode}]')
-        if stdout:
-            self.logger.error(f'[stdout]\n{stdout.decode()}')
-        if stderr:
-            self.logger.error(f'[stderr]\n{stderr.decode()}')
+
+        if proc.returncode != 0:
+            if stdout:
+                self.logger.error(f'[stdout]\n{stdout.decode()}')
+            if stderr:
+                self.logger.error(f'[stderr]\n{stderr.decode()}')
+            raise RuntimeError("Accuracy evaluation subprocess exited with non-zero exit code %d: %s" %
+                               (proc.returncode, stderr.decode()))
 
         os.unlink(model_path)
 

@@ -1,6 +1,5 @@
 import logging
 import os
-import time
 
 from torch.autograd import Variable
 from torch.nn import CrossEntropyLoss, MSELoss, NLLLoss
@@ -36,14 +35,9 @@ class ModelTrainer:
         if len(train_set.dataset) % self.parameters["batch_size"] != 0:
             local_steps += 1
 
-        with open("time_stats.txt", "a") as time_stats:
-            time_stats.write("about_to_start_train,%f\n" % time.time())
-
         self.logger.info("Will perform %d local steps of training (batch size: %d)", local_steps, self.parameters["batch_size"])
 
         for local_step in range(local_steps):
-            with open("train_step.txt", "a") as progress_file:
-                progress_file.write("%f,%d,%d\n" % (time.time(), local_step, local_steps))
             try:
                 data, target = next(train_set_it)
                 model.train()
