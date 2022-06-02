@@ -3,10 +3,10 @@ from asyncio import ensure_future
 from ipv8.configuration import ConfigBuilder
 
 from simulations.settings import SimulationSettings
-from simulations.simulation import ADFLSimulation
+from simulations.simulation import DLSimulation
 
 
-class BasicADFLSimulation(ADFLSimulation):
+class BasicDFLSimulation(DLSimulation):
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = super().get_ipv8_builder(peer_id)
@@ -16,7 +16,7 @@ class BasicADFLSimulation(ADFLSimulation):
 
 if __name__ == "__main__":
     settings = SimulationSettings()
-    simulation = BasicADFLSimulation(settings)
+    simulation = BasicDFLSimulation(settings)
     ensure_future(simulation.run())
 
     simulation.loop.run_forever()

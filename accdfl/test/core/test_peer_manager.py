@@ -1,7 +1,7 @@
 import pytest
 
 from accdfl.core import NodeMembershipChange
-from accdfl.dfl.peer_manager import PeerManager, NO_ACTIVITY_INFO
+from accdfl.core.peer_manager import PeerManager, NO_ACTIVITY_INFO
 
 
 @pytest.fixture

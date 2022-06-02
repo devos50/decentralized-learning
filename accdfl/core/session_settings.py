@@ -19,7 +19,7 @@ class LearningSettings:
 @dataclass
 class DFLSettings:
     """
-    Setting related to sample-based decentralized federated learning.
+    Settings related to sample-based decentralized federated learning.
     """
     sample_size: int
     num_aggregators: int
@@ -28,6 +28,14 @@ class DFLSettings:
     ping_timeout: float = 5
     inactivity_threshold: int = 50
     fixed_aggregator: Optional[bytes] = None
+
+
+@dataclass
+class GLSettings:
+    """
+    Settings related to Gossip Learning.
+    """
+    round_duration: float = 5  # Round duration in seconds
 
 
 @dataclass_json
@@ -43,6 +51,7 @@ class SessionSettings:
     all_participants: List[str]
     target_participants: int
     dfl: Optional[DFLSettings] = None
+    gl: Optional[GLSettings] = None
     data_distribution: str = "iid"
     model_seed: int = 0
     model_send_delay: float = 1.0

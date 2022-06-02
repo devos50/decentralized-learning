@@ -1,0 +1,103 @@
+import asyncio
+import time
+from asyncio import ensure_future, Future
+from binascii import unhexlify, hexlify
+from typing import Optional, Callable
+
+import torch
+
+from accdfl.core import TransmissionMethod
+from accdfl.core.models import create_model
+from accdfl.core.model_manager import ModelManager
+from accdfl.core.peer_manager import PeerManager
+from accdfl.core.session_settings import SessionSettings
+from accdfl.util.eva.protocol import EVAProtocol
+from accdfl.util.eva.result import TransferResult
+
+from ipv8.community import Community
+from ipv8.requestcache import RequestCache
+from ipv8.types import Peer
+
+
+class DLCommunity(Community):
+    community_id = unhexlify('d5889074c1e4c60423cdb6e9307ba0ca5695ead7')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.request_cache = RequestCache()
+        self.my_id = self.my_peer.public_key.key_to_bin()
+
+        self.aggregate_complete_callback: Optional[Callable] = None
+        self.round_complete_callback: Optional[Callable] = None
+        self.settings: Optional[SessionSettings] = None
+        self.eva = EVAProtocol(self, self.on_receive, self.on_send_complete, self.on_error)
+
+        self.is_active = False
+        self.did_setup = False
+        self.shutting_down = False
+
+        self.peer_manager: PeerManager = PeerManager(self.my_id, -1)
+        self.model_manager: Optional[ModelManager] = None  # Initialized when the process is setup
+
+        self.transfer_times = []
+
+    def setup(self, settings: SessionSettings):
+        self.settings = settings
+        for participant in settings.participants:
+            self.peer_manager.add_peer(unhexlify(participant))
+
+        # Initialize the model
+        torch.manual_seed(settings.model_seed)
+        model = create_model(settings.dataset)
+        participant_index = settings.all_participants.index(hexlify(self.my_id).decode())
+        self.model_manager = ModelManager(model, settings, participant_index)
+
+        # Setup the model transmission
+        if self.settings.transmission_method == TransmissionMethod.EVA:
+            self.logger.info("Setting up EVA protocol")
+            self.eva.settings.block_size = 60000
+            self.eva.settings.window_size = 16
+            self.eva.settings.retransmit_attempt_count = 10
+            self.eva.settings.retransmit_interval_in_sec = 1
+            self.eva.settings.timeout_interval_in_sec = 10
+        else:
+            raise RuntimeError("Unsupported transmission method %s", self.settings.transmission_method)
+
+        self.did_setup = True
+
+    def on_eva_send_done(self, future: Future, peer: Peer, serialized_response: bytes, binary_data: bytes, start_time: float):
+        if future.cancelled():  # Do not reschedule if the future was cancelled
+            return
+
+        if future.exception():
+            peer_id = self.peer_manager.get_short_id(peer.public_key.key_to_bin())
+            self.logger.warning("Transfer to participant %s failed, scheduling it again (Exception: %s)",
+                                peer_id, future.exception())
+            # The transfer failed - try it again after some delay
+            ensure_future(asyncio.sleep(self.settings.model_send_delay)).add_done_callback(
+                lambda _: self.schedule_eva_send_model(peer, serialized_response, binary_data, start_time))
+        else:
+            # The transfer seems to be completed - record the transfer time
+            self.transfer_times.append(time.time() - start_time)
+
+    def schedule_eva_send_model(self, peer: Peer, serialized_response: bytes, binary_data: bytes, start_time: float) -> Future:
+        # Schedule the transfer
+        future = ensure_future(self.eva.send_binary(peer, serialized_response, binary_data))
+        future.add_done_callback(lambda f: self.on_eva_send_done(f, peer, serialized_response, binary_data, start_time))
+        return future
+
+    async def on_receive(self, result: TransferResult):
+        raise NotImplementedError()
+
+    async def on_send_complete(self, result: TransferResult):
+        peer_id = self.peer_manager.get_short_id(result.peer.public_key.key_to_bin())
+        my_peer_id = self.peer_manager.get_my_short_id()
+        self.logger.info(f'Outgoing transfer {my_peer_id} -> {peer_id} has completed: {result.info.decode()}')
+
+    async def on_error(self, peer, exception):
+        self.logger.error(f'An error has occurred in transfer to peer {peer}: {exception}')
+
+    async def unload(self):
+        self.shutting_down = True
+        await self.request_cache.shutdown()
+        await super().unload()

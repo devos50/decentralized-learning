@@ -4,22 +4,12 @@ from binascii import hexlify
 import pytest
 
 from accdfl.core import NodeMembershipChange
-from accdfl.core.model_manager import ModelManager
 from accdfl.core.session_settings import SessionSettings, LearningSettings, DFLSettings
 from accdfl.dfl.community import DFLCommunity
+from accdfl.test.fake_model_manager import FakeModelManager
 
 from ipv8.test.base import TestBase
 from ipv8.test.mocking.ipv8 import MockIPv8
-
-
-class FakeModelManager(ModelManager):
-    """
-    A model manager that does not actually train the model but simply sleeps.
-    """
-    train_time = 0.001
-
-    async def train(self):
-        await sleep(self.train_time)
 
 
 class TestDFLCommunityBase(TestBase):
@@ -28,10 +18,6 @@ class TestDFLCommunityBase(TestBase):
     SAMPLE_SIZE = NUM_NODES
     NUM_AGGREGATORS = 1
     SUCCESS_FRACTION = 1
-    LOCAL_CLASSES = 10
-    TOTAL_SAMPLES_PER_CLASS = 6
-    SAMPLES_PER_CLASS = [TOTAL_SAMPLES_PER_CLASS] * 10
-    NODES_PER_CLASS = [TARGET_NUM_NODES] * 10
     DATASET = "cifar10"
     INACTIVITY_THRESHOLD = 10
 
@@ -106,9 +92,8 @@ class TestDFLCommunityOneNode(TestDFLCommunityBase):
     NUM_NODES = 1
     TARGET_NUM_NODES = 100
     SAMPLE_SIZE = NUM_NODES
-    NODES_PER_CLASS = [TARGET_NUM_NODES] * 10
 
-    @pytest.mark.timeout(50)
+    @pytest.mark.timeout(5)
     async def test_single_round(self):
         assert self.nodes[0].overlay.did_setup
         self.nodes[0].overlay.start()
@@ -140,7 +125,6 @@ class TestDFLCommunityOneNodeOneJoining(TestDFLCommunityBase):
     NUM_NODES = 1
     TARGET_NUM_NODES = 2
     SAMPLE_SIZE = NUM_NODES
-    NODES_PER_CLASS = [TARGET_NUM_NODES] * 10
 
     @pytest.mark.timeout(5)
     async def test_new_node_joining(self):
@@ -290,8 +274,6 @@ class TestDFLCommunityFiveNodes(TestDFLCommunityBase):
     TARGET_NUM_NODES = NUM_NODES
     SAMPLE_SIZE = 3
     NUM_AGGREGATORS = 2
-    NODES_PER_CLASS = [TARGET_NUM_NODES] * 10
-    TOTAL_SAMPLES_PER_CLASS = 10
 
     @pytest.mark.timeout(5)
     async def test_single_round(self):
@@ -331,7 +313,6 @@ class TestDFLCommunityFiveNodesOneJoining(TestDFLCommunityBase):
     NUM_NODES = 5
     TARGET_NUM_NODES = 6
     SAMPLE_SIZE = 1
-    NODES_PER_CLASS = [TARGET_NUM_NODES] * 10
     INACTIVITY_THRESHOLD = 100
 
     @pytest.mark.timeout(10)
@@ -368,7 +349,6 @@ class TestDFLCommunityFiveNodesOneLeaving(TestDFLCommunityBase):
     SAMPLE_SIZE = 2
     NUM_AGGREGATORS = 2
     SUCCESS_FRACTION = 0.5
-    NODES_PER_CLASS = [TARGET_NUM_NODES] * 10
 
     @pytest.mark.timeout(5)
     async def test_node_leaving(self):

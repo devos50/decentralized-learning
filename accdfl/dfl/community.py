@@ -8,37 +8,28 @@ from asyncio import Future, ensure_future
 from binascii import unhexlify, hexlify
 from typing import Optional, Dict, List, Callable
 
-import torch
 from torch import nn
 
-from accdfl.core import TransmissionMethod, NodeMembershipChange
+from accdfl.core import NodeMembershipChange
 from accdfl.dfl.caches import PingPeersRequestCache, PingRequestCache
-from accdfl.core.models import serialize_model, unserialize_model, create_model
-from accdfl.core.model_manager import ModelManager
+from accdfl.core.community import DLCommunity
+from accdfl.core.models import serialize_model, unserialize_model
 from accdfl.dfl.payloads import AdvertiseMembership, PingPayload, PongPayload
-from accdfl.dfl.peer_manager import PeerManager
 from accdfl.dfl.sample_manager import SampleManager
 from accdfl.core.session_settings import SessionSettings
-from accdfl.util.eva.protocol import EVAProtocol
 from accdfl.util.eva.result import TransferResult
 
-from ipv8.community import Community
 from ipv8.lazy_community import lazy_wrapper
 from ipv8.messaging.payload_headers import BinMemberAuthenticationPayload, GlobalTimeDistributionPayload
-from ipv8.requestcache import RequestCache
 from ipv8.types import Peer
 from ipv8.util import succeed
 
 
-class DFLCommunity(Community):
+class DFLCommunity(DLCommunity):
     community_id = unhexlify('d5889074c1e4c60423cdb6e9307ba0ca5695ead7')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.request_cache = RequestCache()
-        self.my_id = self.my_peer.public_key.key_to_bin()
-        self.round_complete_callback: Optional[Callable] = None
-        self.aggregate_complete_callback: Optional[Callable] = None
 
         # Statistics
         self.active_peers_history = []
@@ -46,13 +37,7 @@ class DFLCommunity(Community):
         self.bandwidth_statistics: Dict[str, int] = {"lm_model_bytes": 0, "lm_midas_bytes": 0, "ping_bytes": 0, "pong_bytes": 0}
         self.determine_sample_durations = []
 
-        # Settings
-        self.settings: Optional[SessionSettings] = None
-
         # State
-        self.is_active = False
-        self.did_setup = False
-        self.shutting_down = False
         self.ongoing_training_task_name: Optional[str] = None
         self.train_sample_estimate: int = 0
         self.aggregate_sample_estimate: int = 0
@@ -62,13 +47,7 @@ class DFLCommunity(Community):
         self.completed_training = False
 
         # Components
-        self.peer_manager: PeerManager = PeerManager(self.my_id, -1)
         self.sample_manager: Optional[SampleManager] = None  # Initialized when the process is setup
-        self.model_manager: Optional[ModelManager] = None    # Initialized when the process is setup
-
-        # Model exchange parameters
-        self.eva = EVAProtocol(self, self.on_receive, self.on_send_complete, self.on_error)
-        self.transfer_times = []
 
         self.add_message_handler(AdvertiseMembership, self.on_membership_advertisement)
         self.add_message_handler(PingPayload, self.on_ping)
@@ -94,35 +73,12 @@ class DFLCommunity(Community):
             self.logger.info("Participant %s won't participate in round 1", self.peer_manager.get_my_short_id())
 
     def setup(self, settings: SessionSettings):
-        self.settings = settings
         self.logger.info("Setting up experiment with %d initial participants and sample size %d (I am participant %s)" %
                          (len(settings.participants), settings.dfl.sample_size, self.peer_manager.get_my_short_id()))
-
+        super().setup(settings)
         self.peer_manager.inactivity_threshold = settings.dfl.inactivity_threshold
-        for participant in settings.participants:
-            self.peer_manager.add_peer(unhexlify(participant))
         self.sample_manager = SampleManager(self.peer_manager, settings.dfl.sample_size, settings.dfl.num_aggregators)
-
-        # Initialize the model
-        torch.manual_seed(settings.model_seed)
-        model = create_model(settings.dataset)
-        participant_index = settings.all_participants.index(hexlify(self.my_id).decode())
-        self.model_manager = ModelManager(model, settings, participant_index)
-
-        # Setup the model transmission
-        if self.settings.transmission_method == TransmissionMethod.EVA:
-            self.logger.info("Setting up EVA protocol")
-            self.eva.settings.block_size = 60000
-            self.eva.settings.window_size = 16
-            self.eva.settings.retransmit_attempt_count = 10
-            self.eva.settings.retransmit_interval_in_sec = 1
-            self.eva.settings.timeout_interval_in_sec = 10
-        else:
-            raise RuntimeError("Unsupported transmission method %s", self.settings.transmission_method)
-
         self.update_population_view_history()
-
-        self.did_setup = True
 
     def get_peer_by_pk(self, target_pk: bytes):
         peers = list(self.get_peers())
@@ -387,27 +343,6 @@ class DFLCommunity(Community):
         # Flush pending changes to the local view
         self.peer_manager.flush_last_active_pending()
 
-    def on_eva_send_done(self, future: Future, peer: Peer, serialized_response: bytes, binary_data: bytes, start_time: float):
-        if future.cancelled():  # Do not reschedule if the future was cancelled
-            return
-
-        if future.exception():
-            peer_id = self.peer_manager.get_short_id(peer.public_key.key_to_bin())
-            self.logger.warning("Transfer to participant %s failed, scheduling it again (Exception: %s)",
-                                peer_id, future.exception())
-            # The transfer failed - try it again after some delay
-            ensure_future(asyncio.sleep(self.settings.model_send_delay)).add_done_callback(
-                lambda _: self.schedule_eva_send_model(peer, serialized_response, binary_data, start_time))
-        else:
-            # The transfer seems to be completed - record the transfer time
-            self.transfer_times.append(time.time() - start_time)
-
-    def schedule_eva_send_model(self, peer: Peer, serialized_response: bytes, binary_data: bytes, start_time: float) -> Future:
-        # Schedule the transfer
-        future = ensure_future(self.eva.send_binary(peer, serialized_response, binary_data))
-        future.add_done_callback(lambda f: self.on_eva_send_done(f, peer, serialized_response, binary_data, start_time))
-        return future
-
     def eva_send_model(self, round, model, type, population_view, peer):
         start_time = time.time()
         serialized_model = serialize_model(model)
@@ -548,15 +483,5 @@ class DFLCommunity(Community):
             self.train_in_round(model_round)
 
     async def on_send_complete(self, result: TransferResult):
-        peer_id = self.peer_manager.get_short_id(result.peer.public_key.key_to_bin())
-        my_peer_id = self.peer_manager.get_my_short_id()
-        self.logger.info(f'Outgoing transfer {my_peer_id} -> {peer_id} has completed: {result.info.decode()}')
+        await super().on_send_complete(result)
         self.peer_manager.update_peer_activity(result.peer.public_key.key_to_bin(), self.get_round_estimate())
-
-    async def on_error(self, peer, exception):
-        self.logger.error(f'An error has occurred in transfer to peer {peer}: {exception}')
-
-    async def unload(self):
-        self.shutting_down = True
-        await self.request_cache.shutdown()
-        await super().unload()
