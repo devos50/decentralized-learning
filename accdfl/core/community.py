@@ -48,7 +48,6 @@ class DFLCommunity(Community):
 
         # Settings
         self.settings: Optional[SessionSettings] = None
-        self.fixed_aggregator = None
 
         # State
         self.is_active = False
@@ -95,10 +94,9 @@ class DFLCommunity(Community):
         else:
             self.logger.info("Participant %s won't participate in round 1", self.peer_manager.get_my_short_id())
 
-    def setup(self, settings: SessionSettings, data_dir: str, aggregator: Optional[bytes] = None):
+    def setup(self, settings: SessionSettings, data_dir: str):
         self.settings = settings
         self.data_dir = data_dir
-        self.fixed_aggregator = aggregator
         self.logger.info("Setting up experiment with %d initial participants and sample size %d (I am participant %s)" %
                          (len(settings.participants), settings.dfl.sample_size, self.peer_manager.get_my_short_id()))
 
@@ -206,8 +204,8 @@ class DFLCommunity(Community):
             self.peer_manager.last_active[peer_pk] = (max(payload.round, latest_round), (payload.index, NodeMembershipChange.LEAVE))
 
     def determine_available_peers_for_sample(self, sample: int, count: int, getting_aggregators: bool = False) -> Future:
-        if getting_aggregators and self.fixed_aggregator:
-            candidate_peers = [self.fixed_aggregator]
+        if getting_aggregators and self.settings.dfl.fixed_aggregator:
+            candidate_peers = [self.settings.dfl.fixed_aggregator]
         else:
             candidate_peers = self.sample_manager.get_ordered_sample_list(
                 sample, self.peer_manager.get_active_peers(sample))

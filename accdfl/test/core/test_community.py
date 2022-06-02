@@ -303,7 +303,7 @@ class TestDFLCommunityFiveNodes(TestDFLCommunityBase):
     async def test_many_rounds(self):
         for node in self.nodes:
             node.overlay.start()
-        await self.wait_for_round_completed(self.nodes[0], 50)
+        await self.wait_for_round_completed(self.nodes[0], 30)
 
     @pytest.mark.timeout(5)
     async def test_get_available_peers(self):
