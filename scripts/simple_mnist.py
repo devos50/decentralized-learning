@@ -9,7 +9,7 @@ from torch.autograd import Variable
 from torchvision import datasets, transforms
 
 from accdfl.core.dataset import Dataset
-from accdfl.core.model import create_model
+from accdfl.core.models import create_model
 from accdfl.core.optimizer.sgd import SGDOptimizer
 
 parameters = {

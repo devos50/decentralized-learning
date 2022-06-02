@@ -1,7 +1,7 @@
 import hashlib
 from typing import List, Dict
 
-from dfl.peer_manager import PeerManager
+from accdfl.dfl.peer_manager import PeerManager
 
 
 class SampleManager:

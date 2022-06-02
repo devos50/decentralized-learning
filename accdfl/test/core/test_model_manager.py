@@ -1,6 +1,6 @@
 import pytest
 
-from accdfl.core.model import create_model
+from accdfl.core.models import create_model
 from accdfl.core.model_manager import ModelManager
 from accdfl.core.session_settings import SessionSettings, LearningSettings
 

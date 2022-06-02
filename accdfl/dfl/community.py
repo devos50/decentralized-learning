@@ -12,12 +12,12 @@ import torch
 from torch import nn
 
 from accdfl.core import TransmissionMethod, NodeMembershipChange
-from dfl.caches import PingPeersRequestCache, PingRequestCache
-from accdfl.core.model import serialize_model, unserialize_model, create_model
+from accdfl.dfl.caches import PingPeersRequestCache, PingRequestCache
+from accdfl.core.models import serialize_model, unserialize_model, create_model
 from accdfl.core.model_manager import ModelManager
-from dfl.payloads import AdvertiseMembership, PingPayload, PongPayload
-from dfl.peer_manager import PeerManager
-from dfl.sample_manager import SampleManager
+from accdfl.dfl.payloads import AdvertiseMembership, PingPayload, PongPayload
+from accdfl.dfl.peer_manager import PeerManager
+from accdfl.dfl.sample_manager import SampleManager
 from accdfl.core.session_settings import SessionSettings
 from accdfl.util.eva.protocol import EVAProtocol
 from accdfl.util.eva.result import TransferResult

@@ -1,3 +1,3 @@
 """
-Contains code related to the DFL framework.
+Contains code related to the FL framework.
 """

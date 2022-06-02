@@ -1,7 +1,7 @@
 from accdfl.core.mappings import Linear
 from accdfl.core.model_trainer import ModelTrainer
 from accdfl.core.datasets.CIFAR10 import CIFAR10
-from accdfl.core.model import create_model
+from accdfl.core.models import create_model
 
 parameters = {
         "batch_size": 20,

@@ -1,10 +1,9 @@
-import json
 import os
 import sys
 
 import torch
 
-from accdfl.core.model import create_model
+from accdfl.core.models import create_model
 from accdfl.core.model_trainer import ModelTrainer
 from accdfl.core.session_settings import SessionSettings
 
