@@ -12,12 +12,12 @@ import torch
 from torch import nn
 
 from accdfl.core import TransmissionMethod, NodeMembershipChange
-from accdfl.core.caches import PingPeersRequestCache, PingRequestCache
+from dfl.caches import PingPeersRequestCache, PingRequestCache
 from accdfl.core.model import serialize_model, unserialize_model, create_model
 from accdfl.core.model_manager import ModelManager
-from accdfl.core.payloads import AdvertiseMembership, PingPayload, PongPayload
-from accdfl.core.peer_manager import PeerManager
-from accdfl.core.sample_manager import SampleManager
+from dfl.payloads import AdvertiseMembership, PingPayload, PongPayload
+from dfl.peer_manager import PeerManager
+from dfl.sample_manager import SampleManager
 from accdfl.core.session_settings import SessionSettings
 from accdfl.util.eva.protocol import EVAProtocol
 from accdfl.util.eva.result import TransferResult
@@ -451,6 +451,10 @@ class DFLCommunity(Community):
         elif json_data["type"] == "aggregated_model":
             self.received_aggregated_model(result.peer, json_data["round"], incoming_model)
 
+    def has_enough_trained_models(self) -> bool:
+        return len(self.model_manager.incoming_trained_models) >= \
+               (self.settings.dfl.sample_size * self.settings.dfl.success_fraction)
+
     async def received_trained_model(self, peer: Peer, index: int, model: nn.Module) -> None:
         model_round = index - 1  # The round associated with this model is one smaller than the sample index
         if self.shutting_down:
@@ -480,7 +484,7 @@ class DFLCommunity(Community):
             return
 
         # Check whether we received enough incoming models
-        if self.model_manager.has_enough_trained_models():
+        if self.has_enough_trained_models():
             self.logger.info("Aggregator %s received sufficient trained models (%d) of round %d",
                              self.peer_manager.get_my_short_id(), len(self.model_manager.incoming_trained_models),
                              model_round)

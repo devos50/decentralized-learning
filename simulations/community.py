@@ -1,4 +1,4 @@
-from accdfl.core.community import DFLCommunity
+from accdfl.dfl.community import DFLCommunity
 
 
 class SimulatedDFLCommunity(DFLCommunity):

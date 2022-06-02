@@ -3,10 +3,10 @@ from binascii import hexlify
 
 import pytest
 
-from accdfl.core.community import DFLCommunity
 from accdfl.core import NodeMembershipChange
 from accdfl.core.model_manager import ModelManager
 from accdfl.core.session_settings import SessionSettings, LearningSettings, DFLSettings
+from accdfl.dfl.community import DFLCommunity
 
 from ipv8.test.base import TestBase
 from ipv8.test.mocking.ipv8 import MockIPv8
