@@ -3,6 +3,8 @@ from typing import List, Optional
 
 from dataclasses_json import dataclass_json
 
+from accdfl.core import TransmissionMethod
+
 
 @dataclass
 class LearningSettings:
@@ -25,6 +27,7 @@ class DFLSettings:
     aggregation_timeout: float = 5
     ping_timeout: float = 5
     inactivity_threshold: int = 50
+    fixed_aggregator: Optional[bytes] = None
 
 
 @dataclass_json
@@ -43,3 +46,5 @@ class SessionSettings:
     data_distribution: str = "iid"
     model_seed: int = 0
     model_send_delay: float = 1.0
+    train_in_subprocess: bool = False
+    transmission_method: TransmissionMethod = TransmissionMethod.EVA

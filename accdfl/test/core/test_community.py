@@ -3,7 +3,7 @@ from binascii import hexlify
 
 import pytest
 
-from accdfl.core.community import DFLCommunity, TransmissionMethod
+from accdfl.core.community import DFLCommunity
 from accdfl.core import NodeMembershipChange
 from accdfl.core.model_manager import ModelManager
 from accdfl.core.session_settings import SessionSettings, LearningSettings, DFLSettings
@@ -18,7 +18,7 @@ class FakeModelManager(ModelManager):
     """
     train_time = 0.001
 
-    async def train(self, in_subprocess: bool = True):
+    async def train(self):
         await sleep(self.train_time)
 
 
@@ -33,7 +33,6 @@ class TestDFLCommunityBase(TestBase):
     SAMPLES_PER_CLASS = [TOTAL_SAMPLES_PER_CLASS] * 10
     NODES_PER_CLASS = [TARGET_NUM_NODES] * 10
     DATASET = "cifar10"
-    TRANSMISSION_METHOD = TransmissionMethod.EVA
     INACTIVITY_THRESHOLD = 10
 
     def create_node(self, *args, **kwargs):
@@ -68,12 +67,12 @@ class TestDFLCommunityBase(TestBase):
             all_participants=[hexlify(node.my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
             target_participants=self.TARGET_NUM_NODES,
             data_distribution="iid",
-            dfl=dfl_settings
+            dfl=dfl_settings,
+            train_in_subprocess=False,
         )
 
         for node in self.nodes:
-            node.overlay.train_in_subprocess = False
-            node.overlay.setup(self.settings, None, transmission_method=self.TRANSMISSION_METHOD)
+            node.overlay.setup(self.settings)
             cur_model_mgr = node.overlay.model_manager
             node.overlay.model_manager = FakeModelManager(cur_model_mgr.model, self.settings,
                                                           cur_model_mgr.participant_index)
@@ -151,7 +150,7 @@ class TestDFLCommunityOneNodeOneJoining(TestDFLCommunityBase):
 
         self.settings.participants.append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
         self.settings.all_participants.append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
-        new_node.overlay.setup(self.settings, None, transmission_method=self.TRANSMISSION_METHOD)
+        new_node.overlay.setup(self.settings)
         cur_model_mgr = new_node.overlay.model_manager
         new_node.overlay.model_manager = FakeModelManager(cur_model_mgr.model, self.settings,
                                                           cur_model_mgr.participant_index)
@@ -304,7 +303,7 @@ class TestDFLCommunityFiveNodes(TestDFLCommunityBase):
     async def test_many_rounds(self):
         for node in self.nodes:
             node.overlay.start()
-        await self.wait_for_round_completed(self.nodes[0], 50)
+        await self.wait_for_round_completed(self.nodes[0], 30)
 
     @pytest.mark.timeout(5)
     async def test_get_available_peers(self):
@@ -340,7 +339,6 @@ class TestDFLCommunityFiveNodesOneJoining(TestDFLCommunityBase):
         new_node = self.create_node()
         self.add_node_to_experiment(new_node)
         await self.introduce_nodes()
-        new_node.overlay.train_in_subprocess = False
 
         # Start all nodes
         for ind in range(self.NUM_NODES):
@@ -348,7 +346,7 @@ class TestDFLCommunityFiveNodesOneJoining(TestDFLCommunityBase):
 
         self.settings.participants.append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
         self.settings.all_participants.append(hexlify(new_node.my_peer.public_key.key_to_bin()).decode())
-        new_node.overlay.setup(self.settings, None, transmission_method=self.TRANSMISSION_METHOD)
+        new_node.overlay.setup(self.settings)
         cur_model_mgr = new_node.overlay.model_manager
         new_node.overlay.model_manager = FakeModelManager(cur_model_mgr.model, self.settings,
                                                           cur_model_mgr.participant_index)
