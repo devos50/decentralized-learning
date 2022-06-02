@@ -16,16 +16,12 @@ parameters = {
     "batch_size": 200,
     "participants": ['a'],
     "dataset": "mnist",
-    "model": "gnlenet",
-    "nodes_per_class": [1] * 10,
-    "samples_per_class": [5000] * 10,
-    "local_classes": 10
 }
 
 epoch = 0
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
-model = create_model(parameters["dataset"], parameters["model"])
+model = create_model(parameters["dataset"])
 optimizer = SGDOptimizer(model, learning_rate=0.1, momentum=0)
 dataset = Dataset(os.path.join(os.environ["HOME"], "dfl-data"), parameters, 0)
 

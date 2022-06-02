@@ -70,7 +70,7 @@ class PingPeersRequestCache(RandomNumberCache):
         self.round = round
         self.available_peers = []
         self.next_peer_index = 0
-        self.ping_timeout = self.community.parameters["ping_timeout"]
+        self.ping_timeout = self.community.settings.dfl.ping_timeout
         self.future = Future()
         self.start_time = time.time()
 

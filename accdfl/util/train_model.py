@@ -6,6 +6,7 @@ import torch
 
 from accdfl.core.model import create_model
 from accdfl.core.model_trainer import ModelTrainer
+from accdfl.core.session_settings import SessionSettings
 
 if __name__ == "__main__":
     work_dir = sys.argv[1]
@@ -18,13 +19,13 @@ if __name__ == "__main__":
     if not os.path.exists(model_path):
         raise RuntimeError("Model %s does not exist!" % model_path)
 
-    with open(os.path.join(work_dir, "parameters.json")) as in_file:
-        parameters = json.loads(in_file.read())
+    with open(os.path.join(work_dir, "settings.json")) as in_file:
+        settings: SessionSettings = SessionSettings.from_json(in_file.read())
 
-    model = create_model(parameters["dataset"])
+    model = create_model(settings.dataset)
     model.load_state_dict(torch.load(model_path))
 
-    trainer = ModelTrainer(datadir, parameters, participant_index)
+    trainer = ModelTrainer(datadir, settings, participant_index)
     trainer.train(model)
 
     # Save the model to the file

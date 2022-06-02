@@ -98,7 +98,6 @@ class ADFLSimulation:
 
         # Setup the training process
         experiment_data = {
-            "classes": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
             "learning_rate": self.settings.learning_rate,
             "momentum": self.settings.momentum,
             "batch_size": self.settings.batch_size,
@@ -114,11 +113,7 @@ class ADFLSimulation:
             "success_fraction": 1.0,
 
             # These parameters are not available in a deployed environment - only for experimental purposes.
-            "samples_per_class": self.settings.samples_per_class,
-            "local_classes": self.settings.local_classes,
-            "nodes_per_class": self.settings.nodes_per_class,
             "dataset": self.settings.dataset,
-            "model": self.settings.model,
             "data_distribution": "iid",
         }
         for ind, node in enumerate(self.nodes):

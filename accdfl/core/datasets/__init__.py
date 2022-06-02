@@ -3,21 +3,22 @@ from typing import Optional, Dict
 
 from accdfl.core.datasets.Dataset import Dataset
 from accdfl.core.mappings import Linear
+from accdfl.core.session_settings import SessionSettings
 
 
-def create_dataset(parameters: Dict, participant_index: int = 0, train_dir: Optional[str] = None, test_dir: Optional[str] = None) -> Dataset:
-    mapping = Linear(1, parameters["target_participants"])
-    if parameters["dataset"] in ["shakespeare", "shakespeare_sub", "shakespeare_sub96"]:
+def create_dataset(settings: SessionSettings, participant_index: int = 0, train_dir: Optional[str] = None, test_dir: Optional[str] = None) -> Dataset:
+    mapping = Linear(1, settings.target_participants)
+    if settings.dataset in ["shakespeare", "shakespeare_sub", "shakespeare_sub96"]:
         from accdfl.core.datasets.Shakespeare import Shakespeare
         return Shakespeare(participant_index, 0, mapping, train_dir=train_dir, test_dir=test_dir)
-    elif parameters["dataset"] == "cifar10":
+    elif settings.dataset == "cifar10":
         from accdfl.core.datasets.CIFAR10 import CIFAR10
         return CIFAR10(participant_index, 0, mapping, train_dir=train_dir, test_dir=test_dir)
-    elif parameters["dataset"] == "cifar10_niid":
+    elif settings.dataset == "cifar10_niid":
         from accdfl.core.datasets.CIFAR10 import CIFAR10
         return CIFAR10(participant_index, 0, mapping, train_dir=train_dir, test_dir=test_dir, partition_niid=True,
-                       shards=parameters["target_participants"])
-    elif parameters["dataset"] == "celeba":
+                       shards=settings.target_participants)
+    elif settings.dataset == "celeba":
         from accdfl.core.datasets.Celeba import Celeba
         img_dir = None
         if train_dir:
@@ -25,12 +26,12 @@ def create_dataset(parameters: Dict, participant_index: int = 0, train_dir: Opti
         elif test_dir:
             img_dir = os.path.join(test_dir, "..", "raw", "img_align_celeba")
         return Celeba(participant_index, 0, mapping, train_dir=train_dir, test_dir=test_dir, images_dir=img_dir)
-    elif parameters["dataset"] == "femnist":
+    elif settings.dataset == "femnist":
         from accdfl.core.datasets.Femnist import Femnist
         return Femnist(participant_index, 0, mapping, train_dir=train_dir, test_dir=test_dir)
-    elif parameters["dataset"] == "movielens":
+    elif settings.dataset == "movielens":
         from accdfl.core.datasets.MovieLens import MovieLens
         data_dir = train_dir or test_dir
         return MovieLens(participant_index, 0, mapping, train_dir=data_dir, test_dir=data_dir)
     else:
-        raise RuntimeError("Unknown dataset %s" % parameters["dataset"])
+        raise RuntimeError("Unknown dataset %s" % settings.dataset)
