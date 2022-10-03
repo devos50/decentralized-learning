@@ -196,6 +196,7 @@ class CIFAR10(Dataset):
         self.logger.debug("Device for CIFAR10 accuracy check: %s", device)
 
         correct = example_number = total_loss = num_batches = 0
+        model.to(device)
         model.eval()
 
         with torch.no_grad():

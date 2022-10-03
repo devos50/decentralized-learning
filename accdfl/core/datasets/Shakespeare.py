@@ -340,6 +340,10 @@ class Shakespeare(Dataset):
         testloader = self.get_testset()
 
         logging.debug("Test Loader instantiated.")
+        device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        self.logger.debug("Device for CIFAR10 accuracy check: %s", device)
+        model.to(device)
+        model.eval()
 
         correct_pred = [0 for _ in range(NUM_CLASSES)]
         total_pred = [0 for _ in range(NUM_CLASSES)]
