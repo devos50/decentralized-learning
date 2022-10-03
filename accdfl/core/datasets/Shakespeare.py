@@ -355,6 +355,7 @@ class Shakespeare(Dataset):
             loss_val = 0.0
             count = 0
             for elems, labels in testloader:
+                elems, labels = elems.to(device), labels.to(device)
                 outputs = model(elems)
                 loss = CrossEntropyLoss()
                 loss_val += loss(outputs, labels).item()
