@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 
 from accdfl.core.mappings import Linear
@@ -26,7 +27,7 @@ settings = SessionSettings(
     target_participants=1,
 )
 
-data_dir = "/Users/martijndevos/dfl-data"
+data_dir = os.path.join(os.environ["HOME"], "dfl-data")
 
 mapping = Linear(1, 100)
 s = CIFAR10(0, 0, mapping, train_dir=data_dir, test_dir=data_dir)

@@ -357,7 +357,7 @@ class Shakespeare(Dataset):
                 count += 1
                 _, predictions = torch.max(outputs, 1)
                 for label, prediction in zip(labels, predictions):
-                    logging.debug("{} predicted as {}".format(label, prediction))
+                    #logging.debug("{} predicted as {}".format(label, prediction))
                     if label == prediction:
                         correct_pred[label] += 1
                         total_correct += 1
