@@ -192,12 +192,15 @@ class CIFAR10(Dataset):
         testloader = self.get_testset()
 
         self.logger.debug("Test Loader instantiated.")
+        device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        self.logger.debug("Device for CIFAR10 accuracy check: %s", device)
 
         correct = example_number = total_loss = num_batches = 0
         model.eval()
 
         with torch.no_grad():
             for data, target in iter(testloader):
+                data, target = data.to(device), target.to(device)
                 output = model.forward(data)
                 total_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
                 pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
