@@ -1,6 +1,7 @@
 import logging
 import os
 
+import torch
 from torch.autograd import Variable
 from torch.nn import CrossEntropyLoss, MSELoss, NLLLoss
 
@@ -29,6 +30,9 @@ class ModelTrainer:
         """
         Train the model on a batch. Return an integer that indicates how many local steps we have done.
         """
+        device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        self.logger.debug("Device for training: %s", device)
+        model.to(device)
         optimizer = SGDOptimizer(model, self.settings.learning.learning_rate, self.settings.learning.momentum)
         train_set = self.dataset.get_trainset(batch_size=self.settings.learning.batch_size, shuffle=True)
         train_set_it = iter(train_set)
@@ -43,7 +47,7 @@ class ModelTrainer:
             try:
                 data, target = next(train_set_it)
                 model.train()
-                data, target = Variable(data), Variable(target)
+                data, target = Variable(data.to(device)), Variable(target.to(device))
                 optimizer.optimizer.zero_grad()
                 self.logger.info('d-sgd.next node forward propagation (step %d/%d)', local_step, local_steps)
                 output = model.forward(data)
