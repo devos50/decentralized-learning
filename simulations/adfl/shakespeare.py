@@ -5,11 +5,9 @@ from simulations.simulation import ADFLSimulation
 
 if __name__ == "__main__":
     settings = SimulationSettings()
-    settings.dataset = "cifar10"
-    settings.data_distribution = "iid"
-    settings.peers = 100
-    settings.momentum = 0.9
-    settings.learning_rate = 0.002
+    settings.dataset = "shakespeare_sub"
+    settings.peers = 192
+    settings.learning_rate = 0.8
     settings.sample_size = 10
     settings.batch_size = 20
     settings.latencies_file = "data/latencies.txt"

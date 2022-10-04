@@ -38,6 +38,7 @@ class ADFLSimulation:
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = ConfigBuilder().clear_keys().clear_overlays()
+        builder.add_overlay("DFLCommunity", "my peer", [], [], {}, [])
         builder.add_key("my peer", "curve25519", os.path.join(self.data_dir, f"ec{peer_id}.pem"))
         return builder
 
