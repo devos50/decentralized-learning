@@ -28,8 +28,8 @@ class PeerManager:
         if peer_pk in self.last_active:
             return
 
-        self.logger.info("Participant %s adding participant %s to local view",
-                         self.get_my_short_id(), self.get_short_id(peer_pk))
+        self.logger.debug("Participant %s adding participant %s to local view",
+                          self.get_my_short_id(), self.get_short_id(peer_pk))
         self.last_active[peer_pk] = (round_active, (0, NodeMembershipChange.JOIN))
 
     def remove_peer(self, peer_pk) -> None:
