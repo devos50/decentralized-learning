@@ -149,8 +149,8 @@ class Femnist(Dataset):
             .transpose(0, 3, 1, 2)
         )
         self.train_y = np.array(my_train_data["y"], dtype=np.dtype("int64")).reshape(-1)
-        logging.info("train_x.shape: %s", str(self.train_x.shape))
-        logging.info("train_y.shape: %s", str(self.train_y.shape))
+        logging.debug("train_x.shape: %s", str(self.train_x.shape))
+        logging.debug("train_y.shape: %s", str(self.train_y.shape))
         assert self.train_x.shape[0] == self.train_y.shape[0]
         assert self.train_x.shape[0] > 0
 
@@ -337,6 +337,10 @@ class Femnist(Dataset):
         testloader = self.get_testset()
 
         logging.debug("Test Loader instantiated.")
+        device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        self.logger.debug("Device for Celeba accuracy check: %s", device)
+        model.to(device)
+        model.eval()
 
         correct_pred = [0 for _ in range(NUM_CLASSES)]
         total_pred = [0 for _ in range(NUM_CLASSES)]
@@ -348,6 +352,7 @@ class Femnist(Dataset):
             loss_val = 0.0
             count = 0
             for elems, labels in testloader:
+                elems, labels = elems.to(device), labels.to(device)
                 outputs = model(elems)
                 lossf = CrossEntropyLoss()
                 loss_val += lossf(outputs, labels).item()
