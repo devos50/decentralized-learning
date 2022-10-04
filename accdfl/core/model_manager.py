@@ -102,7 +102,7 @@ class ModelManager:
             if not self.model_trainer:
                 # Lazy initialize the model trainer
                 self.model_trainer = ModelTrainer(self.data_dir, self.settings, self.participant_index)
-            self.model_trainer.train(self.model)
+            await self.model_trainer.train(self.model)
 
     @staticmethod
     def average_models(models: List[nn.Module]) -> nn.Module:

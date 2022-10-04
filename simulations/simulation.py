@@ -1,15 +1,14 @@
 import asyncio
-import copy
 import logging
 import os
-import random
 import shutil
 import time
-from asyncio import ensure_future
+from asyncio import ensure_future, get_event_loop
 from binascii import hexlify
 
 import yappi
 
+from accdfl.core.community import DFLCommunity
 from accdfl.core.model_evaluator import ModelEvaluator
 from accdfl.core.session_settings import LearningSettings, DFLSettings, SessionSettings
 
@@ -18,7 +17,6 @@ from ipv8_service import IPv8
 
 from simulation.discrete_loop import DiscreteLoop
 from simulation.simulation_endpoint import SimulationEndpoint
-from simulations.community import SimulatedDFLCommunity
 
 from simulations.settings import SimulationSettings
 
@@ -31,7 +29,7 @@ class ADFLSimulation:
     def __init__(self, settings: SimulationSettings) -> None:
         self.settings = settings
         self.nodes = []
-        self.data_dir = os.path.join("data", "n_%d" % self.settings.peers)
+        self.data_dir = os.path.join("data", "n_%d_%s" % (self.settings.peers, self.settings.dataset))
         self.peers_rounds_completed = [0] * settings.peers
         self.evaluator = None
 
@@ -49,7 +47,7 @@ class ADFLSimulation:
                 print("Created %d peers..." % peer_id)
             endpoint = SimulationEndpoint()
             instance = IPv8(self.get_ipv8_builder(peer_id).finalize(), endpoint_override=endpoint,
-                            extra_communities={'SimulatedDFLCommunity': SimulatedDFLCommunity})
+                            extra_communities={'DFLCommunity': DFLCommunity})
             await instance.start()
 
             # Set the WAN address of the peer to the address of the endpoint
@@ -82,7 +80,7 @@ class ADFLSimulation:
 
     async def on_round_complete(self, ind, round_nr):
         self.peers_rounds_completed[ind] = round_nr
-        if all([n >= self.settings.num_rounds for n in self.peers_rounds_completed]):
+        if self.settings.num_rounds and all([n >= self.settings.num_rounds for n in self.peers_rounds_completed]):
             exit(0)
 
     async def on_aggregate_complete(self, ind: int, round_nr: int, model):
@@ -90,7 +88,31 @@ class ADFLSimulation:
             print("Will compute accuracy!")
             accuracy, loss = self.evaluator.evaluate_accuracy(model)
             with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
-                out_file.write("%d,%d,%f,%f\n" % (ind, round_nr, accuracy, loss))
+                out_file.write("%f,%d,%d,%f,%f\n" % (get_event_loop().time(), ind, round_nr, accuracy, loss))
+
+    def apply_latencies(self):
+        """
+        If specified in the settings, add latencies between the endpoints.
+        """
+        if not self.settings.latencies_file:
+            return
+
+        latencies = []
+        with open(self.settings.latencies_file) as latencies_file:
+            for line in latencies_file.readlines():
+                latencies.append([float(l) for l in line.strip().split(",")])
+
+        print("Read latency matrix with %d sites!" % len(latencies))
+
+        # Assign nodes to sites in a round-robin fashion and apply latencies accordingly
+        for from_ind, from_node in enumerate(self.nodes):
+            for to_ind, to_node in enumerate(self.nodes):
+                from_site_ind = from_ind % len(latencies)
+                to_site_ind = to_ind % len(latencies)
+                latency_ms = int(latencies[from_site_ind][to_site_ind]) / 1000
+                from_node.endpoint.latencies[to_node.endpoint.wan_address] = latency_ms
+
+        print("Latencies applied!")
 
     async def start_simulation(self) -> None:
         print("Starting simulation with %d peers..." % self.settings.peers)
@@ -100,7 +122,7 @@ class ADFLSimulation:
             node.overlays[0].nodes = self.nodes
 
         with open(os.path.join(self.data_dir, "accuracies.csv"), "w") as out_file:
-            out_file.write("peer,step,accuracy,loss\n")
+            out_file.write("time,peer,round,accuracy,loss\n")
 
         # Setup the training process
         learning_settings = LearningSettings(
@@ -126,7 +148,8 @@ class ADFLSimulation:
             all_participants=[hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
             target_participants=len(self.nodes),
             dfl=dfl_settings,
-            data_distribution="iid"
+            data_distribution=self.settings.data_distribution,
+            is_simulation=True,
         )
 
         for ind, node in enumerate(self.nodes):
@@ -169,6 +192,7 @@ class ADFLSimulation:
         await self.start_ipv8_nodes()
         self.setup_logger()
         self.ipv8_discover_peers()
+        self.apply_latencies()
         self.on_ipv8_ready()
         await self.start_simulation()
         self.on_simulation_finished()

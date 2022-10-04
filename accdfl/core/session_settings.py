@@ -48,3 +48,4 @@ class SessionSettings:
     model_send_delay: float = 1.0
     train_in_subprocess: bool = False
     transmission_method: TransmissionMethod = TransmissionMethod.EVA
+    is_simulation: bool = False

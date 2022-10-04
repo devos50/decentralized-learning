@@ -1,5 +1,7 @@
 import logging
 import os
+import time
+from asyncio import sleep
 
 import torch
 from torch.autograd import Variable
@@ -26,7 +28,7 @@ class ModelTrainer:
             train_dir = os.path.join(data_dir, "per_user_data", "train")
         self.dataset: Dataset = create_dataset(settings, participant_index=participant_index, train_dir=train_dir)
 
-    def train(self, model) -> int:
+    async def train(self, model) -> int:
         """
         Train the model on a batch. Return an integer that indicates how many local steps we have done.
         """
@@ -43,6 +45,7 @@ class ModelTrainer:
         self.logger.info("Will perform %d local steps of training (batch size: %d)",
                          local_steps, self.settings.learning.batch_size)
 
+        start_time = time.time()
         for local_step in range(local_steps):
             try:
                 data, target = next(train_set_it)
@@ -65,5 +68,11 @@ class ModelTrainer:
                 optimizer.optimizer.step()
             except StopIteration:
                 pass
+
+        if self.settings.is_simulation:
+            # If we're running a simulation, we should advance the time of the DiscreteLoop with the elapsed real-world
+            # time for training.
+            elapsed_time = time.time() - start_time
+            await sleep(elapsed_time)
 
         return model
