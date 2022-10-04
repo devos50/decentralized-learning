@@ -125,7 +125,12 @@ class MovieLens(Dataset):
 
     def test(self, model):
         test_set = self.get_testset()
+
         logging.debug("Test Loader instantiated.")
+        device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        self.logger.debug("Device for MovieLens accuracy check: %s", device)
+        model.to(device)
+        model.eval()
 
         correct_pred = [0 for _ in range(self.NUM_CLASSES)]
         total_pred = [0 for _ in range(self.NUM_CLASSES)]
@@ -138,6 +143,7 @@ class MovieLens(Dataset):
             count = 0
 
             for test_x, test_y in test_set:
+                test_x, test_y = test_x.to(device), test_y.to(device)
                 output = model(test_x)
                 lossf = MSELoss()
                 loss_val += lossf(output, test_y).item()

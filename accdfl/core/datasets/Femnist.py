@@ -338,7 +338,7 @@ class Femnist(Dataset):
 
         logging.debug("Test Loader instantiated.")
         device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-        self.logger.debug("Device for Celeba accuracy check: %s", device)
+        self.logger.debug("Device for Femnist accuracy check: %s", device)
         model.to(device)
         model.eval()
 

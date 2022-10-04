@@ -1,17 +1,32 @@
+import logging
+import os
+import time
+
 from accdfl.core.datasets.MovieLens import MovieLens, MatrixFactorization
 from accdfl.core.mappings import Linear
 from accdfl.core.model_trainer import ModelTrainer
+from accdfl.core.session_settings import LearningSettings, SessionSettings
 
-parameters = {
-        "batch_size": 20,
-        "target_participants": 1,
-        "dataset": "movielens",
-        "participants": ["a"],
-        "learning_rate": 0.25,
-        "momentum": 0,
-    }
+NUM_ROUNDS = 20
 
-data_dir = "/Users/martijndevos/leaf/movielens"
+logging.basicConfig(level=logging.INFO)
+
+learning_settings = LearningSettings(
+    learning_rate=0.25,
+    momentum=0,
+    batch_size=20
+)
+
+settings = SessionSettings(
+    dataset="movielens",
+    work_dir="",
+    learning=learning_settings,
+    participants=["a"],
+    all_participants=["a"],
+    target_participants=1,
+)
+
+data_dir = os.path.join(os.environ["HOME"], "leaf", "movielens")
 
 mapping = Linear(1, 100)
 s = MovieLens(1, 0, mapping, train_dir=data_dir, test_dir=data_dir)
@@ -31,9 +46,10 @@ print(model)
 print("Initial evaluation")
 print(s.test(model))
 
-for round in range(20):
-        # Train
-        trainer = ModelTrainer(data_dir, parameters, 0)
-        trainer.train(model)
-        print("Training done")
-        print(s.test(model))
+for round in range(NUM_ROUNDS):
+    start_time = time.time()
+    print("Starting training round %d" % (round + 1))
+    trainer = ModelTrainer(data_dir, settings, 0)
+    trainer.train(model)
+    print("Training round %d done - time: %f" % (round + 1, time.time() - start_time))
+    print(s.test(model))
