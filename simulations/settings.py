@@ -11,7 +11,7 @@ class SimulationSettings:
         self.momentum: float = 0.9
         self.num_rounds: int = 10
         self.num_aggregators: int = 1
-        self.duration: int = 50000  # Simulation duration in sections
+        self.duration: int = 3600  # Simulation duration in sections
         self.profile: bool = False
         self.local_classes: int = 10
         self.total_samples_per_class = 5000

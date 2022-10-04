@@ -11,6 +11,7 @@ from binascii import hexlify
 import yappi
 
 from accdfl.core.model_evaluator import ModelEvaluator
+from accdfl.core.session_settings import LearningSettings, DFLSettings, SessionSettings
 
 from ipv8.configuration import ConfigBuilder
 from ipv8_service import IPv8
@@ -96,32 +97,39 @@ class ADFLSimulation:
             out_file.write("peer,step,accuracy,loss\n")
 
         # Setup the training process
-        experiment_data = {
-            "learning_rate": self.settings.learning_rate,
-            "momentum": self.settings.momentum,
-            "batch_size": self.settings.batch_size,
-            "participants": [hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
-            "all_participants": [hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
-            "rounds": self.settings.num_rounds,
-            "sample_size": self.settings.sample_size,
-            "target_participants": len(self.nodes),
-            "num_aggregators": self.settings.num_aggregators,
-            "aggregation_timeout": 2.0,
-            "ping_timeout": 5,
-            "inactivity_threshold": 1000,
-            "success_fraction": 1.0,
+        learning_settings = LearningSettings(
+            learning_rate=self.settings.learning_rate,
+            momentum=self.settings.momentum,
+            batch_size=self.settings.batch_size
+        )
 
-            # These parameters are not available in a deployed environment - only for experimental purposes.
-            "dataset": self.settings.dataset,
-            "data_distribution": "iid",
-        }
+        dfl_settings = DFLSettings(
+            sample_size=self.settings.sample_size,
+            num_aggregators=self.settings.num_aggregators,
+            success_fraction=1.0,
+            aggregation_timeout=2.0,
+            ping_timeout=5,
+            inactivity_threshold=1000
+        )
+
+        session_settings = SessionSettings(
+            work_dir=self.data_dir,
+            dataset=self.settings.dataset,
+            learning=learning_settings,
+            participants=[hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
+            all_participants=[hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
+            target_participants=len(self.nodes),
+            dfl=dfl_settings,
+            data_distribution="iid"
+        )
+
         for ind, node in enumerate(self.nodes):
             node.overlays[0].round_complete_callback = lambda round_nr, i=ind: ensure_future(self.on_round_complete(i, round_nr))
             node.overlays[0].aggregate_complete_callback = lambda round_nr, i=ind: self.on_aggregate_complete(i, round_nr)
-            node.overlays[0].setup(experiment_data, None, transmission_method=self.settings.transmission_method)
+            node.overlays[0].setup(session_settings)
             node.overlays[0].start()
 
-        self.evaluator = ModelEvaluator(os.path.join(os.environ["HOME"], "dfl-data"), experiment_data)
+        self.evaluator = ModelEvaluator(os.path.join(os.environ["HOME"], "dfl-data"), session_settings)
 
         if self.settings.profile:
             yappi.start(builtins=True)
