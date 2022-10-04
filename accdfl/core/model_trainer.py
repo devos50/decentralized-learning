@@ -52,7 +52,7 @@ class ModelTrainer:
                 model.train()
                 data, target = Variable(data.to(device)), Variable(target.to(device))
                 optimizer.optimizer.zero_grad()
-                self.logger.info('d-sgd.next node forward propagation (step %d/%d)', local_step, local_steps)
+                self.logger.debug('d-sgd.next node forward propagation (step %d/%d)', local_step, local_steps)
                 output = model.forward(data)
 
                 if self.settings.dataset == "movielens":
@@ -63,7 +63,7 @@ class ModelTrainer:
                     lossf = CrossEntropyLoss()
 
                 loss = lossf(output, target)
-                self.logger.info('d-sgd.next node backward propagation (step %d/%d)', local_step, local_steps)
+                self.logger.debug('d-sgd.next node backward propagation (step %d/%d)', local_step, local_steps)
                 loss.backward()
                 optimizer.optimizer.step()
             except StopIteration:
