@@ -159,7 +159,13 @@ class ADFLSimulation:
             node.overlays[0].setup(session_settings)
             node.overlays[0].start()
 
-        self.evaluator = ModelEvaluator(os.path.join(os.environ["HOME"], "dfl-data"), session_settings)
+        if self.settings.dataset in ["cifar10", "cifar10_niid", "mnist"]:
+            data_dir = os.path.join(os.environ["HOME"], "dfl-data")
+        else:
+            # The LEAF dataset
+            data_dir = os.path.join(os.environ["HOME"], "leaf", self.settings.dataset)
+
+        self.evaluator = ModelEvaluator(data_dir, session_settings)
 
         if self.settings.profile:
             yappi.start(builtins=True)
