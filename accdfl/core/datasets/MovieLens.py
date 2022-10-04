@@ -156,7 +156,7 @@ class MovieLens(Dataset):
                 output[o1] = 0.5
                 # round a number to the closest half integer
                 output = torch.round(output * 2) / 2
-                loss_predicted += metrics.mean_absolute_error(output, test_y)
+                loss_predicted += metrics.mean_absolute_error(output.cpu(), test_y.cpu())
 
                 for rating, prediction in zip(test_y.tolist(), output):
                     # print(rating, prediction)
@@ -216,8 +216,12 @@ class MatrixFactorization(Model):
         """
         Forward pass of the model, it does matrix multiplication and returns predictions for given users and items.
         """
-        users = torch.LongTensor(data[:, 0]) - 1
-        items = torch.LongTensor(data[:, 1]) - 1
+        if torch.cuda.is_available():
+            users = torch.cuda.LongTensor(data[:, 0]) - 1
+            items = torch.cuda.LongTensor(data[:, 1]) - 1
+        else:
+            users = torch.LongTensor(data[:, 0]) - 1
+            items = torch.LongTensor(data[:, 1]) - 1
         u, it = self.user_factors(users), self.item_factors(items)
         x = (u * it).sum(dim=1, keepdim=True)
         return x.squeeze(1)
