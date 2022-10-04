@@ -86,7 +86,7 @@ class ADFLSimulation:
 
     async def on_aggregate_complete(self, ind: int, round_nr: int, model):
         if round_nr % self.settings.accuracy_logging_interval == 0:
-            print("Will compute accuracy!")
+            print("Will compute accuracy for round %d!" % round_nr)
             accuracy, loss = self.evaluator.evaluate_accuracy(model)
             with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
                 out_file.write("%f,%d,%d,%f,%f\n" % (get_event_loop().time(), ind, round_nr, accuracy, loss))
