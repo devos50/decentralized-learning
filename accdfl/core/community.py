@@ -375,6 +375,11 @@ class DFLCommunity(Community):
         for aggregator in aggregators:
             if aggregator == self.my_id:
                 self.logger.info("Participant %s sending trained model to self", self.peer_manager.get_my_short_id())
+
+                # Transfer the model back to the CPU
+                device = torch.device("cpu")
+                self.model_manager.model = self.model_manager.model.to(device)
+
                 ensure_future(self.received_trained_model(self.my_peer, sample_index, self.model_manager.model))
                 continue
 
