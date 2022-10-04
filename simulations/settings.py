@@ -5,7 +5,7 @@ class SimulationSettings:
 
     def __init__(self):
         self.peers: int = 10
-        self.sample_size: int = 10
+        self.sample_size: int = 1
         self.batch_size: int = 500
         self.learning_rate: float = 0.002
         self.momentum: float = 0.9

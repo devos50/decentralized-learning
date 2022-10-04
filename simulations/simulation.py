@@ -51,6 +51,13 @@ class ADFLSimulation:
             instance = IPv8(self.get_ipv8_builder(peer_id).finalize(), endpoint_override=endpoint,
                             extra_communities={'SimulatedDFLCommunity': SimulatedDFLCommunity})
             await instance.start()
+
+            # Set the WAN address of the peer to the address of the endpoint
+            for overlay in instance.overlays:
+                overlay.max_peers = -1
+                overlay.my_peer.address = instance.overlays[0].endpoint.wan_address
+                overlay.my_estimated_wan = instance.overlays[0].endpoint.wan_address
+
             self.nodes.append(instance)
 
     def setup_directories(self) -> None:
@@ -78,10 +85,9 @@ class ADFLSimulation:
         if all([n >= self.settings.num_rounds for n in self.peers_rounds_completed]):
             exit(0)
 
-    async def on_aggregate_complete(self, ind: int, round_nr: int):
+    async def on_aggregate_complete(self, ind: int, round_nr: int, model):
         if round_nr % self.settings.accuracy_logging_interval == 0:
             print("Will compute accuracy!")
-            model = copy.deepcopy(self.nodes[ind].overlays[0].model_manager.model)
             accuracy, loss = self.evaluator.evaluate_accuracy(model)
             with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
                 out_file.write("%d,%d,%f,%f\n" % (ind, round_nr, accuracy, loss))
@@ -125,7 +131,7 @@ class ADFLSimulation:
 
         for ind, node in enumerate(self.nodes):
             node.overlays[0].round_complete_callback = lambda round_nr, i=ind: ensure_future(self.on_round_complete(i, round_nr))
-            node.overlays[0].aggregate_complete_callback = lambda round_nr, i=ind: self.on_aggregate_complete(i, round_nr)
+            node.overlays[0].aggregate_complete_callback = lambda round_nr, model, i=ind: self.on_aggregate_complete(i, round_nr, model)
             node.overlays[0].setup(session_settings)
             node.overlays[0].start()
 
