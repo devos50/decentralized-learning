@@ -2,8 +2,6 @@ import pickle
 
 import torch
 
-from accdfl.core.model.linear import LinearModel
-
 
 def serialize_model(model: torch.nn.Module) -> bytes:
     return pickle.dumps(model.state_dict())
@@ -14,7 +12,7 @@ def create_model(dataset: str):
         from accdfl.core.datasets.Shakespeare import LSTM
         return LSTM()
     elif dataset == "cifar10" or dataset == "cifar10_niid":
-        from accdfl.core.model.gn_lenet import GNLeNet
+        from accdfl.core.models.cifar10 import GNLeNet
         return GNLeNet(input_channel=3, output=10, model_input=(32, 32))
     elif dataset == "celeba":
         from accdfl.core.models.celeba import CNN
