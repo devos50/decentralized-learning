@@ -21,7 +21,7 @@ def create_model(dataset: str):
         from accdfl.core.models.femnist import CNN
         return CNN()
     elif dataset == "movielens":
-        from accdfl.core.datasets.MovieLens import MatrixFactorization
+        from accdfl.core.models.movielens import MatrixFactorization
         return MatrixFactorization()
     else:
         raise RuntimeError("Unknown dataset %s" %dataset)
