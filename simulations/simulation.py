@@ -8,9 +8,9 @@ from binascii import hexlify
 
 import yappi
 
-from accdfl.core.community import DFLCommunity
 from accdfl.core.model_evaluator import ModelEvaluator
 from accdfl.core.session_settings import LearningSettings, DFLSettings, SessionSettings
+from accdfl.dfl.community import DFLCommunity
 
 from ipv8.configuration import ConfigBuilder
 from ipv8_service import IPv8
