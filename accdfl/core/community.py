@@ -13,7 +13,7 @@ from torch import nn
 
 from accdfl.core import TransmissionMethod, NodeMembershipChange
 from accdfl.core.caches import PingPeersRequestCache, PingRequestCache
-from accdfl.core.model import serialize_model, unserialize_model, create_model
+from accdfl.core.models import serialize_model, unserialize_model, create_model
 from accdfl.core.model_manager import ModelManager
 from accdfl.core.payloads import AdvertiseMembership, PingPayload, PongPayload
 from accdfl.core.peer_manager import PeerManager
