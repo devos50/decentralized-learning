@@ -349,7 +349,7 @@ class DFLCommunity(LearningCommunity):
         self.peer_manager.flush_last_active_pending()
 
     def eva_send_model(self, round, model, type, population_view, peer):
-        start_time = time.time()
+        start_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
         serialized_model = serialize_model(model)
         serialized_population_view = pickle.dumps(population_view)
         self.bandwidth_statistics["lm_model_bytes"] += len(serialized_model)

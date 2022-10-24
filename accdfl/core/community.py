@@ -61,11 +61,7 @@ class LearningCommunity(Community):
         # Setup the model transmission
         if self.settings.transmission_method == TransmissionMethod.EVA:
             self.logger.info("Setting up EVA protocol")
-            self.eva.settings.block_size = 60000
-            self.eva.settings.window_size = 16
-            self.eva.settings.retransmit_attempt_count = 10
-            self.eva.settings.retransmit_interval_in_sec = 1
-            self.eva.settings.timeout_interval_in_sec = 10
+            self.eva.settings.block_size = settings.eva_block_size
         else:
             raise RuntimeError("Unsupported transmission method %s", self.settings.transmission_method)
 
@@ -91,7 +87,8 @@ class LearningCommunity(Community):
                 lambda _: self.schedule_eva_send_model(peer, serialized_response, binary_data, start_time))
         else:
             # The transfer seems to be completed - record the transfer time
-            self.transfer_times.append(time.time() - start_time)
+            end_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
+            self.transfer_times.append(end_time - start_time)
 
     def schedule_eva_send_model(self, peer: Peer, serialized_response: bytes, binary_data: bytes, start_time: float) -> Future:
         # Schedule the transfer

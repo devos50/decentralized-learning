@@ -71,7 +71,7 @@ class ModelTrainer:
 
         if self.settings.is_simulation:
             # If we're running a simulation, we should advance the time of the DiscreteLoop with the elapsed real-world
-            # time for training.
+            # time for training. Otherwise,training would be instant.
             elapsed_time = time.time() - start_time
             await sleep(elapsed_time)
 

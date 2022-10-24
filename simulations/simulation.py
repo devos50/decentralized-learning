@@ -3,7 +3,7 @@ import logging
 import os
 import shutil
 import time
-from asyncio import ensure_future, get_event_loop
+from asyncio import get_event_loop
 from binascii import hexlify
 
 import yappi
@@ -30,7 +30,6 @@ class ADFLSimulation:
         self.settings = settings
         self.nodes = []
         self.data_dir = os.path.join("data", "n_%d_%s" % (self.settings.peers, self.settings.dataset))
-        self.peers_rounds_completed = [0] * settings.peers
         self.evaluator = None
 
         self.loop = DiscreteLoop()
@@ -79,17 +78,16 @@ class ADFLSimulation:
                 node_a.network.discover_services(node_b.overlays[0].my_peer, [node_a.overlays[0].community_id, ])
         print("IPv8 peer discovery complete")
 
-    async def on_round_complete(self, ind, round_nr):
-        self.peers_rounds_completed[ind] = round_nr
-        if self.settings.num_rounds and all([n >= self.settings.num_rounds for n in self.peers_rounds_completed]):
-            exit(0)
-
     async def on_aggregate_complete(self, ind: int, round_nr: int, model):
         if round_nr % self.settings.accuracy_logging_interval == 0:
             print("Will compute accuracy for round %d!" % round_nr)
             accuracy, loss = self.evaluator.evaluate_accuracy(model)
             with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
                 out_file.write("%f,%d,%d,%f,%f\n" % (get_event_loop().time(), ind, round_nr, accuracy, loss))
+
+        if self.settings.num_rounds and round_nr >= self.settings.num_rounds:
+            self.on_simulation_finished()
+            self.loop.stop()
 
     def apply_latencies(self):
         """
@@ -150,11 +148,11 @@ class ADFLSimulation:
             target_participants=len(self.nodes),
             dfl=dfl_settings,
             data_distribution=self.settings.data_distribution,
+            eva_block_size=1000,
             is_simulation=True,
         )
 
         for ind, node in enumerate(self.nodes):
-            node.overlays[0].round_complete_callback = lambda round_nr, i=ind: ensure_future(self.on_round_complete(i, round_nr))
             node.overlays[0].aggregate_complete_callback = lambda round_nr, model, i=ind: self.on_aggregate_complete(i, round_nr, model)
             node.overlays[0].setup(session_settings)
             node.overlays[0].start()
@@ -190,9 +188,23 @@ class ADFLSimulation:
 
     def on_simulation_finished(self) -> None:
         """
-        This method is called when the simulations are finished.
+        Write away the most important data.
         """
-        pass
+        print("Writing away experiment statistics")
+
+        # Write away the model transfer times
+        with open(os.path.join(self.data_dir, "transfer_times.csv"), "w") as transfer_times_file:
+            transfer_times_file.write("time\n")
+            for node in self.nodes:
+                for transfer_time in node.overlays[0].transfer_times:
+                    transfer_times_file.write("%f\n" % transfer_time)
+
+        # Write away the model training times
+        with open(os.path.join(self.data_dir, "training_times.csv"), "w") as training_times_file:
+            training_times_file.write("peer,duration\n")
+            for ind, node in enumerate(self.nodes):
+                for training_time in node.overlays[0].model_manager.training_times:
+                    training_times_file.write("%d,%f\n" % (ind + 1, training_time))
 
     async def run(self) -> None:
         self.setup_directories()

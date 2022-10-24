@@ -5,6 +5,7 @@ from simulations.simulation import ADFLSimulation
 
 if __name__ == "__main__":
     settings = SimulationSettings()
+    settings.duration = 3600
     settings.dataset = "cifar10"
     settings.data_distribution = "iid"
     settings.peers = 100

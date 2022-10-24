@@ -48,4 +48,5 @@ class SessionSettings:
     model_send_delay: float = 1.0
     train_in_subprocess: bool = False
     transmission_method: TransmissionMethod = TransmissionMethod.EVA
+    eva_block_size: int = 60000  # This value is extremely high and tuned for the DAS6
     is_simulation: bool = False
