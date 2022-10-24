@@ -17,7 +17,7 @@ def create_model(dataset: str):
         from accdfl.core.model.gn_lenet import GNLeNet
         return GNLeNet(input_channel=3, output=10, model_input=(32, 32))
     elif dataset == "celeba":
-        from accdfl.core.datasets.Celeba import CNN
+        from accdfl.core.models.celeba import CNN
         return CNN()
     elif dataset == "femnist":
         from accdfl.core.datasets.Femnist import CNN

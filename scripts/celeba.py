@@ -2,9 +2,10 @@ import logging
 import os
 import time
 
-from accdfl.core.datasets.Celeba import Celeba, CNN
+from accdfl.core.datasets.Celeba import Celeba
 from accdfl.core.mappings import Linear
 from accdfl.core.model_trainer import ModelTrainer
+from accdfl.core.models.celeba import CNN
 from accdfl.core.session_settings import LearningSettings, SessionSettings
 
 NUM_ROUNDS = 3
