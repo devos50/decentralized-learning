@@ -18,7 +18,7 @@ def create_model(dataset: str):
         from accdfl.core.models.celeba import CNN
         return CNN()
     elif dataset == "femnist":
-        from accdfl.core.datasets.Femnist import CNN
+        from accdfl.core.models.femnist import CNN
         return CNN()
     elif dataset == "movielens":
         from accdfl.core.datasets.MovieLens import MatrixFactorization
