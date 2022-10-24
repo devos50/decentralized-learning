@@ -83,7 +83,8 @@ class ADFLSimulation:
             print("Will compute accuracy for round %d!" % round_nr)
             accuracy, loss = self.evaluator.evaluate_accuracy(model)
             with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
-                out_file.write("%f,%d,%d,%f,%f\n" % (get_event_loop().time(), ind, round_nr, accuracy, loss))
+                group = "\"s=%d, a=%d\"" % (self.settings.sample_size, self.settings.num_aggregators)
+                out_file.write("%s,%f,%d,%d,%f,%f\n" % (group, get_event_loop().time(), ind, round_nr, accuracy, loss))
 
         if self.settings.num_rounds and round_nr >= self.settings.num_rounds:
             self.on_simulation_finished()
@@ -121,7 +122,7 @@ class ADFLSimulation:
             node.overlays[0].nodes = self.nodes
 
         with open(os.path.join(self.data_dir, "accuracies.csv"), "w") as out_file:
-            out_file.write("time,peer,round,accuracy,loss\n")
+            out_file.write("group,time,peer,round,accuracy,loss\n")
 
         # Setup the training process
         learning_settings = LearningSettings(
@@ -205,6 +206,24 @@ class ADFLSimulation:
             for ind, node in enumerate(self.nodes):
                 for training_time in node.overlays[0].model_manager.training_times:
                     training_times_file.write("%d,%f\n" % (ind + 1, training_time))
+
+        # Write away the outgoing bytes statistics
+        with open(os.path.join(self.data_dir, "outgoing_bytes_statistics.csv"), "w") as bw_file:
+            bw_file.write("peer,lm_model_bytes,lm_midas_bytes,ping_bytes,pong_bytes\n")
+            for ind, node in enumerate(self.nodes):
+                bw_file.write("%d,%d,%d,%d,%d\n" % (ind + 1,
+                                                    node.overlays[0].bandwidth_statistics["lm_model_bytes"],
+                                                    node.overlays[0].bandwidth_statistics["lm_midas_bytes"],
+                                                    node.overlays[0].bandwidth_statistics["ping_bytes"],
+                                                    node.overlays[0].bandwidth_statistics["pong_bytes"]))
+
+        # Write away the generic bandwidth statistics
+        with open(os.path.join(self.data_dir, "bandwidth.csv"), "w") as bw_file:
+            bw_file.write("peer,outgoing_bytes,incoming_bytes\n")
+            for ind, node in enumerate(self.nodes):
+                bw_file.write("%d,%d,%d\n" % (ind + 1,
+                                              node.overlays[0].endpoint.bytes_up,
+                                              node.overlays[0].endpoint.bytes_down))
 
     async def run(self) -> None:
         self.setup_directories()
