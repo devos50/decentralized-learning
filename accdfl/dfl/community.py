@@ -391,6 +391,10 @@ class DFLCommunity(LearningCommunity):
         elif json_data["type"] == "aggregated_model":
             self.received_aggregated_model(result.peer, json_data["round"], incoming_model)
 
+    def has_enough_trained_models(self) -> bool:
+        return len(self.model_manager.incoming_trained_models) >= \
+               (self.settings.dfl.sample_size * self.settings.dfl.success_fraction)
+
     async def received_trained_model(self, peer: Peer, index: int, model: nn.Module) -> None:
         model_round = index - 1  # The round associated with this model is one smaller than the sample index
         if self.shutting_down:
@@ -420,7 +424,7 @@ class DFLCommunity(LearningCommunity):
             return
 
         # Check whether we received enough incoming models
-        if self.model_manager.has_enough_trained_models():
+        if self.has_enough_trained_models():
             self.logger.info("Aggregator %s received sufficient trained models (%d) of round %d",
                              self.peer_manager.get_my_short_id(), len(self.model_manager.incoming_trained_models),
                              model_round)

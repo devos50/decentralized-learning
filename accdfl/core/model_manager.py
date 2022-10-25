@@ -47,9 +47,6 @@ class ModelManager:
     def reset_incoming_trained_models(self):
         self.incoming_trained_models = {}
 
-    def has_enough_trained_models(self) -> bool:
-        return len(self.incoming_trained_models) >= (self.settings.dfl.sample_size * self.settings.dfl.success_fraction)
-
     def average_trained_models(self) -> Optional[nn.Module]:
         models = [model for model in self.incoming_trained_models.values()]
         return self.average_models(models)
