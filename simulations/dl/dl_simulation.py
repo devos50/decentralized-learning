@@ -67,11 +67,12 @@ class DLSimulation(LearningSimulation):
         self.num_round_completed = 0
 
         # Compute model accuracy
-        avg_model = self.model_manager.average_trained_models()
-        print("Will compute accuracy for round %d!" % round_nr)
-        accuracy, loss = self.evaluator.evaluate_accuracy(avg_model)
-        with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
-            out_file.write("DL,%f,%d,%d,%f,%f\n" % (get_event_loop().time(), 0, round_nr, accuracy, loss))
+        if round_nr % self.settings.accuracy_logging_interval == 0:
+            avg_model = self.model_manager.average_trained_models()
+            print("Will compute accuracy for round %d!" % round_nr)
+            accuracy, loss = self.evaluator.evaluate_accuracy(avg_model)
+            with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
+                out_file.write("DL,%f,%d,%d,%f,%f\n" % (get_event_loop().time(), 0, round_nr, accuracy, loss))
 
         self.model_manager.reset_incoming_trained_models()
 
