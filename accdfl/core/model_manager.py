@@ -47,9 +47,6 @@ class ModelManager:
     def reset_incoming_trained_models(self):
         self.incoming_trained_models = {}
 
-    def has_enough_trained_models(self) -> bool:
-        return len(self.incoming_trained_models) >= (self.settings.dfl.sample_size * self.settings.dfl.success_fraction)
-
     def average_trained_models(self) -> Optional[nn.Module]:
         models = [model for model in self.incoming_trained_models.values()]
         return self.average_models(models)
@@ -102,7 +99,10 @@ class ModelManager:
             if not self.model_trainer:
                 # Lazy initialize the model trainer
                 self.model_trainer = ModelTrainer(self.data_dir, self.settings, self.participant_index)
+            train_start_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
             await self.model_trainer.train(self.model)
+            train_end_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
+            self.training_times.append(train_end_time - train_start_time)
 
     @staticmethod
     def average_models(models: List[nn.Module]) -> nn.Module:

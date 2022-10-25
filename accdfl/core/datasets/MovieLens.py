@@ -3,7 +3,6 @@ import math
 import os
 import zipfile
 
-import numpy as np
 import pandas as pd
 import requests
 import torch
@@ -14,7 +13,6 @@ from torch.utils.data import DataLoader
 from accdfl.core.datasets.Data import Data
 from accdfl.core.datasets.Dataset import Dataset
 from accdfl.core.mappings import Mapping
-from accdfl.core.models.Model import Model
 
 
 class MovieLens(Dataset):
@@ -185,46 +183,6 @@ class MovieLens(Dataset):
         )
         logging.info("Overall accuracy is: {:.1f} %".format(accuracy))
         return accuracy, loss_val
-
-
-# todo: this class should be in 'models' package; add support for reading it from there and move it
-class MatrixFactorization(Model):
-    """
-    Class for a Matrix Factorization model for MovieLens.
-    """
-
-    def __init__(self, n_users=610, n_items=9724, n_factors=20):
-        """
-        Instantiates the Matrix Factorization model with user and item embeddings.
-
-        Parameters
-        ----------
-        n_users
-            The number of unique users.
-        n_items
-            The number of unique items.
-        n_factors
-            The number of columns in embeddings matrix.
-        """
-        super().__init__()
-        self.user_factors = torch.nn.Embedding(n_users, n_factors)
-        self.item_factors = torch.nn.Embedding(n_items, n_factors)
-        self.user_factors.weight.data.uniform_(-0.05, 0.05)
-        self.item_factors.weight.data.uniform_(-0.05, 0.05)
-
-    def forward(self, data):
-        """
-        Forward pass of the model, it does matrix multiplication and returns predictions for given users and items.
-        """
-        if torch.cuda.is_available():
-            users = torch.cuda.LongTensor(data[:, 0]) - 1
-            items = torch.cuda.LongTensor(data[:, 1]) - 1
-        else:
-            users = torch.LongTensor(data[:, 0]) - 1
-            items = torch.LongTensor(data[:, 1]) - 1
-        u, it = self.user_factors(users), self.item_factors(items)
-        x = (u * it).sum(dim=1, keepdim=True)
-        return x.squeeze(1)
 
 
 def download_movie_lens(dest_path):

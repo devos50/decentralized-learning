@@ -2,8 +2,9 @@ import logging
 import os
 import time
 
-from accdfl.core.datasets.Shakespeare import Shakespeare, LSTM
+from accdfl.core.datasets.Shakespeare import Shakespeare
 from accdfl.core.mappings import Linear
+from accdfl.core.models import create_model
 from accdfl.core.model_trainer import ModelTrainer
 from accdfl.core.session_settings import LearningSettings, SessionSettings
 
@@ -36,7 +37,7 @@ s = Shakespeare(0, 0, mapping, train_dir=train_dir, test_dir=test_dir)
 print("Datasets prepared")
 
 # Model
-model = LSTM()
+model = create_model(settings.dataset)
 print(model)
 
 print("Initial evaluation")

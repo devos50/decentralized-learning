@@ -3,14 +3,15 @@ import logging
 import os
 import shutil
 import time
-from asyncio import ensure_future, get_event_loop
+from asyncio import get_event_loop
 from binascii import hexlify
+from statistics import median
 
 import yappi
 
-from accdfl.core.community import DFLCommunity
 from accdfl.core.model_evaluator import ModelEvaluator
 from accdfl.core.session_settings import LearningSettings, DFLSettings, SessionSettings
+from accdfl.dfl.community import DFLCommunity
 
 from ipv8.configuration import ConfigBuilder
 from ipv8_service import IPv8
@@ -30,7 +31,6 @@ class ADFLSimulation:
         self.settings = settings
         self.nodes = []
         self.data_dir = os.path.join("data", "n_%d_%s" % (self.settings.peers, self.settings.dataset))
-        self.peers_rounds_completed = [0] * settings.peers
         self.evaluator = None
 
         self.loop = DiscreteLoop()
@@ -79,17 +79,17 @@ class ADFLSimulation:
                 node_a.network.discover_services(node_b.overlays[0].my_peer, [node_a.overlays[0].community_id, ])
         print("IPv8 peer discovery complete")
 
-    async def on_round_complete(self, ind, round_nr):
-        self.peers_rounds_completed[ind] = round_nr
-        if self.settings.num_rounds and all([n >= self.settings.num_rounds for n in self.peers_rounds_completed]):
-            exit(0)
-
     async def on_aggregate_complete(self, ind: int, round_nr: int, model):
         if round_nr % self.settings.accuracy_logging_interval == 0:
             print("Will compute accuracy for round %d!" % round_nr)
             accuracy, loss = self.evaluator.evaluate_accuracy(model)
             with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
-                out_file.write("%f,%d,%d,%f,%f\n" % (get_event_loop().time(), ind, round_nr, accuracy, loss))
+                group = "\"s=%d, a=%d\"" % (self.settings.sample_size, self.settings.num_aggregators)
+                out_file.write("%s,%f,%d,%d,%f,%f\n" % (group, get_event_loop().time(), ind, round_nr, accuracy, loss))
+
+        if self.settings.num_rounds and round_nr >= self.settings.num_rounds:
+            self.on_simulation_finished()
+            self.loop.stop()
 
     def apply_latencies(self):
         """
@@ -115,6 +115,26 @@ class ADFLSimulation:
 
         print("Latencies applied!")
 
+    def determine_peer_with_lowest_median_latency(self) -> int:
+        """
+        Based on the latencies, determine the ID of the peer with the lowest median latency to other peers.
+        """
+        latencies = []
+        with open(self.settings.latencies_file) as latencies_file:
+            for line in latencies_file.readlines():
+                latencies.append([float(l) for l in line.strip().split(",")])
+
+        lowest_median_latency = 100000
+        lowest_peer_id = 0
+        for peer_id in range(min(len(self.nodes), len(latencies))):
+            median_latency = median(latencies[peer_id])
+            if median_latency < lowest_median_latency:
+                lowest_median_latency = median_latency
+                lowest_peer_id = peer_id
+
+        print("Determined peer %d with lowest median latency: %f" % (lowest_peer_id + 1, lowest_median_latency))
+        return lowest_peer_id
+
     async def start_simulation(self) -> None:
         print("Starting simulation with %d peers..." % self.settings.peers)
 
@@ -123,7 +143,12 @@ class ADFLSimulation:
             node.overlays[0].nodes = self.nodes
 
         with open(os.path.join(self.data_dir, "accuracies.csv"), "w") as out_file:
-            out_file.write("time,peer,round,accuracy,loss\n")
+            out_file.write("group,time,peer,round,accuracy,loss\n")
+
+        peer_pk = None
+        if self.settings.fix_aggregator:
+            lowest_latency_peer_id = self.determine_peer_with_lowest_median_latency()
+            peer_pk = self.nodes[lowest_latency_peer_id].overlays[0].my_peer.public_key.key_to_bin()
 
         # Setup the training process
         learning_settings = LearningSettings(
@@ -138,7 +163,8 @@ class ADFLSimulation:
             success_fraction=1.0,
             aggregation_timeout=2.0,
             ping_timeout=5,
-            inactivity_threshold=1000
+            inactivity_threshold=1000,
+            fixed_aggregator=peer_pk if self.settings.fix_aggregator else None
         )
 
         session_settings = SessionSettings(
@@ -150,11 +176,11 @@ class ADFLSimulation:
             target_participants=len(self.nodes),
             dfl=dfl_settings,
             data_distribution=self.settings.data_distribution,
+            eva_block_size=1000,
             is_simulation=True,
         )
 
         for ind, node in enumerate(self.nodes):
-            node.overlays[0].round_complete_callback = lambda round_nr, i=ind: ensure_future(self.on_round_complete(i, round_nr))
             node.overlays[0].aggregate_complete_callback = lambda round_nr, model, i=ind: self.on_aggregate_complete(i, round_nr, model)
             node.overlays[0].setup(session_settings)
             node.overlays[0].start()
@@ -190,9 +216,41 @@ class ADFLSimulation:
 
     def on_simulation_finished(self) -> None:
         """
-        This method is called when the simulations are finished.
+        Write away the most important data.
         """
-        pass
+        print("Writing away experiment statistics")
+
+        # Write away the model transfer times
+        with open(os.path.join(self.data_dir, "transfer_times.csv"), "w") as transfer_times_file:
+            transfer_times_file.write("time\n")
+            for node in self.nodes:
+                for transfer_time in node.overlays[0].transfer_times:
+                    transfer_times_file.write("%f\n" % transfer_time)
+
+        # Write away the model training times
+        with open(os.path.join(self.data_dir, "training_times.csv"), "w") as training_times_file:
+            training_times_file.write("peer,duration\n")
+            for ind, node in enumerate(self.nodes):
+                for training_time in node.overlays[0].model_manager.training_times:
+                    training_times_file.write("%d,%f\n" % (ind + 1, training_time))
+
+        # Write away the outgoing bytes statistics
+        with open(os.path.join(self.data_dir, "outgoing_bytes_statistics.csv"), "w") as bw_file:
+            bw_file.write("peer,lm_model_bytes,lm_midas_bytes,ping_bytes,pong_bytes\n")
+            for ind, node in enumerate(self.nodes):
+                bw_file.write("%d,%d,%d,%d,%d\n" % (ind + 1,
+                                                    node.overlays[0].bandwidth_statistics["lm_model_bytes"],
+                                                    node.overlays[0].bandwidth_statistics["lm_midas_bytes"],
+                                                    node.overlays[0].bandwidth_statistics["ping_bytes"],
+                                                    node.overlays[0].bandwidth_statistics["pong_bytes"]))
+
+        # Write away the generic bandwidth statistics
+        with open(os.path.join(self.data_dir, "bandwidth.csv"), "w") as bw_file:
+            bw_file.write("peer,outgoing_bytes,incoming_bytes\n")
+            for ind, node in enumerate(self.nodes):
+                bw_file.write("%d,%d,%d\n" % (ind + 1,
+                                              node.overlays[0].endpoint.bytes_up,
+                                              node.overlays[0].endpoint.bytes_down))
 
     async def run(self) -> None:
         self.setup_directories()

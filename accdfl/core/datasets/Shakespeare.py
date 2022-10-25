@@ -5,8 +5,6 @@ from collections import defaultdict
 
 import numpy as np
 import torch
-import torch.nn.functional as F
-from torch import nn
 from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader
 
@@ -14,7 +12,6 @@ from accdfl.core.datasets.Data import Data
 from accdfl.core.datasets.Dataset import Dataset
 from accdfl.core.datasets.Partitioner import DataPartitioner
 from accdfl.core.mappings.Mapping import Mapping
-from accdfl.core.models.Model import Model
 
 VOCAB = list(
     "dhlptx@DHLPTX $(,048cgkoswCGKOSW[_#'/37;?bfjnrvzBFJNRVZ\"&*.26:\naeimquyAEIMQUY]!%)-159\r{{}}<>"
@@ -24,11 +21,7 @@ VOCAB_LEN = len(VOCAB)
 char2idx = {u: i for i, u in enumerate(VOCAB)}
 idx2char = np.array(VOCAB)
 
-EMBEDDING_DIM = 8
-HIDDEN_DIM = 256
 NUM_CLASSES = VOCAB_LEN
-NUM_LAYERS = 2
-SEQ_LENGTH = 80
 
 
 class Shakespeare(Dataset):
@@ -382,53 +375,3 @@ class Shakespeare(Dataset):
         loss_val = loss_val / count
         logging.info("Overall accuracy is: {:.1f} %".format(accuracy))
         return accuracy, loss_val
-
-
-class LSTM(Model):
-    """
-    Class for a RNN Model for Sent140
-
-    """
-
-    def __init__(self):
-        """
-        Constructor. Instantiates the RNN Model to predict the next word of a sequence of word.
-        Based on the TensorFlow model found here: https://gitlab.epfl.ch/sacs/efficient-federated-learning/-/blob/master/grad_guessing/data_utils.py
-        """
-        super().__init__()
-
-        # input_length does not exist
-        self.embedding = nn.Embedding(VOCAB_LEN, EMBEDDING_DIM)
-        self.lstm = nn.LSTM(
-            EMBEDDING_DIM, HIDDEN_DIM, batch_first=True, num_layers=NUM_LAYERS
-        )
-        # activation function is added in the forward pass
-        # Note: the tensorflow implementation did not use any activation function in this step?
-        # should I use one.
-        self.l1 = nn.Linear(HIDDEN_DIM * SEQ_LENGTH, VOCAB_LEN)
-
-    def forward(self, x):
-        """
-        Forward pass of the model
-
-        Parameters
-        ----------
-        x : torch.tensor
-            The input torch tensor
-
-        Returns
-        -------
-        torch.tensor
-            The output torch tensor
-
-        """
-        # logging.info("Initial Shape: {}".format(x.shape))
-        x = self.embedding(x)
-        # logging.info("Embedding Shape: {}".format(x.shape))
-        x, _ = self.lstm(x)
-        # logging.info("LSTM Shape: {}".format(x.shape))
-        x = F.relu(x.reshape((-1, HIDDEN_DIM * SEQ_LENGTH)))
-        # logging.info("View Shape: {}".format(x.shape))
-        x = self.l1(x)
-        # logging.info("Output Shape: {}".format(x.shape))
-        return x

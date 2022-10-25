@@ -17,3 +17,4 @@ class SimulationSettings:
         self.data_distribution: str = "iid"
         self.accuracy_logging_interval: int = 1
         self.latencies_file: Optional[str] = None
+        self.fix_aggregator: bool = False

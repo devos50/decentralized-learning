@@ -2,8 +2,9 @@ import logging
 import os
 import time
 
-from accdfl.core.datasets.MovieLens import MovieLens, MatrixFactorization
+from accdfl.core.datasets.MovieLens import MovieLens
 from accdfl.core.mappings import Linear
+from accdfl.core.models import create_model
 from accdfl.core.model_trainer import ModelTrainer
 from accdfl.core.session_settings import LearningSettings, SessionSettings
 
@@ -40,7 +41,7 @@ print("Train dataset items: %d" % len(train_dataset.dataset))
 print("Test dataset items: %d" % len(test_dataset.dataset))
 
 # Model
-model = MatrixFactorization()
+model = create_model(settings.dataset)
 print(model)
 
 print("Initial evaluation")
