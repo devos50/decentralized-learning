@@ -4,22 +4,12 @@ from binascii import hexlify
 import pytest
 
 from accdfl.core import NodeMembershipChange
-from accdfl.core.model_manager import ModelManager
 from accdfl.core.session_settings import SessionSettings, LearningSettings, DFLSettings
 from accdfl.dfl.community import DFLCommunity
+from accdfl.test.util.fake_model_manager import FakeModelManager
 
 from ipv8.test.base import TestBase
 from ipv8.test.mocking.ipv8 import MockIPv8
-
-
-class FakeModelManager(ModelManager):
-    """
-    A model manager that does not actually train the model but simply sleeps.
-    """
-    train_time = 0.001
-
-    async def train(self):
-        await sleep(self.train_time)
 
 
 class TestDFLCommunityBase(TestBase):

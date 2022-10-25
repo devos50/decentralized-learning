@@ -19,7 +19,7 @@ class ModelManager:
     This class manages the current ML model and training.
     """
 
-    def __init__(self, model: nn.Module, settings: SessionSettings, participant_index: int):
+    def __init__(self, model: Optional[nn.Module], settings: SessionSettings, participant_index: int):
         self.model: nn.Module = model
         self.settings: SessionSettings = settings
         self.participant_index: int = participant_index

@@ -3,15 +3,15 @@ import logging
 import os
 import shutil
 import time
-from asyncio import get_event_loop
-from binascii import hexlify
 from statistics import median
+from typing import Optional
 
 import yappi
 
 from accdfl.core.model_evaluator import ModelEvaluator
-from accdfl.core.session_settings import LearningSettings, DFLSettings, SessionSettings
+from accdfl.core.session_settings import SessionSettings
 from accdfl.dfl.community import DFLCommunity
+from accdfl.dl.community import DLCommunity
 
 from ipv8.configuration import ConfigBuilder
 from ipv8_service import IPv8
@@ -22,13 +22,14 @@ from simulation.simulation_endpoint import SimulationEndpoint
 from simulations.settings import SimulationSettings
 
 
-class ADFLSimulation:
+class LearningSimulation:
     """
-    The main logic to run simulations with ADFL.
+    Base class for any simulation that involves learning.
     """
 
     def __init__(self, settings: SimulationSettings) -> None:
         self.settings = settings
+        self.session_settings: Optional[SessionSettings] = None
         self.nodes = []
         self.data_dir = os.path.join("data", "n_%d_%s" % (self.settings.peers, self.settings.dataset))
         self.evaluator = None
@@ -38,7 +39,6 @@ class ADFLSimulation:
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = ConfigBuilder().clear_keys().clear_overlays()
-        builder.add_overlay("DFLCommunity", "my peer", [], [], {}, [])
         builder.add_key("my peer", "curve25519", os.path.join(self.data_dir, f"ec{peer_id}.pem"))
         return builder
 
@@ -48,7 +48,7 @@ class ADFLSimulation:
                 print("Created %d peers..." % peer_id)
             endpoint = SimulationEndpoint()
             instance = IPv8(self.get_ipv8_builder(peer_id).finalize(), endpoint_override=endpoint,
-                            extra_communities={'DFLCommunity': DFLCommunity})
+                            extra_communities={'DLCommunity': DLCommunity, 'DFLCommunity': DFLCommunity})
             await instance.start()
 
             # Set the WAN address of the peer to the address of the endpoint
@@ -78,18 +78,6 @@ class ADFLSimulation:
                 node_a.network.verified_peers.add(node_b.overlays[0].my_peer)
                 node_a.network.discover_services(node_b.overlays[0].my_peer, [node_a.overlays[0].community_id, ])
         print("IPv8 peer discovery complete")
-
-    async def on_aggregate_complete(self, ind: int, round_nr: int, model):
-        if round_nr % self.settings.accuracy_logging_interval == 0:
-            print("Will compute accuracy for round %d!" % round_nr)
-            accuracy, loss = self.evaluator.evaluate_accuracy(model)
-            with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
-                group = "\"s=%d, a=%d\"" % (self.settings.sample_size, self.settings.num_aggregators)
-                out_file.write("%s,%f,%d,%d,%f,%f\n" % (group, get_event_loop().time(), ind, round_nr, accuracy, loss))
-
-        if self.settings.num_rounds and round_nr >= self.settings.num_rounds:
-            self.on_simulation_finished()
-            self.loop.stop()
 
     def apply_latencies(self):
         """
@@ -135,54 +123,14 @@ class ADFLSimulation:
         print("Determined peer %d with lowest median latency: %f" % (lowest_peer_id + 1, lowest_median_latency))
         return lowest_peer_id
 
-    async def start_simulation(self) -> None:
-        print("Starting simulation with %d peers..." % self.settings.peers)
-
-        # Inject our nodes array in the Simulated DFL community
-        for node in self.nodes:
-            node.overlays[0].nodes = self.nodes
+    async def setup_simulation(self) -> None:
+        print("Setting up simulation with %d peers..." % self.settings.peers)
 
         with open(os.path.join(self.data_dir, "accuracies.csv"), "w") as out_file:
             out_file.write("group,time,peer,round,accuracy,loss\n")
 
-        peer_pk = None
-        if self.settings.fix_aggregator:
-            lowest_latency_peer_id = self.determine_peer_with_lowest_median_latency()
-            peer_pk = self.nodes[lowest_latency_peer_id].overlays[0].my_peer.public_key.key_to_bin()
-
-        # Setup the training process
-        learning_settings = LearningSettings(
-            learning_rate=self.settings.learning_rate,
-            momentum=self.settings.momentum,
-            batch_size=self.settings.batch_size
-        )
-
-        dfl_settings = DFLSettings(
-            sample_size=self.settings.sample_size,
-            num_aggregators=self.settings.num_aggregators,
-            success_fraction=1.0,
-            aggregation_timeout=2.0,
-            ping_timeout=5,
-            inactivity_threshold=1000,
-            fixed_aggregator=peer_pk if self.settings.fix_aggregator else None
-        )
-
-        session_settings = SessionSettings(
-            work_dir=self.data_dir,
-            dataset=self.settings.dataset,
-            learning=learning_settings,
-            participants=[hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
-            all_participants=[hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
-            target_participants=len(self.nodes),
-            dfl=dfl_settings,
-            data_distribution=self.settings.data_distribution,
-            eva_block_size=1000,
-            is_simulation=True,
-        )
-
+    async def start_simulation(self) -> None:
         for ind, node in enumerate(self.nodes):
-            node.overlays[0].aggregate_complete_callback = lambda round_nr, model, i=ind: self.on_aggregate_complete(i, round_nr, model)
-            node.overlays[0].setup(session_settings)
             node.overlays[0].start()
 
         if self.settings.dataset in ["cifar10", "cifar10_niid", "mnist"]:
@@ -191,7 +139,7 @@ class ADFLSimulation:
             # The LEAF dataset
             data_dir = os.path.join(os.environ["HOME"], "leaf", self.settings.dataset)
 
-        self.evaluator = ModelEvaluator(data_dir, session_settings)
+        self.evaluator = ModelEvaluator(data_dir, self.session_settings)
 
         if self.settings.profile:
             yappi.start(builtins=True)
@@ -234,16 +182,6 @@ class ADFLSimulation:
                 for training_time in node.overlays[0].model_manager.training_times:
                     training_times_file.write("%d,%f\n" % (ind + 1, training_time))
 
-        # Write away the outgoing bytes statistics
-        with open(os.path.join(self.data_dir, "outgoing_bytes_statistics.csv"), "w") as bw_file:
-            bw_file.write("peer,lm_model_bytes,lm_midas_bytes,ping_bytes,pong_bytes\n")
-            for ind, node in enumerate(self.nodes):
-                bw_file.write("%d,%d,%d,%d,%d\n" % (ind + 1,
-                                                    node.overlays[0].bandwidth_statistics["lm_model_bytes"],
-                                                    node.overlays[0].bandwidth_statistics["lm_midas_bytes"],
-                                                    node.overlays[0].bandwidth_statistics["ping_bytes"],
-                                                    node.overlays[0].bandwidth_statistics["pong_bytes"]))
-
         # Write away the generic bandwidth statistics
         with open(os.path.join(self.data_dir, "bandwidth.csv"), "w") as bw_file:
             bw_file.write("peer,outgoing_bytes,incoming_bytes\n")
@@ -259,5 +197,6 @@ class ADFLSimulation:
         self.ipv8_discover_peers()
         self.apply_latencies()
         self.on_ipv8_ready()
+        await self.setup_simulation()
         await self.start_simulation()
         self.on_simulation_finished()
