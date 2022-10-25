@@ -5,6 +5,7 @@ import shutil
 import time
 from asyncio import get_event_loop
 from binascii import hexlify
+from statistics import median
 
 import yappi
 
@@ -114,6 +115,26 @@ class ADFLSimulation:
 
         print("Latencies applied!")
 
+    def determine_peer_with_lowest_median_latency(self) -> int:
+        """
+        Based on the latencies, determine the ID of the peer with the lowest median latency to other peers.
+        """
+        latencies = []
+        with open(self.settings.latencies_file) as latencies_file:
+            for line in latencies_file.readlines():
+                latencies.append([float(l) for l in line.strip().split(",")])
+
+        lowest_median_latency = 100000
+        lowest_peer_id = 0
+        for peer_id in range(min(len(self.nodes), len(latencies))):
+            median_latency = median(latencies[peer_id])
+            if median_latency < lowest_median_latency:
+                lowest_median_latency = median_latency
+                lowest_peer_id = peer_id
+
+        print("Determined peer %d with lowest median latency: %f" % (lowest_peer_id + 1, lowest_median_latency))
+        return lowest_peer_id
+
     async def start_simulation(self) -> None:
         print("Starting simulation with %d peers..." % self.settings.peers)
 
@@ -123,6 +144,11 @@ class ADFLSimulation:
 
         with open(os.path.join(self.data_dir, "accuracies.csv"), "w") as out_file:
             out_file.write("group,time,peer,round,accuracy,loss\n")
+
+        peer_pk = None
+        if self.settings.fix_aggregator:
+            lowest_latency_peer_id = self.determine_peer_with_lowest_median_latency()
+            peer_pk = self.nodes[lowest_latency_peer_id].overlays[0].my_peer.public_key.key_to_bin()
 
         # Setup the training process
         learning_settings = LearningSettings(
@@ -137,7 +163,8 @@ class ADFLSimulation:
             success_fraction=1.0,
             aggregation_timeout=2.0,
             ping_timeout=5,
-            inactivity_threshold=1000
+            inactivity_threshold=1000,
+            fixed_aggregator=peer_pk if self.settings.fix_aggregator else None
         )
 
         session_settings = SessionSettings(
