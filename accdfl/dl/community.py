@@ -7,6 +7,7 @@ from binascii import unhexlify
 from collections import defaultdict
 from typing import List, Dict, Tuple
 
+import torch
 from torch import nn
 
 from accdfl.core.community import LearningCommunity
@@ -75,6 +76,13 @@ class DLCommunity(LearningCommunity):
         # The round is complete - wrap it up and proceed
         incoming_models = self.incoming_models.pop(self.round)
         self.model_manager.incoming_trained_models = dict((x, y) for x, y in incoming_models)
+
+        # Transfer these models back to the CPU to prepare for aggregation
+        device = torch.device("cpu")
+        for peer_pk in self.model_manager.incoming_trained_models.keys():
+            model = self.model_manager.incoming_trained_models[peer_pk]
+            self.model_manager.incoming_trained_models[peer_pk] = model.to(device)
+
         self.model_manager.model = self.model_manager.average_trained_models()
         if self.round_complete_callback:
             ensure_future(self.round_complete_callback(self.round))
