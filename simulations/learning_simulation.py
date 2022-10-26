@@ -182,13 +182,20 @@ class LearningSimulation:
                 for training_time in node.overlays[0].model_manager.training_times:
                     training_times_file.write("%d,%f\n" % (ind + 1, training_time))
 
-        # Write away the generic bandwidth statistics
+        # Write away the individual, generic bandwidth statistics
+        tot_up, tot_down = 0, 0
         with open(os.path.join(self.data_dir, "bandwidth.csv"), "w") as bw_file:
             bw_file.write("peer,outgoing_bytes,incoming_bytes\n")
             for ind, node in enumerate(self.nodes):
+                tot_up += node.overlays[0].endpoint.bytes_up
+                tot_down += node.overlays[0].endpoint.bytes_down
                 bw_file.write("%d,%d,%d\n" % (ind + 1,
                                               node.overlays[0].endpoint.bytes_up,
                                               node.overlays[0].endpoint.bytes_down))
+
+        # Write away the total, generic bandwidth statistics
+        with open(os.path.join(self.data_dir, "total_bandwidth.txt"), "w") as bw_file:
+            bw_file.write("%d,%d" % (tot_up, tot_down))
 
     async def run(self) -> None:
         self.setup_directories()
