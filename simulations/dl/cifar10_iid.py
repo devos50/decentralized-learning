@@ -1,3 +1,4 @@
+import os
 from asyncio import ensure_future
 
 from simulations.settings import SimulationSettings
@@ -5,7 +6,7 @@ from simulations.dl.dl_simulation import DLSimulation
 
 if __name__ == "__main__":
     settings = SimulationSettings()
-    settings.duration = 3600
+    settings.duration = 3600 if "DURATION" not in os.environ else int(os.environ["DURATION"])
     settings.dataset = "cifar10"
     settings.data_distribution = "iid"
     settings.peers = 100
