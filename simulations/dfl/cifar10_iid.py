@@ -2,11 +2,11 @@ import os
 from asyncio import ensure_future
 
 from simulations.settings import SimulationSettings
-from simulations.dfl.simulation import DFLSimulation
+from simulations.dfl.dfl_simulation import DFLSimulation
 
 if __name__ == "__main__":
     settings = SimulationSettings()
-    settings.duration = 3600
+    settings.duration = 3600 if "DURATION" not in os.environ else int(os.environ["DURATION"])
     settings.dataset = "cifar10"
     settings.data_distribution = "iid"
     settings.peers = 100
