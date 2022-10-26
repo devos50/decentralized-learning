@@ -30,6 +30,14 @@ class DFLSettings:
     fixed_aggregator: Optional[bytes] = None
 
 
+@dataclass
+class DLSettings:
+    """
+    Setting related to decentralized learning.
+    """
+    topology: str = "ring"
+
+
 @dataclass_json
 @dataclass
 class SessionSettings:
@@ -43,6 +51,7 @@ class SessionSettings:
     all_participants: List[str]
     target_participants: int
     dfl: Optional[DFLSettings] = None
+    dl: Optional[DLSettings] = None
     data_distribution: str = "iid"
     model_seed: int = 0
     model_send_delay: float = 1.0

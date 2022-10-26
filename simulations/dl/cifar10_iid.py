@@ -14,6 +14,7 @@ if __name__ == "__main__":
     settings.learning_rate = 0.002
     settings.batch_size = 20
     settings.accuracy_logging_interval = 5
+    settings.topology = "exp-one-peer"
     settings.latencies_file = "data/latencies.txt"
     simulation = DLSimulation(settings)
     ensure_future(simulation.run())

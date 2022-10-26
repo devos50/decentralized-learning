@@ -55,11 +55,16 @@ class DLCommunity(LearningCommunity):
         self.incoming_models[self.round].append((my_peer_pk, self.model_manager.model))
 
         # Send the trained model to your neighbours
-        for peer_pk in self.neighbours:
+        to_send = self.neighbours
+        if self.settings.dl.topology == "exp-one-peer":
+            nb_ind = (self.round - 1) % len(self.neighbours)
+            to_send = [self.neighbours[nb_ind]]
+
+        for peer_pk in to_send:
             peer = self.get_peer_by_pk(peer_pk)
             if not peer:
-                self.logger.warning("Cannot find Peer object for participant %s!",
-                                    self.peer_manager.get_short_id(peer_pk))
+                self.logger.warning("Participant %s cannot find Peer object for participant %s!",
+                                    self.peer_manager.get_my_short_id(), self.peer_manager.get_short_id(peer_pk))
                 continue
 
             ensure_future(self.eva_send_model(self.round, self.model_manager.model, peer))
@@ -70,7 +75,10 @@ class DLCommunity(LearningCommunity):
         """
         Check whether the round is complete.
         """
-        if len(self.incoming_models[self.round]) != len(self.neighbours) + 1:
+        if self.settings.dl.topology != "exp-one-peer" and len(self.incoming_models[self.round]) != len(self.neighbours) + 1:
+            return
+
+        if self.settings.dl.topology == "exp-one-peer" and len(self.incoming_models[self.round]) != 2:
             return
 
         # The round is complete - wrap it up and proceed
