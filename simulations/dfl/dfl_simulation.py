@@ -64,6 +64,13 @@ class DFLSimulation(LearningSimulation):
             self.nodes[lowest_latency_peer_id].overlays[0].eva.settings.max_simultaneous_transfers = 100000
 
     async def on_aggregate_complete(self, ind: int, round_nr: int, model):
+        tot_up, tot_down = 0, 0
+        for node in self.nodes:
+            tot_up += node.overlays[0].endpoint.bytes_up
+            tot_down += node.overlays[0].endpoint.bytes_down
+
+        print("Round %d completed - bytes up: %d, bytes down: %d" % (round_nr, tot_up, tot_down))
+
         if round_nr % self.settings.accuracy_logging_interval == 0:
             print("Will compute accuracy for round %d!" % round_nr)
             accuracy, loss = self.evaluator.evaluate_accuracy(model)
