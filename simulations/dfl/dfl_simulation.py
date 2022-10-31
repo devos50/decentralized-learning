@@ -19,6 +19,7 @@ class DFLSimulation(LearningSimulation):
         await super().setup_simulation()
 
         peer_pk = None
+        lowest_latency_peer_id = -1
         if self.settings.fix_aggregator:
             lowest_latency_peer_id = self.determine_peer_with_lowest_median_latency()
             peer_pk = self.nodes[lowest_latency_peer_id].overlays[0].my_peer.public_key.key_to_bin()
@@ -56,6 +57,11 @@ class DFLSimulation(LearningSimulation):
         for ind, node in enumerate(self.nodes):
             node.overlays[0].aggregate_complete_callback = lambda round_nr, model, i=ind: self.on_aggregate_complete(i, round_nr, model)
             node.overlays[0].setup(self.session_settings)
+
+        # If we fix the aggregator, we assume unlimited upload/download slots
+        if self.settings.fix_aggregator:
+            print("Overriding max. EVA transfers for peer %d" % lowest_latency_peer_id)
+            self.nodes[lowest_latency_peer_id].overlays[0].eva.settings.max_simultaneous_transfers = 100000
 
     async def on_aggregate_complete(self, ind: int, round_nr: int, model):
         if round_nr % self.settings.accuracy_logging_interval == 0:
