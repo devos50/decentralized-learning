@@ -69,7 +69,8 @@ class DFLSimulation(LearningSimulation):
             accuracy, loss = self.evaluator.evaluate_accuracy(model)
             with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
                 group = "\"s=%d, a=%d\"" % (self.settings.sample_size, self.settings.num_aggregators)
-                out_file.write("%s,%f,%d,%d,%f,%f\n" % (group, get_event_loop().time(), ind, round_nr, accuracy, loss))
+                out_file.write("%s,%s,%f,%d,%d,%f,%f\n" % (self.settings.dataset, group, get_event_loop().time(),
+                                                           ind, round_nr, accuracy, loss))
 
         if self.settings.num_rounds and round_nr >= self.settings.num_rounds:
             self.on_simulation_finished()

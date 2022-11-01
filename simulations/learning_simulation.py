@@ -127,7 +127,7 @@ class LearningSimulation:
         print("Setting up simulation with %d peers..." % self.settings.peers)
 
         with open(os.path.join(self.data_dir, "accuracies.csv"), "w") as out_file:
-            out_file.write("group,time,peer,round,accuracy,loss\n")
+            out_file.write("dataset,group,time,peer,round,accuracy,loss\n")
 
     async def start_simulation(self) -> None:
         for ind, node in enumerate(self.nodes):
