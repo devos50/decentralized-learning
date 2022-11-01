@@ -6,9 +6,14 @@ from accdfl.core.session_settings import DFLSettings, LearningSettings, SessionS
 from ipv8.configuration import ConfigBuilder
 
 from simulations.learning_simulation import LearningSimulation
+from simulations.settings import SimulationSettings
 
 
 class DFLSimulation(LearningSimulation):
+
+    def __init__(self, settings: SimulationSettings) -> None:
+        super().__init__(settings)
+        self.latest_accuracy_check_round: int = 0
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = super().get_ipv8_builder(peer_id)
@@ -64,13 +69,21 @@ class DFLSimulation(LearningSimulation):
             self.nodes[lowest_latency_peer_id].overlays[0].eva.settings.max_simultaneous_transfers = 100000
 
     async def on_aggregate_complete(self, ind: int, round_nr: int, model):
-        if round_nr % self.settings.accuracy_logging_interval == 0:
+        tot_up, tot_down = 0, 0
+        for node in self.nodes:
+            tot_up += node.overlays[0].endpoint.bytes_up
+            tot_down += node.overlays[0].endpoint.bytes_down
+
+        print("Round %d completed - bytes up: %d, bytes down: %d" % (round_nr, tot_up, tot_down))
+
+        if round_nr % self.settings.accuracy_logging_interval == 0 and round_nr > self.latest_accuracy_check_round:
             print("Will compute accuracy for round %d!" % round_nr)
             accuracy, loss = self.evaluator.evaluate_accuracy(model)
             with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
                 group = "\"s=%d, a=%d\"" % (self.settings.sample_size, self.settings.num_aggregators)
                 out_file.write("%s,%s,%f,%d,%d,%f,%f\n" % (self.settings.dataset, group, get_event_loop().time(),
                                                            ind, round_nr, accuracy, loss))
+            self.latest_accuracy_check_round = round_nr
 
         if self.settings.num_rounds and round_nr >= self.settings.num_rounds:
             self.on_simulation_finished()

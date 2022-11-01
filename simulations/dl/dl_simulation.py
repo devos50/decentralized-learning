@@ -85,7 +85,12 @@ class DLSimulation(LearningSimulation):
             return
 
         # Everyone completed their round - wrap up
-        print("All peers completed round %d!" % round_nr)
+        tot_up, tot_down = 0, 0
+        for node in self.nodes:
+            tot_up += node.overlays[0].endpoint.bytes_up
+            tot_down += node.overlays[0].endpoint.bytes_down
+
+        print("All peers completed round %d - bytes up: %d, bytes down: %d" % (round_nr, tot_up, tot_down))
         self.num_round_completed = 0
 
         # Compute model accuracy
