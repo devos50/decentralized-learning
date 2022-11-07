@@ -2,12 +2,12 @@ import os
 from asyncio import ensure_future
 
 from simulations.settings import SimulationSettings
-from simulations.simulation import ADFLSimulation
+from simulations.dfl.dfl_simulation import DFLSimulation
 
 if __name__ == "__main__":
     settings = SimulationSettings()
     settings.dataset = "movielens"
-    settings.duration = 3600 * 4
+    settings.duration = 3600 * 4 if "DURATION" not in os.environ else int(os.environ["DURATION"])
     settings.peers = 610
     settings.learning_rate = 0.25
     settings.sample_size = 10 if "SAMPLE_SIZE" not in os.environ else int(os.environ["SAMPLE_SIZE"])
@@ -16,7 +16,7 @@ if __name__ == "__main__":
     settings.batch_size = 20
     settings.accuracy_logging_interval = 5
     settings.latencies_file = "data/latencies.txt"
-    simulation = ADFLSimulation(settings)
+    simulation = DFLSimulation(settings)
     ensure_future(simulation.run())
 
     simulation.loop.run_forever()
