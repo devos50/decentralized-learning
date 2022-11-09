@@ -1,7 +1,6 @@
 import os
 from asyncio import get_event_loop
 from binascii import hexlify
-from math import log, ceil
 from typing import Optional
 
 from accdfl.core.model_manager import ModelManager
@@ -11,6 +10,8 @@ from simulations.dl import ExponentialTwoGraph, GetDynamicOnePeerSendRecvRanks
 from simulations.settings import SimulationSettings
 
 from simulations.learning_simulation import LearningSimulation
+
+import torch
 
 
 class DLSimulation(LearningSimulation):
@@ -77,6 +78,13 @@ class DLSimulation(LearningSimulation):
         else:
             raise RuntimeError("Unknown DL topology %s" % self.session_settings.dl.topology)
 
+    def dump_models(self, round_nr: int):
+        avg_model = self.model_manager.average_trained_models()
+        for peer_ind, node in enumerate(self.nodes):
+            torch.save(node.overlays[0].model_manager.model.state_dict(),
+                       os.path.join(self.data_dir, "%d_%d.model" % (round_nr, peer_ind)))
+        torch.save(avg_model.state_dict(), os.path.join(self.data_dir, "avg.model"))
+
     async def on_round_complete(self, peer_ind: int, round_nr: int):
         self.num_round_completed += 1
         peer_pk = self.nodes[peer_ind].overlays[0].my_peer.public_key.key_to_bin()
@@ -97,7 +105,13 @@ class DLSimulation(LearningSimulation):
         if round_nr % self.settings.accuracy_logging_interval == 0:
             avg_model = self.model_manager.average_trained_models()
             print("Will compute accuracy for round %d!" % round_nr)
-            accuracy, loss = self.evaluator.evaluate_accuracy(avg_model)
+            try:
+                accuracy, loss = self.evaluator.evaluate_accuracy(avg_model)
+            except ValueError as e:
+                print("Encountered error during evaluation check - dumping models")
+                self.dump_models(round_nr)
+                raise e
+
             with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
                 out_file.write("%s,DL,%f,%d,%d,%f,%f\n" % (self.settings.dataset, get_event_loop().time(), 0,
                                                            round_nr, accuracy, loss))
