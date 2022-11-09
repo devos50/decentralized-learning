@@ -9,7 +9,7 @@ if __name__ == "__main__":
     settings.dataset = "movielens"
     settings.duration = 3600 * 12 if "DURATION" not in os.environ else int(os.environ["DURATION"])
     settings.peers = 610
-    settings.learning_rate = 0.2
+    settings.learning_rate = 0.25 if "LEARNING_RATE" not in os.environ else float(os.environ["LEARNING_RATE"])
     settings.sample_size = 10 if "SAMPLE_SIZE" not in os.environ else int(os.environ["SAMPLE_SIZE"])
     settings.num_aggregators = 1 if "NUM_AGGREGATORS" not in os.environ else int(os.environ["NUM_AGGREGATORS"])
     settings.fix_aggregator = bool(os.environ["FIX_AGGREGATOR"]) if "FIX_AGGREGATOR" in os.environ else False
