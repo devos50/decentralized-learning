@@ -62,6 +62,7 @@ class LearningCommunity(Community):
         if self.settings.transmission_method == TransmissionMethod.EVA:
             self.logger.info("Setting up EVA protocol")
             self.eva.settings.block_size = settings.eva_block_size
+            self.eva.settings.max_simultaneous_transfers = settings.eva_max_simultaneous_transfers
         else:
             raise RuntimeError("Unsupported transmission method %s", self.settings.transmission_method)
 

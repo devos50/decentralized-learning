@@ -58,4 +58,5 @@ class SessionSettings:
     train_in_subprocess: bool = False
     transmission_method: TransmissionMethod = TransmissionMethod.EVA
     eva_block_size: int = 60000  # This value is extremely high and tuned for the DAS6
+    eva_max_simultaneous_transfers: int = 30  # Corresponds to a peak usage of ~3.4 MB/s for an aggregator
     is_simulation: bool = False
