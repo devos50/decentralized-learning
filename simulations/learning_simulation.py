@@ -3,7 +3,7 @@ import logging
 import os
 import shutil
 import time
-from statistics import median
+from statistics import median, mean
 from typing import Optional
 
 import yappi
@@ -114,13 +114,16 @@ class LearningSimulation:
 
         lowest_median_latency = 100000
         lowest_peer_id = 0
+        avg_latencies = []
         for peer_id in range(min(len(self.nodes), len(latencies))):
             median_latency = median(latencies[peer_id])
+            avg_latencies.append(mean(latencies[peer_id]))
             if median_latency < lowest_median_latency:
                 lowest_median_latency = median_latency
                 lowest_peer_id = peer_id
 
         print("Determined peer %d with lowest median latency: %f" % (lowest_peer_id + 1, lowest_median_latency))
+        print("Average latency: %f" % mean(avg_latencies))
         return lowest_peer_id
 
     async def setup_simulation(self) -> None:
