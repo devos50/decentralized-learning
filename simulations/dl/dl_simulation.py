@@ -1,4 +1,5 @@
 import os
+import shutil
 from asyncio import get_event_loop
 from binascii import hexlify
 from typing import Optional
@@ -79,11 +80,18 @@ class DLSimulation(LearningSimulation):
             raise RuntimeError("Unknown DL topology %s" % self.session_settings.dl.topology)
 
     def dump_models(self, round_nr: int):
+        """
+        Dump all models during a particular round.
+        """
+        models_dir = os.path.join(self.data_dir, "models")
+        shutil.rmtree(models_dir, ignore_errors=True)
+        os.mkdir(models_dir)
+
         avg_model = self.model_manager.average_trained_models()
         for peer_ind, node in enumerate(self.nodes):
             torch.save(node.overlays[0].model_manager.model.state_dict(),
-                       os.path.join(self.data_dir, "%d_%d.model" % (round_nr, peer_ind)))
-        torch.save(avg_model.state_dict(), os.path.join(self.data_dir, "avg.model"))
+                       os.path.join(models_dir, "%d_%d.model" % (round_nr, peer_ind)))
+        torch.save(avg_model.state_dict(), os.path.join(models_dir, "avg.model"))
 
     async def on_round_complete(self, peer_ind: int, round_nr: int):
         self.num_round_completed += 1
@@ -108,13 +116,16 @@ class DLSimulation(LearningSimulation):
             try:
                 accuracy, loss = self.evaluator.evaluate_accuracy(avg_model)
             except ValueError as e:
-                print("Encountered error during evaluation check - dumping models")
+                print("Encountered error during evaluation check - dumping models and stopping")
                 self.dump_models(round_nr)
                 raise e
 
             with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
                 out_file.write("%s,DL,%f,%d,%d,%f,%f\n" % (self.settings.dataset, get_event_loop().time(), 0,
                                                            round_nr, accuracy, loss))
+
+        # Dump models
+        self.dump_models(round_nr)
 
         self.model_manager.reset_incoming_trained_models()
 
