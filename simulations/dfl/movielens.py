@@ -7,7 +7,7 @@ from simulations.dfl.dfl_simulation import DFLSimulation
 if __name__ == "__main__":
     settings = SimulationSettings()
     settings.dataset = "movielens"
-    settings.duration = 3600 * 12 if "DURATION" not in os.environ else int(os.environ["DURATION"])
+    settings.duration = 3600 * 15 if "DURATION" not in os.environ else int(os.environ["DURATION"])
     settings.peers = 610
     settings.learning_rate = 0.25
     settings.sample_size = 10 if "SAMPLE_SIZE" not in os.environ else int(os.environ["SAMPLE_SIZE"])
