@@ -106,7 +106,8 @@ class DFLCommunity(LearningCommunity):
         active_peers = [self.peer_manager.get_short_id(peer_pk) for peer_pk in active_peers]
 
         if not self.active_peers_history or (self.active_peers_history[-1][1] != active_peers):  # It's the first entry or it has changed
-            self.active_peers_history.append((time.time(), active_peers))
+            update_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
+            self.active_peers_history.append((update_time, active_peers))
 
     def advertise_membership(self, change: NodeMembershipChange):
         """
@@ -132,6 +133,7 @@ class DFLCommunity(LearningCommunity):
             self.endpoint.send(peer.address, packet)
 
         # Update your own population view
+        self.peer_manager.add_peer(self.my_id)
         info = self.peer_manager.last_active[self.my_id]
         self.peer_manager.last_active[self.my_id] = (info[0], (self.advertise_index, change))
         self.advertise_index += 1

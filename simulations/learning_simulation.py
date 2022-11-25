@@ -3,6 +3,7 @@ import logging
 import os
 import shutil
 import time
+from asyncio import sleep
 from statistics import median, mean
 from typing import Optional
 
@@ -132,9 +133,25 @@ class LearningSimulation:
         with open(os.path.join(self.data_dir, "accuracies.csv"), "w") as out_file:
             out_file.write("dataset,group,time,peer,round,accuracy,loss\n")
 
+    def start_node(self, node, advertise_join=False):
+        print("Starting node with ID %s" % node.overlays[0].peer_manager.get_my_short_id())
+        with open(os.path.join(self.data_dir, "membership_changes.csv"), "a") as out_file:
+            out_file.write("%s,%f,1\n" % (node.overlays[0].peer_manager.get_my_short_id(), asyncio.get_event_loop().time()))
+        node.overlays[0].start(advertise_join=advertise_join)
+
     async def start_simulation(self) -> None:
-        for ind, node in enumerate(self.nodes):
-            node.overlays[0].start()
+        await sleep(20)
+        with open(os.path.join(self.data_dir, "membership_changes.csv"), "w") as out_file:
+            out_file.write("participant,time,join\n")
+
+        for node in self.nodes[:90]:
+            self.start_node(node)
+
+        # Schedule the startup of the other nodes
+        delay = 60
+        for node in self.nodes[90:]:
+            self.loop.call_later(delay, self.start_node, node, True)
+            delay += 60
 
         if self.settings.dataset in ["cifar10", "cifar10_niid", "mnist"]:
             data_dir = os.path.join(os.environ["HOME"], "dfl-data")

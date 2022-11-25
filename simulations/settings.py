@@ -11,6 +11,7 @@ class SimulationSettings:
         self.momentum: float = 0.0
         self.num_rounds: Optional[int] = None
         self.num_aggregators: int = 1
+        self.success_fraction: float = 0.9
         self.duration: int = 3600  # Simulation duration in seconds
         self.profile: bool = False
         self.dataset: str = "cifar10"

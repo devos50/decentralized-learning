@@ -39,7 +39,7 @@ class DFLSimulation(LearningSimulation):
         dfl_settings = DFLSettings(
             sample_size=self.settings.sample_size,
             num_aggregators=self.settings.num_aggregators,
-            success_fraction=1.0,
+            success_fraction=self.settings.success_fraction,
             aggregation_timeout=2.0,
             ping_timeout=5,
             inactivity_threshold=1000,
@@ -50,7 +50,7 @@ class DFLSimulation(LearningSimulation):
             work_dir=self.data_dir,
             dataset=self.settings.dataset,
             learning=learning_settings,
-            participants=[hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
+            participants=[hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes[:90]],
             all_participants=[hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
             target_participants=len(self.nodes),
             dfl=dfl_settings,
@@ -91,6 +91,14 @@ class DFLSimulation(LearningSimulation):
 
     def on_simulation_finished(self) -> None:
         super().on_simulation_finished()
+
+        # Write away the view histories
+        with open(os.path.join(self.data_dir, "view_histories.csv"), "w") as out_file:
+            out_file.write("peer,update_time,peers\n")
+            for peer_id, node in enumerate(self.nodes):
+                for update_time, active_peers in node.overlays[0].active_peers_history:
+                    active_peers_str = "-".join(active_peers)
+                    out_file.write("%d,%f,%s\n" % (peer_id + 1, update_time, active_peers_str))
 
         # Write away the outgoing bytes statistics
         with open(os.path.join(self.data_dir, "outgoing_bytes_statistics.csv"), "w") as bw_file:
