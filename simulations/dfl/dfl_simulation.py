@@ -39,7 +39,7 @@ class DFLSimulation(LearningSimulation):
         dfl_settings = DFLSettings(
             sample_size=self.settings.sample_size,
             num_aggregators=self.settings.num_aggregators,
-            success_fraction=0.8,
+            success_fraction=self.settings.success_fraction,
             aggregation_timeout=2.0,
             ping_timeout=2,
             inactivity_threshold=20,

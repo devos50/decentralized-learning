@@ -12,6 +12,7 @@ if __name__ == "__main__":
     settings.peers = 100
     settings.momentum = 0.9
     settings.learning_rate = 0.002
+    settings.success_fraction = 1.0 if "SUCCESS_FRACTION" not in os.environ else float(os.environ["SUCCESS_FRACTION"])
     settings.sample_size = 10 if "SAMPLE_SIZE" not in os.environ else int(os.environ["SAMPLE_SIZE"])
     settings.num_aggregators = 1 if "NUM_AGGREGATORS" not in os.environ else int(os.environ["NUM_AGGREGATORS"])
     settings.fix_aggregator = bool(os.environ["FIX_AGGREGATOR"]) if "FIX_AGGREGATOR" in os.environ else False
