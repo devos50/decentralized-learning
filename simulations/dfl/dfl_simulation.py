@@ -92,6 +92,14 @@ class DFLSimulation(LearningSimulation):
     def on_simulation_finished(self) -> None:
         super().on_simulation_finished()
 
+        # Write away the view histories
+        with open(os.path.join(self.data_dir, "view_histories.csv"), "w") as out_file:
+            out_file.write("peer,update_time,peers\n")
+            for peer_id, node in enumerate(self.nodes):
+                for update_time, active_peers in node.overlays[0].active_peers_history:
+                    active_peers_str = "-".join(active_peers)
+                    out_file.write("%d,%f,%s\n" % (peer_id + 1, update_time, active_peers_str))
+
         # Write away the outgoing bytes statistics
         with open(os.path.join(self.data_dir, "outgoing_bytes_statistics.csv"), "w") as bw_file:
             bw_file.write("peer,lm_model_bytes,lm_midas_bytes,ping_bytes,pong_bytes\n")
