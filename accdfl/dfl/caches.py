@@ -1,6 +1,6 @@
 import logging
 import time
-from asyncio import Future, sleep, ensure_future
+from asyncio import get_event_loop, Future
 from typing import List
 
 from ipv8.requestcache import RandomNumberCache, NumberCache
@@ -72,7 +72,7 @@ class PingPeersRequestCache(RandomNumberCache):
         self.next_peer_index = 0
         self.ping_timeout = self.community.settings.dfl.ping_timeout
         self.future = Future()
-        self.start_time = time.time()
+        self.start_time = get_event_loop().time() if self.community.settings.is_simulation else time.time()
 
     @property
     def timeout_delay(self) -> float:
@@ -88,7 +88,8 @@ class PingPeersRequestCache(RandomNumberCache):
     def finish(self):
         if self.community.request_cache.has(self.prefix, self._number):
             self.community.request_cache.pop(self.prefix, self._number)
-        self.community.determine_sample_durations.append((self.start_time, time.time()))
+        sample_duration = get_event_loop().time() if self.community.settings.is_simulation else time.time()
+        self.community.determine_sample_durations.append((self.start_time, sample_duration))
         self.future.set_result(self.available_peers)
 
     def add_available_peer(self, peer_pk):

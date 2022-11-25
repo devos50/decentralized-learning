@@ -100,6 +100,13 @@ class DFLSimulation(LearningSimulation):
                     active_peers_str = "-".join(active_peers)
                     out_file.write("%d,%f,%s\n" % (peer_id + 1, update_time, active_peers_str))
 
+        # Write the determine sample durations
+        with open(os.path.join(self.data_dir, "determine_sample_durations.csv"), "w") as out_file:
+            out_file.write("peer,start_time,duration\n")
+            for peer_id, node in enumerate(self.nodes):
+                for start_time, end_time in node.overlays[0].determine_sample_durations:
+                    out_file.write("%d,%f,%f\n" % (peer_id + 1, start_time, end_time))
+
         # Write away the outgoing bytes statistics
         with open(os.path.join(self.data_dir, "outgoing_bytes_statistics.csv"), "w") as bw_file:
             bw_file.write("peer,lm_model_bytes,lm_midas_bytes,ping_bytes,pong_bytes\n")
