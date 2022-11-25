@@ -132,9 +132,22 @@ class LearningSimulation:
         with open(os.path.join(self.data_dir, "accuracies.csv"), "w") as out_file:
             out_file.write("dataset,group,time,peer,round,accuracy,loss\n")
 
+    def crash_nodes(self, batch_nr: int):
+        """
+        Crash some nodes.
+        """
+        start_node_id = 20 + 5 * batch_nr
+        for node_id in range(start_node_id, start_node_id + 5):
+            print("Crashing node with ID %d" % (node_id + 1))
+            self.nodes[node_id].overlays[0].go_offline(graceful=False)
+
     async def start_simulation(self) -> None:
         for ind, node in enumerate(self.nodes):
             node.overlays[0].start()
+
+        # Schedule crashes
+        for batch_nr in range(16):
+            self.loop.call_later(300 + batch_nr * 60, self.crash_nodes, batch_nr)
 
         if self.settings.dataset in ["cifar10", "cifar10_niid", "mnist"]:
             data_dir = os.path.join(os.environ["HOME"], "dfl-data")
