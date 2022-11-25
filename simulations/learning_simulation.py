@@ -133,7 +133,7 @@ class LearningSimulation:
             out_file.write("dataset,group,time,peer,round,accuracy,loss\n")
 
     async def start_simulation(self) -> None:
-        for ind, node in enumerate(self.nodes):
+        for ind, node in enumerate(self.nodes[:20]):
             node.overlays[0].start()
 
         if self.settings.dataset in ["cifar10", "cifar10_niid", "mnist"]:

@@ -50,7 +50,7 @@ class DFLSimulation(LearningSimulation):
             work_dir=self.data_dir,
             dataset=self.settings.dataset,
             learning=learning_settings,
-            participants=[hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
+            participants=[hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes[:20]],
             all_participants=[hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
             target_participants=len(self.nodes),
             dfl=dfl_settings,
