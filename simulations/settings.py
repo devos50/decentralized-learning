@@ -1,4 +1,13 @@
+from enum import Enum
 from typing import Optional
+
+
+class DLAccuracyMethod(Enum):
+    """
+    The method used to determine the final accuracy for DL.
+    """
+    AGGREGATE_THEN_TEST = 0
+    TEST_INDIVIDUAL_MODELS = 1
 
 
 class SimulationSettings:
@@ -16,6 +25,8 @@ class SimulationSettings:
         self.dataset: str = "cifar10"
         self.data_distribution: str = "iid"
         self.accuracy_logging_interval: int = 1
+        self.dl_accuracy_method: DLAccuracyMethod = DLAccuracyMethod.TEST_INDIVIDUAL_MODELS
+        self.checkpoint_interval: Optional[int] = None
         self.latencies_file: Optional[str] = None
         self.fix_aggregator: bool = False
         self.topology: Optional[str] = None
