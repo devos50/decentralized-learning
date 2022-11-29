@@ -45,7 +45,8 @@ class LearningCommunity(Community):
         self.eva = EVAProtocol(self, self.on_receive, self.on_send_complete, self.on_error)
         self.transfer_times = []
 
-        self.logger.info("The DFL community started with peer ID: %s", self.peer_manager.get_my_short_id())
+        self.logger.info("The %s started with peer ID: %s", self.__class__.__name__,
+                         self.peer_manager.get_my_short_id())
 
     def setup(self, settings: SessionSettings):
         self.settings = settings

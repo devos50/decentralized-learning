@@ -32,3 +32,4 @@ class SimulationSettings:
         self.latencies_file: Optional[str] = None
         self.fix_aggregator: bool = False
         self.topology: Optional[str] = None
+        self.bypass_model_transfers: bool = False

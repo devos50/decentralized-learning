@@ -24,7 +24,10 @@ class DLSimulation(LearningSimulation):
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = super().get_ipv8_builder(peer_id)
-        builder.add_overlay("DLCommunity", "my peer", [], [], {}, [])
+        if self.settings.bypass_model_transfers:
+            builder.add_overlay("DLBypassNetworkCommunity", "my peer", [], [], {}, [])
+        else:
+            builder.add_overlay("DLCommunity", "my peer", [], [], {}, [])
         return builder
 
     async def setup_simulation(self) -> None:
@@ -61,6 +64,11 @@ class DLSimulation(LearningSimulation):
             node.overlays[0].setup(self.session_settings)
 
         self.build_topology()
+
+        if self.settings.bypass_model_transfers:
+            # Inject the nodes in each community
+            for node in self.nodes:
+                node.overlays[0].nodes = self.nodes
 
     def build_topology(self):
         if self.session_settings.dl.topology == "ring":
