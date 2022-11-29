@@ -10,7 +10,6 @@ class DLBypassNetworkCommunity(DLCommunity):
         self.nodes = None
 
     async def eva_send_model(self, round, model, peer):
-        print("HI")
         model_cpy = copy.deepcopy(model)
         found: bool = False
         for node in self.nodes:
