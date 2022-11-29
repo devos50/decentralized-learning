@@ -9,7 +9,7 @@ if __name__ == "__main__":
     settings.duration = 3600 if "DURATION" not in os.environ else int(os.environ["DURATION"])
     settings.dataset = "cifar10"
     settings.data_distribution = "iid"
-    settings.peers = 5
+    settings.peers = 100
     settings.momentum = 0.9
     settings.learning_rate = 0.002
     settings.batch_size = 200
