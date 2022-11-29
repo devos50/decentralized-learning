@@ -31,12 +31,8 @@ class MatrixFactorization(Model):
         """
         Forward pass of the model, it does matrix multiplication and returns predictions for given users and items.
         """
-        if torch.cuda.is_available():
-            users = torch.cuda.LongTensor(data[:, 0]) - 1
-            items = torch.cuda.LongTensor(data[:, 1]) - 1
-        else:
-            users = torch.LongTensor(data[:, 0]) - 1
-            items = torch.LongTensor(data[:, 1]) - 1
+        users = torch.LongTensor(data[:, 0]) - 1
+        items = torch.LongTensor(data[:, 1]) - 1
         u, it = self.user_factors(users), self.item_factors(items)
         x = (u * it).sum(dim=1, keepdim=True)
         return x.squeeze(1)
