@@ -12,7 +12,7 @@ if __name__ == "__main__":
     settings.peers = 100
     settings.momentum = 0.9
     settings.learning_rate = 0.002
-    settings.batch_size = 200
+    settings.batch_size = 20
     settings.accuracy_logging_interval = 5 if "ACC_LOG_INTERVAL" not in os.environ else int(os.environ["ACC_LOG_INTERVAL"])
     settings.checkpoint_interval = settings.accuracy_logging_interval if "CHECKPOINT_INTERVAL" not in os.environ else \
         int(os.environ["CHECKPOINT_INTERVAL"])
