@@ -28,12 +28,11 @@ class ModelTrainer:
             train_dir = os.path.join(data_dir, "per_user_data", "train")
         self.dataset: Dataset = create_dataset(settings, participant_index=participant_index, train_dir=train_dir)
 
-    async def train(self, model) -> int:
+    async def train(self, model, device_name: str = "cpu") -> int:
         """
         Train the model on a batch. Return an integer that indicates how many local steps we have done.
         """
-        device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-        self.logger.debug("Device for training: %s", device)
+        device = torch.device(device_name)
         model.to(device)
         optimizer = SGDOptimizer(model, self.settings.learning.learning_rate, self.settings.learning.momentum)
         train_set = self.dataset.get_trainset(batch_size=self.settings.learning.batch_size, shuffle=True)
@@ -42,8 +41,8 @@ class ModelTrainer:
         if len(train_set.dataset) % self.settings.learning.batch_size != 0:
             local_steps += 1
 
-        self.logger.info("Will perform %d local steps of training (batch size: %d)",
-                         local_steps, self.settings.learning.batch_size)
+        self.logger.info("Will perform %d local steps of training on device %s (batch size: %d)",
+                         local_steps, device_name, self.settings.learning.batch_size)
 
         start_time = time.time()
         for local_step in range(local_steps):

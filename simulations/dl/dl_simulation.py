@@ -51,6 +51,7 @@ class DLSimulation(LearningSimulation):
             data_distribution=self.settings.data_distribution,
             eva_block_size=1000,
             is_simulation=True,
+            train_device_name=self.settings.train_device_name,
         )
 
         self.model_manager = ModelManager(None, self.session_settings, 0)
@@ -123,8 +124,9 @@ class DLSimulation(LearningSimulation):
                                                                    round_nr, accuracy, loss))
                 elif self.settings.dl_accuracy_method == DLAccuracyMethod.TEST_INDIVIDUAL_MODELS:
                     for ind, model in enumerate(self.model_manager.incoming_trained_models.values()):
-                        print("Testing model %d..." % (ind + 1))
-                        accuracy, loss = self.evaluator.evaluate_accuracy(model)
+                        print("Testing model %d on device %s..." % (ind + 1, self.settings.accuracy_device_name))
+                        accuracy, loss = self.evaluator.evaluate_accuracy(
+                            model, device_name=self.settings.accuracy_device_name)
                         with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
                             out_file.write("%s,DL,%f,%d,%d,%f,%f\n" %
                                            (self.settings.dataset, get_event_loop().time(),

@@ -26,6 +26,8 @@ class SimulationSettings:
         self.data_distribution: str = "iid"
         self.accuracy_logging_interval: int = 1
         self.dl_accuracy_method: DLAccuracyMethod = DLAccuracyMethod.TEST_INDIVIDUAL_MODELS
+        self.train_device_name: str = "cpu"
+        self.accuracy_device_name: str = "cpu"
         self.checkpoint_interval: Optional[int] = None
         self.latencies_file: Optional[str] = None
         self.fix_aggregator: bool = False

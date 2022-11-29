@@ -17,6 +17,6 @@ class ModelEvaluator:
             test_dir = os.path.join(data_dir, "data", "test")
         self.dataset = create_dataset(settings, test_dir=test_dir)
 
-    def evaluate_accuracy(self, model):
+    def evaluate_accuracy(self, model, device_name: str = "cpu"):
         model.eval()
-        return self.dataset.test(model)
+        return self.dataset.test(model, device_name)

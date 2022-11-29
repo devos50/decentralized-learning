@@ -100,7 +100,7 @@ class ModelManager:
                 # Lazy initialize the model trainer
                 self.model_trainer = ModelTrainer(self.data_dir, self.settings, self.participant_index)
             train_start_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
-            await self.model_trainer.train(self.model)
+            await self.model_trainer.train(self.model, device_name=self.settings.train_device_name)
             train_end_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
             self.training_times.append(train_end_time - train_start_time)
 

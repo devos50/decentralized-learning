@@ -347,7 +347,7 @@ class Celeba(Dataset):
             )
         raise RuntimeError("Test set not initialized!")
 
-    def test(self, model):
+    def test(self, model, device_name: str = "cpu"):
         """
         Function to evaluate model on the test dataset.
 
@@ -365,7 +365,7 @@ class Celeba(Dataset):
         testloader = self.get_testset()
 
         logging.debug("Test Loader instantiated.")
-        device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        device = torch.device(device_name)
         self.logger.debug("Device for Celeba accuracy check: %s", device)
         model.to(device)
         model.eval()

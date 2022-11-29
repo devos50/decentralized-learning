@@ -170,7 +170,7 @@ class CIFAR10(Dataset):
             return DataLoader(self.testset, batch_size=self.test_batch_size)
         raise RuntimeError("Test set not initialized!")
 
-    def test(self, model):
+    def test(self, model, device_name: str = "cpu"):
         """
         Function to evaluate model on the test dataset.
 
@@ -190,7 +190,7 @@ class CIFAR10(Dataset):
         testloader = self.get_testset()
 
         self.logger.debug("Test Loader instantiated.")
-        device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        device = torch.device(device_name)
         self.logger.debug("Device for CIFAR10 accuracy check: %s", device)
 
         correct = example_number = total_loss = num_batches = 0
