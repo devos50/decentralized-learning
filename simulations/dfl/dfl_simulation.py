@@ -57,6 +57,7 @@ class DFLSimulation(LearningSimulation):
             data_distribution=self.settings.data_distribution,
             eva_block_size=1000,
             is_simulation=True,
+            train_device_name=self.settings.train_device_name,
         )
 
         for ind, node in enumerate(self.nodes):
@@ -78,7 +79,7 @@ class DFLSimulation(LearningSimulation):
 
         if round_nr % self.settings.accuracy_logging_interval == 0 and round_nr > self.latest_accuracy_check_round:
             print("Will compute accuracy for round %d!" % round_nr)
-            accuracy, loss = self.evaluator.evaluate_accuracy(model)
+            accuracy, loss = self.evaluator.evaluate_accuracy(model, device_name=self.settings.accuracy_device_name)
             with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
                 group = "\"s=%d, a=%d\"" % (self.settings.sample_size, self.settings.num_aggregators)
                 out_file.write("%s,%s,%f,%d,%d,%f,%f\n" % (self.settings.dataset, group, get_event_loop().time(),
