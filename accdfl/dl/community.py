@@ -111,5 +111,8 @@ class DLCommunity(LearningCommunity):
 
         json_data = json.loads(result.info.decode())
         incoming_model = unserialize_model(result.data, self.settings.dataset)
-        self.incoming_models[json_data["round"]].append((peer_pk, incoming_model))
+        self.process_incoming_model(incoming_model, peer_pk, json_data["round"])
+
+    def process_incoming_model(self, incoming_model: nn.Module, peer_pk: bytes, round_nr: int):
+        self.incoming_models[round_nr].append((peer_pk, incoming_model))
         self.check_round_complete()

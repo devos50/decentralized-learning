@@ -19,6 +19,7 @@ from ipv8_service import IPv8
 from simulation.discrete_loop import DiscreteLoop
 from simulation.simulation_endpoint import SimulationEndpoint
 
+from simulations.dl.bypass_network_community import DLBypassNetworkCommunity
 from simulations.settings import SimulationSettings
 
 
@@ -48,7 +49,11 @@ class LearningSimulation:
                 print("Created %d peers..." % peer_id)
             endpoint = SimulationEndpoint()
             instance = IPv8(self.get_ipv8_builder(peer_id).finalize(), endpoint_override=endpoint,
-                            extra_communities={'DLCommunity': DLCommunity, 'DFLCommunity': DFLCommunity})
+                            extra_communities={
+                                'DLCommunity': DLCommunity,
+                                'DLBypassNetworkCommunity': DLBypassNetworkCommunity,
+                                'DFLCommunity': DFLCommunity,
+                            })
             await instance.start()
 
             # Set the WAN address of the peer to the address of the endpoint
