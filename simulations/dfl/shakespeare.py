@@ -6,7 +6,7 @@ from simulations.dfl.dfl_simulation import DFLSimulation
 
 if __name__ == "__main__":
     settings = SimulationSettings()
-    settings.duration = 3600 * 20 if "DURATION" not in os.environ else int(os.environ["DURATION"])
+    settings.duration = 3600 * 100 if "DURATION" not in os.environ else int(os.environ["DURATION"])
     settings.dataset = "shakespeare_sub"
     settings.peers = 192
     settings.learning_rate = 0.8
