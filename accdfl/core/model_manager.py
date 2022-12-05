@@ -1,5 +1,4 @@
 import asyncio
-import copy
 import logging
 import os
 import random
@@ -10,6 +9,7 @@ from typing import Dict, Optional, List
 import torch
 import torch.nn as nn
 
+from accdfl.core.gradient_aggregation.fedavg import FedAvg
 from accdfl.core.model_trainer import ModelTrainer
 from accdfl.core.session_settings import SessionSettings
 
@@ -47,9 +47,9 @@ class ModelManager:
     def reset_incoming_trained_models(self):
         self.incoming_trained_models = {}
 
-    def average_trained_models(self) -> Optional[nn.Module]:
+    def aggregate_trained_models(self) -> Optional[nn.Module]:
         models = [model for model in self.incoming_trained_models.values()]
-        return self.average_models(models)
+        return self.settings.gradient_aggregation.aggregate(models)
 
     def dump_settings(self):
         """
@@ -103,18 +103,6 @@ class ModelManager:
             await self.model_trainer.train(self.model, device_name=self.settings.train_device_name)
             train_end_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
             self.training_times.append(train_end_time - train_start_time)
-
-    @staticmethod
-    def average_models(models: List[nn.Module]) -> nn.Module:
-        with torch.no_grad():
-            weights = [float(1. / len(models)) for _ in range(len(models))]
-            center_model = copy.deepcopy(models[0])
-            for p in center_model.parameters():
-                p.mul_(0)
-            for m, w in zip(models, weights):
-                for c1, p1 in zip(center_model.parameters(), m.parameters()):
-                    c1.add_(w * p1)
-            return center_model
 
     async def compute_accuracy(self, model: nn.Module):
         """
