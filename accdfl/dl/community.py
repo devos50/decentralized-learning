@@ -59,6 +59,8 @@ class DLCommunity(LearningCommunity):
         if self.settings.dl.topology == "exp-one-peer":
             nb_ind = (self.round - 1) % len(self.neighbours)
             to_send = [self.neighbours[nb_ind]]
+        else:
+            raise RuntimeError("Unknown DL topology %s" % self.settings.dl.topology)
 
         for peer_pk in to_send:
             peer = self.get_peer_by_pk(peer_pk)

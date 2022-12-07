@@ -29,5 +29,6 @@ def model_trainer(settings):
     return ModelTrainer(os.path.join(os.environ["HOME"], "dfl-data"), settings, 0)
 
 
-def test_train(settings, model, model_trainer):
-    model_trainer.train(model)
+@pytest.mark.asyncio
+async def test_train(settings, model, model_trainer):
+    await model_trainer.train(model)

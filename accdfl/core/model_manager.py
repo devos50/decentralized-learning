@@ -9,6 +9,7 @@ from typing import Dict, Optional, List
 import torch
 import torch.nn as nn
 
+from accdfl.core.gradient_aggregation import GradientAggregationMethod
 from accdfl.core.gradient_aggregation.fedavg import FedAvg
 from accdfl.core.model_trainer import ModelTrainer
 from accdfl.core.session_settings import SessionSettings
@@ -47,9 +48,13 @@ class ModelManager:
     def reset_incoming_trained_models(self):
         self.incoming_trained_models = {}
 
+    def get_aggregation_method(self):
+        if self.settings.gradient_aggregation == GradientAggregationMethod.FEDAVG:
+            return FedAvg
+
     def aggregate_trained_models(self) -> Optional[nn.Module]:
         models = [model for model in self.incoming_trained_models.values()]
-        return self.settings.gradient_aggregation.aggregate(models)
+        return self.get_aggregation_method().aggregate(models)
 
     def dump_settings(self):
         """
@@ -58,6 +63,7 @@ class ModelManager:
         settings_file_path = os.path.join(self.settings.work_dir, "settings.json")
         if not os.path.exists(settings_file_path):
             with open(settings_file_path, "w") as settings_file:
+                print(self.settings)
                 settings_file.write(self.settings.to_json())
 
     async def train(self):

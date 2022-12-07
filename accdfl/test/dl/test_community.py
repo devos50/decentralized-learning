@@ -3,9 +3,10 @@ from binascii import hexlify
 
 import pytest
 
-from accdfl.core.session_settings import LearningSettings, SessionSettings
+from accdfl.core.session_settings import LearningSettings, SessionSettings, DLSettings
 from accdfl.dl.community import DLCommunity
 from accdfl.test.util.fake_model_manager import FakeModelManager
+
 from ipv8.test.base import TestBase
 from ipv8.test.mocking.ipv8 import MockIPv8
 
@@ -30,6 +31,8 @@ class TestDLCommunityBase(TestBase):
             batch_size=self.batch_size
         )
 
+        dl_settings = DLSettings()
+
         self.settings = SessionSettings(
             dataset=self.DATASET,
             work_dir=self.temporary_directory(),
@@ -37,6 +40,7 @@ class TestDLCommunityBase(TestBase):
             participants=[hexlify(node.my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
             all_participants=[hexlify(node.my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
             target_participants=self.TARGET_NUM_NODES,
+            dl=dl_settings,
             data_distribution="iid",
             train_in_subprocess=False,
         )
