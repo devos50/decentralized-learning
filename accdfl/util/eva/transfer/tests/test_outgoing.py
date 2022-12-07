@@ -2,50 +2,54 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from tribler.core.components.ipv8.eva.exceptions import SizeException
-from tribler.core.components.ipv8.eva.payload import Data
-from tribler.core.components.ipv8.eva.protocol import EVAProtocol
-from tribler.core.components.ipv8.eva.result import TransferResult
-from tribler.core.components.ipv8.eva.settings import EVASettings
-from tribler.core.components.ipv8.eva.transfer.outgoing import OutgoingTransfer
+from accdfl.util.eva.payload import Data
+from accdfl.util.eva.protocol import EVAProtocol, blank
+from accdfl.util.eva.result import TransferResult
+from accdfl.util.eva.settings import EVASettings
+from accdfl.util.eva.transfer.outgoing import OutgoingTransfer
 
 
 # pylint: disable=redefined-outer-name, protected-access
 
 @pytest.fixture
-def outgoing_transfer() -> OutgoingTransfer:
+async def outgoing_transfer():
     settings = EVASettings(block_size=2)
-    eva = EVAProtocol(Mock(), settings=settings)
+    eva = EVAProtocol(community=Mock(), settings=settings)
     peer = Mock()
 
-    transfer = OutgoingTransfer(container=eva.outgoing, info=b'info', data=b'binary_data', nonce=0,
-                                on_complete=AsyncMock(), peer=peer, settings=settings)
+    transfer = OutgoingTransfer(
+        container=eva.outgoing,
+        info=b'info',
+        data=b'binary_data',
+        data_size=len(b'binary_data'),
+        nonce=0,
+        protocol_task_group=eva.task_group,
+        send_message=Mock(),
+        on_complete=blank,
+        on_error=blank,
+        peer=peer,
+        settings=settings
+    )
 
-    eva.outgoing[peer] = transfer
-    return transfer
+    transfer.container[peer] = transfer
+    yield transfer
+
+    await eva.shutdown()
 
 
-def test_size_exception():
-    settings = EVASettings(binary_size_limit=10)
-    limit = settings.binary_size_limit
-    with pytest.raises(SizeException):
-        OutgoingTransfer(container=Mock(), info=b'info', data=b'd' * (limit + 1), nonce=0, on_complete=AsyncMock(),
-                         peer=Mock(), settings=settings)
-
-
-def test_block_count(outgoing_transfer: OutgoingTransfer):
+async def test_block_count(outgoing_transfer: OutgoingTransfer):
     # data is b'binary_data' and block_size is `2`
     assert outgoing_transfer.block_count == 6
 
 
-def test_on_acknowledgement(outgoing_transfer: OutgoingTransfer):
-    assert not outgoing_transfer.acknowledgement_received
+async def test_on_acknowledgement(outgoing_transfer: OutgoingTransfer):
+    assert not outgoing_transfer.request_received
     assert not outgoing_transfer.updated
 
     actual = list(outgoing_transfer.on_acknowledgement(ack_number=0, window_size=16))
 
-    assert outgoing_transfer.acknowledgement_received
-    assert outgoing_transfer.updated
+    assert outgoing_transfer.request_received
+    assert outgoing_transfer.updated is not None
     expected = [
         Data(0, 0, b'bi'),
         Data(1, 0, b'na'),
@@ -59,9 +63,11 @@ def test_on_acknowledgement(outgoing_transfer: OutgoingTransfer):
     assert all(a.data == e.data and a.number == e.number for a, e in zip(actual, expected))
 
 
-def test_on_final_acknowledgement(outgoing_transfer: OutgoingTransfer):
-    outgoing_transfer.finish = Mock()
+async def test_on_final_acknowledgement(outgoing_transfer: OutgoingTransfer):
+    outgoing_transfer.finish = AsyncMock()
     data_list = list(outgoing_transfer.on_acknowledgement(ack_number=10, window_size=16))
+    await outgoing_transfer.protocol_task_group.wait()
+
     expected_result = TransferResult(peer=outgoing_transfer.peer, info=outgoing_transfer.info,
                                      data=outgoing_transfer.data, nonce=outgoing_transfer.nonce)
     assert not data_list
@@ -79,7 +85,7 @@ async def test_finish(outgoing_transfer: OutgoingTransfer):
     assert not container
 
 
-def test_get_block(outgoing_transfer: OutgoingTransfer):
+async def test_get_block(outgoing_transfer: OutgoingTransfer):
     assert outgoing_transfer._get_block(0) == b'bi'
     assert outgoing_transfer._get_block(1) == b'na'
     ...

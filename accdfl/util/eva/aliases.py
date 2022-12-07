@@ -7,3 +7,4 @@ from accdfl.util.eva.result import TransferResult
 
 TransferCompleteCallback = Callable[[TransferResult], Coroutine]
 TransferErrorCallback = Callable[[Peer, TransferException], Coroutine]
+TransferRequestCallback = Callable[[Peer, bytes], Coroutine]
