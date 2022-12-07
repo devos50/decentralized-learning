@@ -3,16 +3,16 @@ from binascii import hexlify
 
 import pytest
 
-from accdfl.core.session_settings import LearningSettings, SessionSettings, DLSettings
-from accdfl.dl.community import DLCommunity
+from accdfl.core.session_settings import GLSettings, LearningSettings, SessionSettings
+from accdfl.gl.community import GLCommunity
 from accdfl.test.util.fake_model_manager import FakeModelManager
 
 from ipv8.test.base import TestBase
 from ipv8.test.mocking.ipv8 import MockIPv8
 
 
-class TestDLCommunityBase(TestBase):
-    NUM_NODES = 2
+class TestGLCommunityBase(TestBase):
+    NUM_NODES = 4
     TARGET_NUM_NODES = NUM_NODES
     DATASET = "cifar10"
 
@@ -22,7 +22,7 @@ class TestDLCommunityBase(TestBase):
     def setUp(self):
         super().setUp()
 
-        self.initialize(DLCommunity, self.NUM_NODES)
+        self.initialize(GLCommunity, self.NUM_NODES)
 
         learning_settings = LearningSettings(
             learning_rate=0.1,
@@ -30,7 +30,7 @@ class TestDLCommunityBase(TestBase):
             batch_size=1
         )
 
-        dl_settings = DLSettings()
+        gl_settings = GLSettings(round_timeout=0.1)
 
         self.settings = SessionSettings(
             dataset=self.DATASET,
@@ -39,7 +39,7 @@ class TestDLCommunityBase(TestBase):
             participants=[hexlify(node.my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
             all_participants=[hexlify(node.my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
             target_participants=self.TARGET_NUM_NODES,
-            dl=dl_settings,
+            gl=gl_settings,
             data_distribution="iid",
             train_in_subprocess=False,
         )
@@ -50,12 +50,12 @@ class TestDLCommunityBase(TestBase):
             node.overlay.model_manager = FakeModelManager(cur_model_mgr.model, self.settings,
                                                           cur_model_mgr.participant_index)
 
-            # Build a simple ring topology
+            # Build a fully connected topology
             nb_node = self.nodes[(ind + 1) % len(self.nodes)]
             node.overlay.neighbours = [nb_node.overlay.my_peer.public_key.key_to_bin()]
 
 
-class TestDLCommunity(TestDLCommunityBase):
+class TestGLCommunity(TestGLCommunityBase):
 
     @pytest.mark.asyncio
     async def test_two_nodes_round(self):
@@ -64,6 +64,7 @@ class TestDLCommunity(TestDLCommunityBase):
             assert node.overlay.did_setup
             node.overlay.start()
 
-        await sleep(0.2)
+        await sleep(0.5)
 
-        assert all([node.overlay.round == 2 for node in self.nodes])
+        # Make sure that nodes have made progress.
+        assert all([node.overlay.round > 2 for node in self.nodes])

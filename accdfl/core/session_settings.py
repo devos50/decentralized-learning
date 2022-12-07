@@ -40,6 +40,14 @@ class DLSettings:
     topology: str = "exp-one-peer"
 
 
+@dataclass
+class GLSettings:
+    """
+    Setting related to gossip learning.
+    """
+    round_timeout: float = 60
+
+
 @dataclass_json
 @dataclass
 class SessionSettings:
@@ -54,6 +62,7 @@ class SessionSettings:
     target_participants: int
     dfl: Optional[DFLSettings] = None
     dl: Optional[DLSettings] = None
+    gl: Optional[GLSettings] = None
     data_distribution: str = "iid"
     gradient_aggregation: GradientAggregationMethod = GradientAggregationMethod.FEDAVG
     model_seed: int = 0
