@@ -96,7 +96,7 @@ class DLSimulation(LearningSimulation):
         shutil.rmtree(models_dir, ignore_errors=True)
         os.makedirs(models_dir, exist_ok=True)
 
-        avg_model = self.model_manager.average_trained_models()
+        avg_model = self.model_manager.aggregate_trained_models()
         for peer_ind, node in enumerate(self.nodes):
             torch.save(node.overlays[0].model_manager.model.state_dict(),
                        os.path.join(models_dir, "%d.model" % peer_ind))
@@ -125,7 +125,7 @@ class DLSimulation(LearningSimulation):
 
             try:
                 if self.settings.dl_accuracy_method == DLAccuracyMethod.AGGREGATE_THEN_TEST:
-                    avg_model = self.model_manager.average_trained_models()
+                    avg_model = self.model_manager.aggregate_trained_models()
                     accuracy, loss = self.evaluator.evaluate_accuracy(avg_model)
                     with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
                         out_file.write("%s,DL,%f,%d,%d,%f,%f\n" % (self.settings.dataset, get_event_loop().time(), 0,

@@ -436,7 +436,7 @@ class DFLCommunity(LearningCommunity):
             # 3.1. Aggregate these models
             self.logger.info("Aggregator %s will average the models of round %d",
                              self.peer_manager.get_my_short_id(), model_round)
-            avg_model = self.model_manager.average_trained_models()
+            avg_model = self.model_manager.aggregate_trained_models()
 
             # 3.2. Remove these models from the model manager (they are not needed anymore)
             self.model_manager.reset_incoming_trained_models()

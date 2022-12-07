@@ -91,7 +91,7 @@ class DLCommunity(LearningCommunity):
             model = self.model_manager.incoming_trained_models[peer_pk]
             self.model_manager.incoming_trained_models[peer_pk] = model.to(device)
 
-        self.model_manager.model = self.model_manager.average_trained_models()
+        self.model_manager.model = self.model_manager.aggregate_trained_models()
         if self.round_complete_callback:
             ensure_future(self.round_complete_callback(self.round))
         if self.aggregate_complete_callback:

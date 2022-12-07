@@ -1,9 +1,11 @@
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Type
 
 from dataclasses_json import dataclass_json
 
 from accdfl.core import TransmissionMethod
+from accdfl.core.gradient_aggregation import GradientAggregation
+from accdfl.core.gradient_aggregation.fedavg import FedAvg
 
 
 @dataclass
@@ -53,6 +55,7 @@ class SessionSettings:
     dfl: Optional[DFLSettings] = None
     dl: Optional[DLSettings] = None
     data_distribution: str = "iid"
+    gradient_aggregation: Type[GradientAggregation] = FedAvg
     model_seed: int = 0
     model_send_delay: float = 1.0
     train_in_subprocess: bool = False
