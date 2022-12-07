@@ -1,5 +1,4 @@
 import os
-import shutil
 from asyncio import get_event_loop
 from binascii import hexlify
 from typing import Optional
@@ -11,8 +10,6 @@ from simulations.dl import ExponentialTwoGraph, GetDynamicOnePeerSendRecvRanks
 from simulations.settings import SimulationSettings, DLAccuracyMethod
 
 from simulations.learning_simulation import LearningSimulation
-
-import torch
 
 
 class DLSimulation(LearningSimulation):
@@ -87,20 +84,6 @@ class DLSimulation(LearningSimulation):
                     self.nodes[node_ind].overlays[0].neighbours.append(nb_pk)
         else:
             raise RuntimeError("Unknown DL topology %s" % self.session_settings.dl.topology)
-
-    def checkpoint_models(self, round_nr: int):
-        """
-        Dump all models during a particular round.
-        """
-        models_dir = os.path.join(self.data_dir, "models", "%d" % round_nr)
-        shutil.rmtree(models_dir, ignore_errors=True)
-        os.makedirs(models_dir, exist_ok=True)
-
-        avg_model = self.model_manager.aggregate_trained_models()
-        for peer_ind, node in enumerate(self.nodes):
-            torch.save(node.overlays[0].model_manager.model.state_dict(),
-                       os.path.join(models_dir, "%d.model" % peer_ind))
-        torch.save(avg_model.state_dict(), os.path.join(models_dir, "avg.model"))
 
     async def on_round_complete(self, peer_ind: int, round_nr: int):
         self.num_round_completed += 1

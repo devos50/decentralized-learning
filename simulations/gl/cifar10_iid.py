@@ -2,7 +2,7 @@ import os
 from asyncio import ensure_future
 
 from simulations.settings import SimulationSettings
-from simulations.dl.dl_simulation import DLSimulation
+from simulations.gl.gl_simulation import GLSimulation
 
 if __name__ == "__main__":
     settings = SimulationSettings()
@@ -17,10 +17,9 @@ if __name__ == "__main__":
     settings.checkpoint_interval = None if "CHECKPOINT_INTERVAL" not in os.environ else int(os.environ["CHECKPOINT_INTERVAL"])
     settings.train_device_name = "cpu" if "TRAIN_DEVICE_NAME" not in os.environ else os.environ["TRAIN_DEVICE_NAME"]
     settings.accuracy_device_name = "cpu" if "ACC_DEVICE_NAME" not in os.environ else os.environ["ACC_DEVICE_NAME"]
-    settings.bypass_model_transfers = False if "BYPASS_MODEL_TRANSFERS" not in os.environ else bool(os.environ["BYPASS_MODEL_TRANSFERS"])
-    settings.topology = "exp-one-peer"
+    settings.gl_round_timeout = 60 if "GL_ROUND_TIMEOUT" not in os.environ else float(os.environ["GL_ROUND_TIMEOUT"])
     settings.latencies_file = "data/latencies.txt"
-    simulation = DLSimulation(settings)
+    simulation = GLSimulation(settings)
     ensure_future(simulation.run())
 
     simulation.loop.run_forever()

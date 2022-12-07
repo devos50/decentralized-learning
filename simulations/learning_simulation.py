@@ -6,12 +6,15 @@ import time
 from statistics import median, mean
 from typing import Optional
 
+import torch
+
 import yappi
 
 from accdfl.core.model_evaluator import ModelEvaluator
 from accdfl.core.session_settings import SessionSettings
 from accdfl.dfl.community import DFLCommunity
 from accdfl.dl.community import DLCommunity
+from accdfl.gl.community import GLCommunity
 
 from ipv8.configuration import ConfigBuilder
 from ipv8_service import IPv8
@@ -51,6 +54,7 @@ class LearningSimulation:
             instance = IPv8(self.get_ipv8_builder(peer_id).finalize(), endpoint_override=endpoint,
                             extra_communities={
                                 'DLCommunity': DLCommunity,
+                                'GLCommunity': GLCommunity,
                                 'DLBypassNetworkCommunity': DLBypassNetworkCommunity,
                                 'DFLCommunity': DFLCommunity,
                             })
@@ -169,6 +173,30 @@ class LearningSimulation:
         This method is called when IPv8 is started and peer discovery is finished.
         """
         pass
+
+    def checkpoint_models(self, round_nr: int):
+        """
+        Dump all models during a particular round.
+        """
+        models_dir = os.path.join(self.data_dir, "models", "%d" % round_nr)
+        shutil.rmtree(models_dir, ignore_errors=True)
+        os.makedirs(models_dir, exist_ok=True)
+
+        avg_model = self.model_manager.aggregate_trained_models()
+        for peer_ind, node in enumerate(self.nodes):
+            torch.save(node.overlays[0].model_manager.model.state_dict(),
+                       os.path.join(models_dir, "%d.model" % peer_ind))
+        torch.save(avg_model.state_dict(), os.path.join(models_dir, "avg.model"))
+
+    def checkpoint_model(self, peer_ind: int, round_nr: int):
+        """
+        Checkpoint a particular model of a peer during a particular round.
+        """
+        models_dir = os.path.join(self.data_dir, "models", "%d" % round_nr)
+        os.makedirs(models_dir, exist_ok=True)
+
+        model = self.nodes[peer_ind].overlays[0].model_manager.model
+        torch.save(model.state_dict(), os.path.join(models_dir, "%d.model" % peer_ind))
 
     def on_simulation_finished(self) -> None:
         """
