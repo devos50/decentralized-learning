@@ -84,7 +84,7 @@ class GLSimulation(LearningSimulation):
                 with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
                     out_file.write("%s,GL,%f,%d,%d,%f,%f\n" %
                                    (self.settings.dataset, get_event_loop().time(),
-                                    0, round_nr, accuracy, loss))
+                                    peer_ind, round_nr, accuracy, loss))
             except ValueError as e:
                 print("Encountered error during evaluation check - dumping all models and stopping")
                 self.checkpoint_models(round_nr)
