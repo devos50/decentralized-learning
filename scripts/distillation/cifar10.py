@@ -16,6 +16,9 @@ from accdfl.core.optimizer.sgd import SGDOptimizer
 from accdfl.core.session_settings import LearningSettings, SessionSettings
 
 
+NUM_ROUNDS = 50
+
+
 def loss_fn_kd(outputs, labels, teacher_outputs):
     """
     Compute the knowledge-distillation (KD) loss given outputs, labels.
@@ -32,6 +35,7 @@ def loss_fn_kd(outputs, labels, teacher_outputs):
               F.cross_entropy(outputs, labels) * (1. - alpha)
 
     return KD_loss
+
 
 # Define settings
 learning_settings = LearningSettings(
@@ -69,7 +73,7 @@ device = "cpu" if not torch.cuda.is_available() else "cuda:0"
 print("Device to train on: %s" % device)
 
 # Determine outputs of the teacher model on the public training data
-for epoch in range(4):
+for epoch in range(NUM_ROUNDS):
     optimizer = SGDOptimizer(student_model, settings.learning.learning_rate, settings.learning.momentum)
     train_set = trainer.dataset.get_trainset(batch_size=settings.learning.batch_size, shuffle=True)
     train_set_it = iter(train_set)
