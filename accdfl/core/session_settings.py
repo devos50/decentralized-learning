@@ -16,6 +16,8 @@ class LearningSettings:
     learning_rate: float
     momentum: float
     batch_size: int
+    kd_temperature: Optional[float] = None
+    kd_alpha: Optional[float] = None
 
 
 @dataclass
