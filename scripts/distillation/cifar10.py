@@ -63,8 +63,6 @@ data_dir = os.path.join(os.environ["HOME"], "dfl-data")
 mapping = Linear(1, 1)
 s = CIFAR10(0, 0, mapping, train_dir=data_dir, test_dir=data_dir)
 
-print(s.test(teacher_model))
-
 # Create the student model
 student_model = create_model("cifar10")
 trainer = ModelTrainer(data_dir, settings, 0)
@@ -73,6 +71,8 @@ device = "cpu" if not torch.cuda.is_available() else "cuda:0"
 print("Device to train on: %s" % device)
 teacher_model.to(device)
 student_model.to(device)
+
+print("Teacher model accuracy: %f, loss: %f" % s.test(teacher_model, device_name=device))
 
 # Determine outputs of the teacher model on the public training data
 for epoch in range(NUM_ROUNDS):
@@ -96,5 +96,5 @@ for epoch in range(NUM_ROUNDS):
         loss.backward()
         optimizer.optimizer.step()
 
-    acc, loss = s.test(student_model)
+    acc, loss = s.test(student_model, device_name=device)
     print("Accuracy after %d epochs: %f, %f" % (epoch + 1, acc, loss))
