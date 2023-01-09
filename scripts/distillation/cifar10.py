@@ -71,6 +71,8 @@ trainer = ModelTrainer(data_dir, settings, 0)
 
 device = "cpu" if not torch.cuda.is_available() else "cuda:0"
 print("Device to train on: %s" % device)
+teacher_model.to(device)
+student_model.to(device)
 
 # Determine outputs of the teacher model on the public training data
 for epoch in range(NUM_ROUNDS):
