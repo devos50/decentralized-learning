@@ -17,7 +17,7 @@ from accdfl.core.optimizer.sgd import SGDOptimizer
 from accdfl.core.session_settings import LearningSettings, SessionSettings
 
 
-NUM_ROUNDS = 50
+NUM_ROUNDS = 100 if "NUM_ROUNDS" not in os.environ else int(os.environ["NUM_ROUNDS"])
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("cifar10_distillation")
@@ -47,7 +47,7 @@ if __name__ == "__main__":
         momentum=0.9,
         batch_size=200,
         kd_temperature=6 if "TEMPERATURE" not in os.environ else int(os.environ["TEMPERATURE"]),
-        kd_alpha=0.95 if "ALPHA" not in os.environ else int(os.environ["ALPHA"]),
+        kd_alpha=0.95 if "ALPHA" not in os.environ else float(os.environ["ALPHA"]),
     )
 
     settings = SessionSettings(
