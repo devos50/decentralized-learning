@@ -28,9 +28,9 @@ class ModelTrainer:
             train_dir = os.path.join(data_dir, "per_user_data", "train")
         self.dataset: Dataset = create_dataset(settings, participant_index=participant_index, train_dir=train_dir)
 
-    async def train(self, model, device_name: str = "cpu") -> int:
+    async def train(self, model, device_name: str = "cpu") -> None:
         """
-        Train the model on a batch. Return an integer that indicates how many local steps we have done.
+        Train the model on the full dataset.
         """
         device = torch.device(device_name)
         model.to(device)
@@ -73,5 +73,3 @@ class ModelTrainer:
             # time for training. Otherwise,training would be instant.
             elapsed_time = time.time() - start_time
             await sleep(elapsed_time)
-
-        return model

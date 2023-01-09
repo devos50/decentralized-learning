@@ -37,22 +37,24 @@ s = CIFAR10(0, 0, mapping, train_dir=data_dir, test_dir=data_dir)
 
 print("Datasets prepared")
 
+device = "cpu" if not torch.cuda.is_available() else "cuda:0"
+print("Device to train/determine accuracy: %s" % device)
+
 # Model
 model = create_model(settings.dataset)
 print(model)
 
 print("Initial evaluation")
-print(s.test(model))
-
+print(s.test(model, device_name=device))
 
 async def run():
     for round in range(NUM_ROUNDS):
         start_time = time.time()
         print("Starting training round %d" % (round + 1))
         trainer = ModelTrainer(data_dir, settings, 0)
-        await trainer.train(model)
+        await trainer.train(model, device_name=device)
         print("Training round %d done - time: %f" % (round + 1, time.time() - start_time))
-        print(s.test(model))
+        print(s.test(model, device_name=device))
 
         # Save the model
         torch.save(model.state_dict(), "cifar10.model")
