@@ -68,7 +68,8 @@ if __name__ == "__main__":
 
     # Load a pre-trained CIFAR10 model
     teacher_model = create_model("cifar10")
-    teacher_model.load_state_dict(torch.load("../cifar10.model"))
+    teacher_model_path = "../cifar10_model" if "TEACHER_MODEL" not in os.environ else os.environ["TEACHER_MODEL"]
+    teacher_model.load_state_dict(torch.load(teacher_model_path))
 
     # Test accuracy
     data_dir = os.path.join(os.environ["HOME"], "dfl-data")
