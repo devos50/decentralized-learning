@@ -62,8 +62,7 @@ if __name__ == "__main__":
     if not os.path.exists("data"):
         os.mkdir("data")
 
-    filename = "accuracies_%d_%f.csv" % (learning_settings.kd_temperature, learning_settings.kd_alpha)
-    with open(os.path.join("data", filename), "w") as out_file:
+    with open(os.path.join("data", "accuracies.csv"), "w") as out_file:
         out_file.write("round,temperature,alpha,accuracy,loss\n")
 
     # Load a pre-trained CIFAR10 model
@@ -112,6 +111,6 @@ if __name__ == "__main__":
 
         acc, loss = s.test(student_model, device_name=device)
         print("Accuracy after %d epochs: %f, %f" % (epoch + 1, acc, loss))
-        with open(os.path.join("data", filename), "a") as out_file:
+        with open(os.path.join("data", "accuracies.csv"), "a") as out_file:
             out_file.write("%d,%d,%f,%f,%f\n" % (epoch + 1, learning_settings.kd_temperature,
                                                  learning_settings.kd_alpha, acc, loss))
