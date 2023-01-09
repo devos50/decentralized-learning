@@ -65,9 +65,11 @@ print(s.test(teacher_model))
 student_model = create_model("cifar10")
 trainer = ModelTrainer(data_dir, settings, 0)
 
+device = "cpu" if not torch.cuda.is_available() else "cuda:0"
+print("Device to train on: %s" % device)
+
 # Determine outputs of the teacher model on the public training data
 for epoch in range(4):
-    device = torch.device("cpu")
     optimizer = SGDOptimizer(student_model, settings.learning.learning_rate, settings.learning.momentum)
     train_set = trainer.dataset.get_trainset(batch_size=settings.learning.batch_size, shuffle=True)
     train_set_it = iter(train_set)
