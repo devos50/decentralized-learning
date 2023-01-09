@@ -11,9 +11,9 @@ from accdfl.core.datasets.CIFAR10 import CIFAR10
 from accdfl.core.models import create_model
 from accdfl.core.session_settings import SessionSettings, LearningSettings
 
-NUM_ROUNDS = 30
+NUM_ROUNDS = 50
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 learning_settings = LearningSettings(
     learning_rate=0.001,
@@ -47,17 +47,22 @@ print(model)
 print("Initial evaluation")
 print(s.test(model, device_name=device))
 
+
 async def run():
+    highest_acc = 0
     for round in range(NUM_ROUNDS):
         start_time = time.time()
         print("Starting training round %d" % (round + 1))
         trainer = ModelTrainer(data_dir, settings, 0)
         await trainer.train(model, device_name=device)
         print("Training round %d done - time: %f" % (round + 1, time.time() - start_time))
-        print(s.test(model, device_name=device))
+        acc, loss = s.test(model, device_name=device)
+        print("Accuracy: %f, loss: %f" % (acc, loss))
 
-        # Save the model
-        torch.save(model.state_dict(), "cifar10.model")
+        # Save the model if it's better
+        if acc > highest_acc:
+            torch.save(model.state_dict(), "cifar10.model")
+            highest_acc = acc
 
 
 loop = asyncio.get_event_loop()
