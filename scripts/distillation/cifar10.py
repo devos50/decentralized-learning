@@ -27,6 +27,7 @@ def loss_fn_kd(outputs, labels, teacher_outputs, settings: LearningSettings):
     """
     Compute the knowledge-distillation (KD) loss given outputs, labels.
     "Hyperparameters": temperature and alpha
+    Alpha is the weight that is given to the ground truth target labels.
     NOTE: the KL Divergence for PyTorch comparing the softmaxs of teacher
     and student expects the input tensor to be log probabilities! See Issue #2
 
@@ -47,7 +48,7 @@ if __name__ == "__main__":
         momentum=0.9,
         batch_size=200,
         kd_temperature=6 if "TEMPERATURE" not in os.environ else int(os.environ["TEMPERATURE"]),
-        kd_alpha=0.95 if "ALPHA" not in os.environ else float(os.environ["ALPHA"]),
+        kd_alpha=1 if "ALPHA" not in os.environ else float(os.environ["ALPHA"]),
     )
 
     settings = SessionSettings(
