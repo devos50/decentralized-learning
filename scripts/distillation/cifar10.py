@@ -23,21 +23,17 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("cifar10_distillation")
 
 
-def loss_fn_kd(outputs, labels, teacher_outputs, settings: LearningSettings):
+def loss_fn_kd(outputs, teacher_outputs, settings: LearningSettings):
     """
     Compute the knowledge-distillation (KD) loss given outputs, labels.
-    "Hyperparameters": temperature and alpha
-    Alpha is the weight that is given to the ground truth target labels.
+    "Hyperparameters": temperature
     NOTE: the KL Divergence for PyTorch comparing the softmaxs of teacher
     and student expects the input tensor to be log probabilities! See Issue #2
 
     Taken from https://github.com/haitongli/knowledge-distillation-pytorch/blob/9937528f0be0efa979c745174fbcbe9621cea8b7/model/net.py
     """
-    alpha = settings.kd_alpha
     T = settings.kd_temperature
-    KD_loss = nn.KLDivLoss()(F.log_softmax(outputs/T, dim=1),
-                             F.softmax(teacher_outputs/T, dim=1)) * (alpha * T * T) + \
-              F.cross_entropy(outputs, labels) * (1. - alpha)
+    KD_loss = nn.KLDivLoss()(F.log_softmax(outputs/T, dim=1), F.softmax(teacher_outputs/T, dim=1)) * T * T
 
     return KD_loss
 
@@ -48,7 +44,6 @@ if __name__ == "__main__":
         momentum=0.9,
         batch_size=200,
         kd_temperature=6 if "TEMPERATURE" not in os.environ else int(os.environ["TEMPERATURE"]),
-        kd_alpha=1 if "ALPHA" not in os.environ else float(os.environ["ALPHA"]),
     )
 
     settings = SessionSettings(
@@ -64,7 +59,7 @@ if __name__ == "__main__":
         os.mkdir("data")
 
     with open(os.path.join("data", "accuracies.csv"), "w") as out_file:
-        out_file.write("round,temperature,alpha,accuracy,loss\n")
+        out_file.write("round,temperature,accuracy,loss\n")
 
     # Load a pre-trained CIFAR10 model
     teacher_model = create_model("cifar10")
@@ -98,13 +93,13 @@ if __name__ == "__main__":
             local_steps += 1
         logger.info("Will perform %d local steps", local_steps)
         for local_step in range(local_steps):
-            data, target = next(train_set_it)
-            data, target = Variable(data.to(device)), Variable(target.to(device))
+            data, _ = next(train_set_it)
+            data = Variable(data.to(device))
 
             logger.debug('d-sgd.next node forward propagation (step %d/%d)', local_step, local_steps)
             teacher_output = teacher_model.forward(data)
             student_output = student_model.forward(data)
-            loss = loss_fn_kd(student_output, target, teacher_output, learning_settings)
+            loss = loss_fn_kd(student_output, teacher_output, learning_settings)
 
             optimizer.optimizer.zero_grad()
             loss.backward()
@@ -113,5 +108,4 @@ if __name__ == "__main__":
         acc, loss = s.test(student_model, device_name=device)
         print("Accuracy after %d epochs: %f, %f" % (epoch + 1, acc, loss))
         with open(os.path.join("data", "accuracies.csv"), "a") as out_file:
-            out_file.write("%d,%d,%f,%f,%f\n" % (epoch + 1, learning_settings.kd_temperature,
-                                                 learning_settings.kd_alpha, acc, loss))
+            out_file.write("%d,%d,%f,%f\n" % (epoch + 1, learning_settings.kd_temperature, acc, loss))
