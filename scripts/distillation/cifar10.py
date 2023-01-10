@@ -47,7 +47,7 @@ if __name__ == "__main__":
     )
 
     settings = SessionSettings(
-        dataset="cifar10",
+        dataset="cifar100",
         work_dir="",
         learning=learning_settings,
         participants=["a"],
@@ -63,14 +63,14 @@ if __name__ == "__main__":
 
     # Load a pre-trained CIFAR10 model
     teacher_model = create_model("cifar10")
-    teacher_model_path = "../cifar10_model" if "TEACHER_MODEL" not in os.environ else os.environ["TEACHER_MODEL"]
+    teacher_model_path = "../cifar10.model" if "TEACHER_MODEL" not in os.environ else os.environ["TEACHER_MODEL"]
     teacher_model.load_state_dict(torch.load(teacher_model_path))
 
     # Test accuracy
     data_dir = os.path.join(os.environ["HOME"], "dfl-data")
 
     mapping = Linear(1, 1)
-    s = CIFAR10(0, 0, mapping, train_dir=data_dir, test_dir=data_dir)
+    cifar10_testset = CIFAR10(0, 0, mapping, train_dir=data_dir, test_dir=data_dir)
 
     # Create the student model
     student_model = create_model("cifar10")
@@ -81,7 +81,8 @@ if __name__ == "__main__":
     teacher_model.to(device)
     student_model.to(device)
 
-    print("Teacher model accuracy: %f, loss: %f" % s.test(teacher_model, device_name=device))
+    acc, loss = cifar10_testset.test(teacher_model, device_name=device)
+    print("Teacher model accuracy: %f, loss: %f" % (acc, loss))
 
     # Determine outputs of the teacher model on the public training data
     for epoch in range(NUM_ROUNDS):
@@ -105,7 +106,7 @@ if __name__ == "__main__":
             loss.backward()
             optimizer.optimizer.step()
 
-        acc, loss = s.test(student_model, device_name=device)
+        acc, loss = cifar10_testset.test(student_model, device_name=device)
         print("Accuracy after %d epochs: %f, %f" % (epoch + 1, acc, loss))
         with open(os.path.join("data", "accuracies.csv"), "a") as out_file:
             out_file.write("%d,%d,%f,%f\n" % (epoch + 1, learning_settings.kd_temperature, acc, loss))
