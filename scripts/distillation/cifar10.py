@@ -65,7 +65,7 @@ def get_random_images_data_loader(num_images: int, batch_size: int):
 
 if __name__ == "__main__":
     learning_settings = LearningSettings(
-        learning_rate=0.001,
+        learning_rate=0.001 if "LEARNING_RATE" not in os.environ else float(os.environ["LEARNING_RATE"]),
         momentum=0.9,
         batch_size=200,
         kd_temperature=6 if "TEMPERATURE" not in os.environ else int(os.environ["TEMPERATURE"]),
