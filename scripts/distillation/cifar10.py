@@ -3,13 +3,17 @@ Test to distill knowledge from a CIFAR10 pre-trained model to another one.
 """
 import logging
 import os
+import random
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
+from torch.utils.data import DataLoader
 
 from accdfl.core.datasets.CIFAR10 import CIFAR10
+from accdfl.core.datasets.Data import Data
 from accdfl.core.mappings import Linear
 from accdfl.core.model_trainer import ModelTrainer
 from accdfl.core.models import create_model
@@ -19,7 +23,7 @@ from accdfl.core.session_settings import LearningSettings, SessionSettings
 
 NUM_ROUNDS = 100 if "NUM_ROUNDS" not in os.environ else int(os.environ["NUM_ROUNDS"])
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger("cifar10_distillation")
 
 
@@ -36,6 +40,27 @@ def loss_fn_kd(outputs, teacher_outputs, settings: LearningSettings):
     KD_loss = nn.KLDivLoss()(F.log_softmax(outputs/T, dim=1), F.softmax(teacher_outputs/T, dim=1)) * T * T
 
     return KD_loss
+
+
+def get_random_images_data_loader(num_images: int, batch_size: int):
+    rand = random.Random(42)
+    x_data = []
+    for img_ind in range(num_images):
+        if img_ind % 1000 == 0:
+            logger.debug("Generated %d images..." % img_ind)
+
+        img = []
+        for channel in range(3):
+            channel_data = []
+            for y in range(32):
+                row = []
+                for x in range(32):
+                    row.append(rand.random())
+                channel_data.append(row)
+            img.append(channel_data)
+        x_data.append(img)
+
+    return DataLoader(Data(x=torch.tensor(x_data), y=torch.tensor([1] * num_images)), batch_size=batch_size, shuffle=True)
 
 
 if __name__ == "__main__":
@@ -74,7 +99,7 @@ if __name__ == "__main__":
 
     # Create the student model
     student_model = create_model("cifar10")
-    trainer = ModelTrainer(data_dir, settings, 0)
+    #trainer = ModelTrainer(data_dir, settings, 0)
 
     device = "cpu" if not torch.cuda.is_available() else "cuda:0"
     logger.debug("Device to train on: %s", device)
@@ -84,10 +109,12 @@ if __name__ == "__main__":
     acc, loss = cifar10_testset.test(teacher_model, device_name=device)
     print("Teacher model accuracy: %f, loss: %f" % (acc, loss))
 
+    # train_set = trainer.dataset.get_trainset(batch_size=settings.learning.batch_size, shuffle=True)
+    train_set = get_random_images_data_loader(50000, settings.learning.batch_size)
+
     # Determine outputs of the teacher model on the public training data
     for epoch in range(NUM_ROUNDS):
         optimizer = SGDOptimizer(student_model, settings.learning.learning_rate, settings.learning.momentum)
-        train_set = trainer.dataset.get_trainset(batch_size=settings.learning.batch_size, shuffle=True)
         train_set_it = iter(train_set)
         local_steps = len(train_set.dataset) // settings.learning.batch_size
         if len(train_set.dataset) % settings.learning.batch_size != 0:
