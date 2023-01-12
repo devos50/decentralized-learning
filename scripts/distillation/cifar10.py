@@ -61,9 +61,10 @@ if __name__ == "__main__":
 
     # Load the teacher models
     teacher_models = []
+    teacher_models_dir = "data" if "TEACHER_MODELS_PATH" not in os.environ else os.environ["TEACHER_MODELS_PATH"]
     for n in range(NUM_PEERS):
         teacher_model = create_model("cifar10")
-        teacher_model_path = "data/cifar10_%d.model" % n
+        teacher_model_path = os.path.join(teacher_models_dir, "cifar10_%d.model" % n)
         teacher_model.load_state_dict(torch.load(teacher_model_path, map_location=torch.device('cpu')))
         teacher_models.append(teacher_model)
 
