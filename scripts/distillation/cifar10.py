@@ -130,7 +130,7 @@ if __name__ == "__main__":
 
             logger.debug('d-sgd.next node forward propagation (step %d/%d)', local_step, local_steps)
 
-            teacher_output = [aggregated_predictions[ind] for ind in indices]
+            teacher_output = torch.stack([aggregated_predictions[ind].detach().clone() for ind in indices])
             student_output = student_model.forward(data)
             loss = loss_fn_kd(student_output, teacher_output, learning_settings)
 
