@@ -41,6 +41,9 @@ test_dataset = CIFAR10(0, 0, mapping, train_dir=data_dir, test_dir=data_dir)
 
 print("Datasets prepared")
 
+if not os.path.exists("data"):
+    os.mkdir("data")
+
 device = "cpu" if not torch.cuda.is_available() else "cuda:0"
 print("Device to train/determine accuracy: %s" % device)
 
@@ -66,7 +69,7 @@ async def run():
 
             # Save the model if it's better
             if acc > highest_acc:
-                torch.save(models[n].state_dict(), "cifar10_%d.model" % n)
+                torch.save(models[n].state_dict(), os.path.join("data", "cifar10_%d.model" % n))
                 highest_acc = acc
 
 
