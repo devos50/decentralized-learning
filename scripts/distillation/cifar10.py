@@ -103,6 +103,7 @@ if __name__ == "__main__":
             data, _ = next(train_set_it)
             data = Variable(data.to(device))
             out = teacher_models[n].forward(data)
+            out.to("cpu")
             teacher_outputs += out
 
         outputs.append(teacher_outputs)
