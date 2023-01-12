@@ -3,64 +3,37 @@ Test to distill knowledge from a CIFAR10 pre-trained model to another one.
 """
 import logging
 import os
-import random
 
-import numpy as np
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 from torch.autograd import Variable
-from torch.utils.data import DataLoader
+from torch.utils.data import Dataset, DataLoader
 
 from accdfl.core.datasets.CIFAR10 import CIFAR10
-from accdfl.core.datasets.Data import Data
 from accdfl.core.mappings import Linear
 from accdfl.core.model_trainer import ModelTrainer
 from accdfl.core.models import create_model
 from accdfl.core.optimizer.sgd import SGDOptimizer
 from accdfl.core.session_settings import LearningSettings, SessionSettings
 
+from scripts.distillation import loss_fn_kd
 
 NUM_ROUNDS = 100 if "NUM_ROUNDS" not in os.environ else int(os.environ["NUM_ROUNDS"])
+NUM_PEERS = 10
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger("cifar10_distillation")
 
 
-def loss_fn_kd(outputs, teacher_outputs, settings: LearningSettings):
-    """
-    Compute the knowledge-distillation (KD) loss given outputs, labels.
-    "Hyperparameters": temperature
-    NOTE: the KL Divergence for PyTorch comparing the softmaxs of teacher
-    and student expects the input tensor to be log probabilities! See Issue #2
+class DatasetWithIndex(Dataset):
+    def __init__(self, dataset):
+        self.dataset = dataset
 
-    Taken from https://github.com/haitongli/knowledge-distillation-pytorch/blob/9937528f0be0efa979c745174fbcbe9621cea8b7/model/net.py
-    """
-    T = settings.kd_temperature
-    KD_loss = nn.KLDivLoss()(F.log_softmax(outputs/T, dim=1), F.softmax(teacher_outputs/T, dim=1)) * T * T
+    def __getitem__(self, index):
+        data, target = self.dataset[index]
+        return data, target, index
 
-    return KD_loss
-
-
-def get_random_images_data_loader(num_images: int, batch_size: int):
-    rand = random.Random(42)
-    x_data = []
-    for img_ind in range(num_images):
-        if img_ind % 1000 == 0:
-            logger.debug("Generated %d images..." % img_ind)
-
-        img = []
-        for channel in range(3):
-            channel_data = []
-            for y in range(32):
-                row = []
-                for x in range(32):
-                    row.append(rand.random())
-                channel_data.append(row)
-            img.append(channel_data)
-        x_data.append(img)
-
-    return DataLoader(Data(x=torch.tensor(x_data), y=torch.tensor([1] * num_images)), batch_size=batch_size, shuffle=True)
+    def __len__(self):
+        return len(self.dataset)
 
 
 if __name__ == "__main__":
@@ -86,10 +59,13 @@ if __name__ == "__main__":
     with open(os.path.join("data", "accuracies.csv"), "w") as out_file:
         out_file.write("round,temperature,accuracy,loss\n")
 
-    # Load a pre-trained CIFAR10 model
-    teacher_model = create_model("cifar10")
-    teacher_model_path = "../cifar10.model" if "TEACHER_MODEL" not in os.environ else os.environ["TEACHER_MODEL"]
-    teacher_model.load_state_dict(torch.load(teacher_model_path))
+    # Load the teacher models
+    teacher_models = []
+    for n in range(NUM_PEERS):
+        teacher_model = create_model("cifar10")
+        teacher_model_path = "data/cifar10_%d.model" % n
+        teacher_model.load_state_dict(torch.load(teacher_model_path, map_location=torch.device('cpu')))
+        teacher_models.append(teacher_model)
 
     # Test accuracy
     data_dir = os.path.join(os.environ["HOME"], "dfl-data")
@@ -103,16 +79,44 @@ if __name__ == "__main__":
 
     device = "cpu" if not torch.cuda.is_available() else "cuda:0"
     logger.debug("Device to train on: %s", device)
-    teacher_model.to(device)
+    for n in range(NUM_PEERS):
+        teacher_models[n].to(device)
     student_model.to(device)
 
-    acc, loss = cifar10_testset.test(teacher_model, device_name=device)
-    print("Teacher model accuracy: %f, loss: %f" % (acc, loss))
+    # for n in range(NUM_PEERS):
+    #     acc, loss = cifar10_testset.test(teacher_models[n], device_name=device)
+    #     print("Teacher model %d accuracy: %f, loss: %f" % (n, acc, loss))
 
-    train_set = trainer.dataset.get_trainset(batch_size=settings.learning.batch_size, shuffle=True)
+    train_set = trainer.dataset.get_trainset(batch_size=settings.learning.batch_size, shuffle=False)
     #train_set = get_random_images_data_loader(50000, settings.learning.batch_size)
 
     # Determine outputs of the teacher model on the public training data
+    outputs = []
+    for n in range(NUM_PEERS):
+        teacher_outputs = []
+        train_set_it = iter(train_set)
+        local_steps = len(train_set.dataset) // settings.learning.batch_size
+        if len(train_set.dataset) % settings.learning.batch_size != 0:
+            local_steps += 1
+        for local_step in range(local_steps):
+            data, _ = next(train_set_it)
+            data = Variable(data.to(device))
+            out = teacher_models[n].forward(data)
+            teacher_outputs += out
+
+        outputs.append(teacher_outputs)
+        print("Inferred %d outputs for teacher model %d" % (len(teacher_outputs), n))
+
+    # Aggregate the predicted outputs
+    print("Aggregating predictions...")
+    aggregated_predictions = []
+    for sample_ind in range(len(outputs[0])):
+        predictions = [outputs[n][sample_ind] for n in range(NUM_PEERS)]
+        aggregated_predictions.append(torch.mean(torch.stack(predictions), dim=0))
+
+    train_set = DataLoader(DatasetWithIndex(train_set.dataset), batch_size=settings.learning.batch_size, shuffle=True)
+
+    # Train the student model on the distilled outputs
     for epoch in range(NUM_ROUNDS):
         optimizer = SGDOptimizer(student_model, settings.learning.learning_rate, settings.learning.momentum)
         train_set_it = iter(train_set)
@@ -121,11 +125,12 @@ if __name__ == "__main__":
             local_steps += 1
         logger.info("Will perform %d local steps", local_steps)
         for local_step in range(local_steps):
-            data, _ = next(train_set_it)
+            data, _, indices = next(train_set_it)
             data = Variable(data.to(device))
 
             logger.debug('d-sgd.next node forward propagation (step %d/%d)', local_step, local_steps)
-            teacher_output = teacher_model.forward(data)
+
+            teacher_output = [aggregated_predictions[ind] for ind in indices]
             student_output = student_model.forward(data)
             loss = loss_fn_kd(student_output, teacher_output, learning_settings)
 
