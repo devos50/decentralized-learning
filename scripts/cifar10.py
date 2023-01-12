@@ -54,8 +54,8 @@ for n in range(NUM_PEERS):
 
 
 async def run():
-    highest_acc = 0
     for n in range(NUM_PEERS):
+        highest_acc = 0
         for round in range(NUM_ROUNDS):
             start_time = time.time()
             print("Starting training round %d for peer %d" % (round + 1, n))
