@@ -103,8 +103,9 @@ if __name__ == "__main__":
             data, _ = next(train_set_it)
             data = Variable(data.to(device))
             out = teacher_models[n].forward(data)
-            out.to("cpu")
-            teacher_outputs += out
+            cpu_out = out.to("cpu")
+            del out
+            teacher_outputs += cpu_out
 
         outputs.append(teacher_outputs)
         print("Inferred %d outputs for teacher model %d" % (len(teacher_outputs), n))
