@@ -119,9 +119,6 @@ if __name__ == "__main__":
 
     # Train the student model on the distilled outputs
     for epoch in range(NUM_ROUNDS):
-        if epoch % 50 == 0:
-            settings.learning.learning_rate /= 10
-
         optimizer = SGDOptimizer(student_model, settings.learning.learning_rate, settings.learning.momentum)
         train_set_it = iter(train_set)
         local_steps = len(train_set.dataset) // settings.learning.batch_size
