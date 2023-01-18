@@ -20,7 +20,7 @@ from scripts.distillation import loss_fn_kd
 NUM_ROUNDS = 100 if "NUM_ROUNDS" not in os.environ else int(os.environ["NUM_ROUNDS"])
 NUM_PEERS = 10 if "NUM_PEERS" not in os.environ else int(os.environ["NUM_PEERS"])
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("cifar10_distillation")
 
 
@@ -38,7 +38,7 @@ class DatasetWithIndex(Dataset):
 
 if __name__ == "__main__":
     learning_settings = LearningSettings(
-        learning_rate=0.001 if "LEARNING_RATE" not in os.environ else float(os.environ["LEARNING_RATE"]),
+        learning_rate=0.1 if "LEARNING_RATE" not in os.environ else float(os.environ["LEARNING_RATE"]),
         momentum=0.9,
         batch_size=200,
         kd_temperature=6 if "TEMPERATURE" not in os.environ else int(os.environ["TEMPERATURE"]),
