@@ -15,7 +15,7 @@ from accdfl.core.models import create_model
 from accdfl.core.session_settings import SessionSettings, LearningSettings
 
 NUM_ROUNDS = 100
-NUM_PEERS = 10
+NUM_PEERS = 10 if "NUM_PEERS" not in os.environ else int(os.environ["NUM_PEERS"])
 
 logging.basicConfig(level=logging.INFO)
 
@@ -41,8 +41,9 @@ test_dataset = CIFAR10(0, 0, mapping, train_dir=data_dir, test_dir=data_dir)
 
 print("Datasets prepared")
 
-if not os.path.exists("data"):
-    os.mkdir("data")
+data_path = os.path.join("data", "n_%d" % NUM_PEERS)
+if not os.path.exists(data_path):
+    os.mkdir(data_path)
 
 device = "cpu" if not torch.cuda.is_available() else "cuda:0"
 print("Device to train/determine accuracy: %s" % device)
@@ -50,10 +51,6 @@ print("Device to train/determine accuracy: %s" % device)
 # Model
 models = [create_model(settings.dataset, architecture=settings.model) for n in range(NUM_PEERS)]
 trainers = [ModelTrainer(data_dir, settings, n) for n in range(NUM_PEERS)]
-
-print("Initial evaluation")
-for n in range(NUM_PEERS):
-    print(test_dataset.test(models[n], device_name=device))
 
 
 async def run():
@@ -69,7 +66,7 @@ async def run():
 
             # Save the model if it's better
             if acc > highest_acc:
-                torch.save(models[n].state_dict(), os.path.join("data", "cifar10_%d.model" % n))
+                torch.save(models[n].state_dict(), os.path.join(data_path, "cifar10_%d.model" % n))
                 highest_acc = acc
 
 
