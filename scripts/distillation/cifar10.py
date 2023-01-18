@@ -142,41 +142,35 @@ async def run():
 
         train_set = DataLoader(DatasetWithIndex(cifar100_train_set.dataset), batch_size=distill_settings.learning.batch_size, shuffle=True)
 
-        student_model = create_model("cifar10")
-        student_model.to(device)
-
-        # Step 4) train a student model on the distilled outputs for some rounds
-        for epoch in range(NUM_DISTILLATION_ROUNDS):
-            optimizer = SGDOptimizer(student_model, distill_settings.learning.learning_rate, distill_settings.learning.momentum)
-            train_set_it = iter(train_set)
-            local_steps = len(train_set.dataset) // distill_settings.learning.batch_size
-            if len(train_set.dataset) % distill_settings.learning.batch_size != 0:
-                local_steps += 1
-            logger.info("Will perform %d local steps", local_steps)
-            for local_step in range(local_steps):
-                data, _, indices = next(train_set_it)
-                data = Variable(data.to(device))
-
-                logger.debug('d-sgd.next node forward propagation (step %d/%d)', local_step, local_steps)
-
-                teacher_output = torch.stack([aggregated_predictions[ind].clone() for ind in indices])
-                student_output = student_model.forward(data)
-                loss = loss_fn_kd(student_output, teacher_output, distill_learning_settings)
-
-                optimizer.optimizer.zero_grad()
-                loss.backward()
-                optimizer.optimizer.step()
-
-        # Step 5) compute the accuracy of the global student model
-        acc, loss = cifar10_testset.test(student_model, device_name=device)
-        logger.info("Accuracy of global student model after %d rounds: %f, %f", round_nr + 1, acc, loss)
-        with open(os.path.join("data", "accuracies.csv"), "a") as out_file:
-            out_file.write("%d,%d,%f,%f\n" % (round_nr + 1, distill_learning_settings.kd_temperature, acc, loss))
-
-        # Step 6) replace the local teacher models with the student model
+        # Step 4a) train a student model on the distilled outputs for some rounds
         for n in range(NUM_PEERS):
-            teacher_models[n] = copy.deepcopy(student_model)
-            teacher_models[n].to(device)
+            logger.info("Start distilling model %d", n)
+            for epoch in range(NUM_DISTILLATION_ROUNDS):
+                optimizer = SGDOptimizer(teacher_models[n], distill_settings.learning.learning_rate, distill_settings.learning.momentum)
+                train_set_it = iter(train_set)
+                local_steps = len(train_set.dataset) // distill_settings.learning.batch_size
+                if len(train_set.dataset) % distill_settings.learning.batch_size != 0:
+                    local_steps += 1
+                logger.info("Will perform %d local steps (distillation)", local_steps)
+                for local_step in range(local_steps):
+                    data, _, indices = next(train_set_it)
+                    data = Variable(data.to(device))
+
+                    logger.debug('d-sgd.next node forward propagation (step %d/%d)', local_step, local_steps)
+
+                    teacher_output = torch.stack([aggregated_predictions[ind].clone() for ind in indices])
+                    student_output = teacher_models[n].forward(data)
+                    loss = loss_fn_kd(student_output, teacher_output, distill_learning_settings)
+
+                    optimizer.optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.optimizer.step()
+
+            # Step 4b) compute the accuracy of the teacher models
+            acc, loss = cifar10_testset.test(teacher_models[n], device_name=device)
+            logger.info("Accuracy of global student model after %d rounds: %f, %f", round_nr + 1, acc, loss)
+            with open(os.path.join("data", "accuracies.csv"), "a") as out_file:
+                out_file.write("%d,%d,%f,%f\n" % (round_nr + 1, distill_learning_settings.kd_temperature, acc, loss))
 
 
 if __name__ == "__main__":
