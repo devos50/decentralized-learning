@@ -1,6 +1,7 @@
 """
 Test to distill knowledge from a CIFAR10 pre-trained model to another one.
 """
+import asyncio
 import logging
 import os
 import time
@@ -22,7 +23,7 @@ NUM_ROUNDS = 10 if "NUM_ROUNDS" not in os.environ else int(os.environ["NUM_ROUND
 NUM_DISTILLATION_ROUNDS = 100 if "NUM_DISTILLATION_ROUNDS" not in os.environ else int(os.environ["NUM_DISTILLATION_ROUNDS"])
 NUM_PEERS = 10 if "NUM_PEERS" not in os.environ else int(os.environ["NUM_PEERS"])
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("cifar10_distillation")
 
 
@@ -38,7 +39,7 @@ class DatasetWithIndex(Dataset):
         return len(self.dataset)
 
 
-if __name__ == "__main__":
+async def run():
     # Initialize the settings
     train_learning_settings = LearningSettings(
         learning_rate=0.001 if "LEARNING_RATE" not in os.environ else float(os.environ["LEARNING_RATE"]),
@@ -110,6 +111,7 @@ if __name__ == "__main__":
 
         # Step 2) determine outputs of the teacher model on the public training data
         outputs = []
+        logger.info("Starting to compute inferences for %d peers", NUM_PEERS)
         for n in range(NUM_PEERS):
             teacher_outputs = []
             train_set_it = iter(train_set)
@@ -123,10 +125,10 @@ if __name__ == "__main__":
                 teacher_outputs += out
 
             outputs.append(teacher_outputs)
-            print("Inferred %d outputs for teacher model %d" % (len(teacher_outputs), n))
+            logger.info("Inferred %d outputs for teacher model %d", len(teacher_outputs), n)
 
         # Step 3) aggregate the predicted outputs
-        print("Aggregating predictions...")
+        logger.info("Aggregating predictions...")
         aggregated_predictions = []
         for sample_ind in range(len(outputs[0])):
             predictions = [outputs[n][sample_ind] for n in range(NUM_PEERS)]
@@ -160,6 +162,11 @@ if __name__ == "__main__":
                 optimizer.optimizer.step()
 
         acc, loss = cifar10_testset.test(student_model, device_name=device)
-        print("Accuracy of global student model after %d rounds: %f, %f" % (round_nr + 1, acc, loss))
+        logger.info("Accuracy of global student model after %d rounds: %f, %f", round_nr + 1, acc, loss)
         with open(os.path.join("data", "accuracies.csv"), "a") as out_file:
             out_file.write("%d,%d,%f,%f\n" % (round_nr + 1, distill_learning_settings.kd_temperature, acc, loss))
+
+
+if __name__ == "__main__":
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(run())
