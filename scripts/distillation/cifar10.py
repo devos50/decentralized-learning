@@ -2,6 +2,7 @@
 Test to distill knowledge from a CIFAR10 pre-trained model to another one.
 """
 import asyncio
+import copy
 import logging
 import os
 import time
@@ -164,10 +165,16 @@ async def run():
                 loss.backward()
                 optimizer.optimizer.step()
 
+        # Step 5) compute the accuracy of the global student model
         acc, loss = cifar10_testset.test(student_model, device_name=device)
         logger.info("Accuracy of global student model after %d rounds: %f, %f", round_nr + 1, acc, loss)
         with open(os.path.join("data", "accuracies.csv"), "a") as out_file:
             out_file.write("%d,%d,%f,%f\n" % (round_nr + 1, distill_learning_settings.kd_temperature, acc, loss))
+
+        # Step 6) replace the local teacher models with the student model
+        for n in range(NUM_PEERS):
+            teacher_models[n] = copy.deepcopy(student_model)
+            teacher_models[n].to(device)
 
 
 if __name__ == "__main__":
