@@ -3,6 +3,7 @@ Test to distill knowledge from a CIFAR10 pre-trained model to another one.
 """
 import logging
 import os
+import time
 
 import torch
 from torch.autograd import Variable
@@ -17,7 +18,8 @@ from accdfl.core.session_settings import LearningSettings, SessionSettings
 
 from scripts.distillation import loss_fn_kd
 
-NUM_ROUNDS = 100 if "NUM_ROUNDS" not in os.environ else int(os.environ["NUM_ROUNDS"])
+NUM_ROUNDS = 10 if "NUM_ROUNDS" not in os.environ else int(os.environ["NUM_ROUNDS"])
+NUM_DISTILLATION_ROUNDS = 100 if "NUM_DISTILLATION_ROUNDS" not in os.environ else int(os.environ["NUM_DISTILLATION_ROUNDS"])
 NUM_PEERS = 10 if "NUM_PEERS" not in os.environ else int(os.environ["NUM_PEERS"])
 
 logging.basicConfig(level=logging.DEBUG)
@@ -37,17 +39,33 @@ class DatasetWithIndex(Dataset):
 
 
 if __name__ == "__main__":
-    learning_settings = LearningSettings(
+    # Initialize the settings
+    train_learning_settings = LearningSettings(
         learning_rate=0.001 if "LEARNING_RATE" not in os.environ else float(os.environ["LEARNING_RATE"]),
+        momentum=0.9,
+        batch_size=200,
+    )
+
+    train_settings = SessionSettings(
+        dataset="cifar10",
+        work_dir="",
+        learning=train_learning_settings,
+        participants=["a"],
+        all_participants=["a"],
+        target_participants=10,
+    )
+
+    distill_learning_settings = LearningSettings(
+        learning_rate=0.1 if "DISTILL_LEARNING_RATE" not in os.environ else float(os.environ["DISTILL_LEARNING_RATE"]),
         momentum=0.9,
         batch_size=200,
         kd_temperature=6 if "TEMPERATURE" not in os.environ else int(os.environ["TEMPERATURE"]),
     )
 
-    settings = SessionSettings(
+    distill_settings = SessionSettings(
         dataset="cifar100",
         work_dir="",
-        learning=learning_settings,
+        learning=distill_learning_settings,
         participants=["a"],
         all_participants=["a"],
         target_participants=1,
@@ -61,85 +79,87 @@ if __name__ == "__main__":
 
     # Load the teacher models
     teacher_models = []
-    teacher_models_dir = "data" if "TEACHER_MODELS_PATH" not in os.environ else os.environ["TEACHER_MODELS_PATH"]
     for n in range(NUM_PEERS):
         teacher_model = create_model("cifar10")
-        teacher_model_path = os.path.join(teacher_models_dir, "cifar10_%d.model" % n)
-        teacher_model.load_state_dict(torch.load(teacher_model_path, map_location=torch.device('cpu')))
         teacher_models.append(teacher_model)
 
-    # Test accuracy
-    data_dir = os.path.join(os.environ["HOME"], "dfl-data")
-
     mapping = Linear(1, 1)
-    cifar10_testset = CIFAR10(0, 0, mapping, train_dir=data_dir, test_dir=data_dir)
-
-    # Create the student model
-    student_model = create_model("cifar10")
-    trainer = ModelTrainer(data_dir, settings, 0)
+    data_dir = os.path.join(os.environ["HOME"], "dfl-data")
+    cifar10_testset = CIFAR10(0, 0, mapping, test_dir=data_dir)
+    cifar100_trainer = ModelTrainer(data_dir, distill_settings, 0)
+    train_set = cifar100_trainer.dataset.get_trainset(batch_size=distill_settings.learning.batch_size, shuffle=False)
+    trainers = [ModelTrainer(data_dir, train_settings, n) for n in range(NUM_PEERS)]
 
     device = "cpu" if not torch.cuda.is_available() else "cuda:0"
     logger.debug("Device to train on: %s", device)
     for n in range(NUM_PEERS):
         teacher_models[n].to(device)
-    student_model.to(device)
 
     # for n in range(NUM_PEERS):
     #     acc, loss = cifar10_testset.test(teacher_models[n], device_name=device)
     #     print("Teacher model %d accuracy: %f, loss: %f" % (n, acc, loss))
 
-    train_set = trainer.dataset.get_trainset(batch_size=settings.learning.batch_size, shuffle=False)
-    #train_set = get_random_images_data_loader(50000, settings.learning.batch_size)
+    for round_nr in range(NUM_ROUNDS):
+        # Step 1) train all client models using their private data for one epoch
+        for n in range(NUM_PEERS):
+            start_time = time.time()
+            await trainers[n].train(teacher_models[n], device_name=device)
+            logger.info("Training for peer %d done - time: %f", n, time.time() - start_time)
 
-    # Determine outputs of the teacher model on the public training data
-    outputs = []
-    for n in range(NUM_PEERS):
-        teacher_outputs = []
-        train_set_it = iter(train_set)
-        local_steps = len(train_set.dataset) // settings.learning.batch_size
-        if len(train_set.dataset) % settings.learning.batch_size != 0:
-            local_steps += 1
-        for local_step in range(local_steps):
-            data, _ = next(train_set_it)
-            data = Variable(data.to(device))
-            out = teacher_models[n].forward(data).detach()
-            teacher_outputs += out
+        logger.info("Training for all %d clients done!", NUM_PEERS)
 
-        outputs.append(teacher_outputs)
-        print("Inferred %d outputs for teacher model %d" % (len(teacher_outputs), n))
+        # Step 2) determine outputs of the teacher model on the public training data
+        outputs = []
+        for n in range(NUM_PEERS):
+            teacher_outputs = []
+            train_set_it = iter(train_set)
+            local_steps = len(train_set.dataset) // distill_settings.learning.batch_size
+            if len(train_set.dataset) % distill_settings.learning.batch_size != 0:
+                local_steps += 1
+            for local_step in range(local_steps):
+                data, _ = next(train_set_it)
+                data = Variable(data.to(device))
+                out = teacher_models[n].forward(data).detach()
+                teacher_outputs += out
 
-    # Aggregate the predicted outputs
-    print("Aggregating predictions...")
-    aggregated_predictions = []
-    for sample_ind in range(len(outputs[0])):
-        predictions = [outputs[n][sample_ind] for n in range(NUM_PEERS)]
-        aggregated_predictions.append(torch.mean(torch.stack(predictions), dim=0))
+            outputs.append(teacher_outputs)
+            print("Inferred %d outputs for teacher model %d" % (len(teacher_outputs), n))
 
-    train_set = DataLoader(DatasetWithIndex(train_set.dataset), batch_size=settings.learning.batch_size, shuffle=True)
+        # Step 3) aggregate the predicted outputs
+        print("Aggregating predictions...")
+        aggregated_predictions = []
+        for sample_ind in range(len(outputs[0])):
+            predictions = [outputs[n][sample_ind] for n in range(NUM_PEERS)]
+            aggregated_predictions.append(torch.mean(torch.stack(predictions), dim=0))
 
-    # Train the student model on the distilled outputs
-    for epoch in range(NUM_ROUNDS):
-        optimizer = SGDOptimizer(student_model, settings.learning.learning_rate, settings.learning.momentum)
-        train_set_it = iter(train_set)
-        local_steps = len(train_set.dataset) // settings.learning.batch_size
-        if len(train_set.dataset) % settings.learning.batch_size != 0:
-            local_steps += 1
-        logger.info("Will perform %d local steps", local_steps)
-        for local_step in range(local_steps):
-            data, _, indices = next(train_set_it)
-            data = Variable(data.to(device))
+        train_set = DataLoader(DatasetWithIndex(train_set.dataset), batch_size=distill_settings.learning.batch_size, shuffle=True)
 
-            logger.debug('d-sgd.next node forward propagation (step %d/%d)', local_step, local_steps)
+        student_model = create_model("cifar10")
+        student_model.to(device)
 
-            teacher_output = torch.stack([aggregated_predictions[ind].clone() for ind in indices])
-            student_output = student_model.forward(data)
-            loss = loss_fn_kd(student_output, teacher_output, learning_settings)
+        # Step 4) train a student model on the distilled outputs for some rounds
+        for epoch in range(NUM_DISTILLATION_ROUNDS):
+            optimizer = SGDOptimizer(student_model, distill_settings.learning.learning_rate, distill_settings.learning.momentum)
+            train_set_it = iter(train_set)
+            local_steps = len(train_set.dataset) // distill_settings.learning.batch_size
+            if len(train_set.dataset) % distill_settings.learning.batch_size != 0:
+                local_steps += 1
+            logger.info("Will perform %d local steps", local_steps)
+            for local_step in range(local_steps):
+                data, _, indices = next(train_set_it)
+                data = Variable(data.to(device))
 
-            optimizer.optimizer.zero_grad()
-            loss.backward()
-            optimizer.optimizer.step()
+                logger.debug('d-sgd.next node forward propagation (step %d/%d)', local_step, local_steps)
+
+                teacher_output = torch.stack([aggregated_predictions[ind].clone() for ind in indices])
+                student_output = student_model.forward(data)
+                loss = loss_fn_kd(student_output, teacher_output, distill_learning_settings)
+
+                optimizer.optimizer.zero_grad()
+                loss.backward()
+                optimizer.optimizer.step()
 
         acc, loss = cifar10_testset.test(student_model, device_name=device)
-        print("Accuracy after %d epochs: %f, %f" % (epoch + 1, acc, loss))
+        print("Accuracy of global student model after %d rounds: %f, %f" % (round_nr + 1, acc, loss))
         with open(os.path.join("data", "accuracies.csv"), "a") as out_file:
-            out_file.write("%d,%d,%f,%f\n" % (epoch + 1, learning_settings.kd_temperature, acc, loss))
+            out_file.write("%d,%d,%f,%f\n" % (round_nr + 1, distill_learning_settings.kd_temperature, acc, loss))
