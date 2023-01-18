@@ -84,9 +84,9 @@ if __name__ == "__main__":
         teacher_models[n].to(device)
     student_model.to(device)
 
-    # for n in range(NUM_PEERS):
-    #     acc, loss = cifar10_testset.test(teacher_models[n], device_name=device)
-    #     print("Teacher model %d accuracy: %f, loss: %f" % (n, acc, loss))
+    for n in range(NUM_PEERS):
+        acc, loss = cifar10_testset.test(teacher_models[n], device_name=device)
+        print("Teacher model %d accuracy: %f, loss: %f" % (n, acc, loss))
 
     train_set = trainer.dataset.get_trainset(batch_size=settings.learning.batch_size, shuffle=False)
     #train_set = get_random_images_data_loader(50000, settings.learning.batch_size)
