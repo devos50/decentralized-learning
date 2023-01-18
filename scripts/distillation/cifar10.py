@@ -88,7 +88,7 @@ async def run():
     data_dir = os.path.join(os.environ["HOME"], "dfl-data")
     cifar10_testset = CIFAR10(0, 0, mapping, test_dir=data_dir)
     cifar100_trainer = ModelTrainer(data_dir, distill_settings, 0)
-    train_set = cifar100_trainer.dataset.get_trainset(batch_size=distill_settings.learning.batch_size, shuffle=False)
+    cifar100_train_set = cifar100_trainer.dataset.get_trainset(batch_size=distill_settings.learning.batch_size, shuffle=False)
     trainers = [ModelTrainer(data_dir, train_settings, n) for n in range(NUM_PEERS)]
 
     device = "cpu" if not torch.cuda.is_available() else "cuda:0"
@@ -107,6 +107,9 @@ async def run():
             await trainers[n].train(teacher_models[n], device_name=device)
             logger.info("Training for peer %d done - time: %f", n, time.time() - start_time)
 
+            acc, loss = cifar10_testset.test(teacher_models[n], device_name=device)
+            logger.info("Accuracy of teacher model %d after %d rounds: %f, %f", n, round_nr + 1, acc, loss)
+
         logger.info("Training for all %d clients done!", NUM_PEERS)
 
         # Step 2) determine outputs of the teacher model on the public training data
@@ -114,9 +117,9 @@ async def run():
         logger.info("Starting to compute inferences for %d peers", NUM_PEERS)
         for n in range(NUM_PEERS):
             teacher_outputs = []
-            train_set_it = iter(train_set)
-            local_steps = len(train_set.dataset) // distill_settings.learning.batch_size
-            if len(train_set.dataset) % distill_settings.learning.batch_size != 0:
+            train_set_it = iter(cifar100_train_set)
+            local_steps = len(cifar100_train_set.dataset) // distill_settings.learning.batch_size
+            if len(cifar100_train_set.dataset) % distill_settings.learning.batch_size != 0:
                 local_steps += 1
             for local_step in range(local_steps):
                 data, _ = next(train_set_it)
@@ -134,7 +137,7 @@ async def run():
             predictions = [outputs[n][sample_ind] for n in range(NUM_PEERS)]
             aggregated_predictions.append(torch.mean(torch.stack(predictions), dim=0))
 
-        train_set = DataLoader(DatasetWithIndex(train_set.dataset), batch_size=distill_settings.learning.batch_size, shuffle=True)
+        train_set = DataLoader(DatasetWithIndex(cifar100_train_set.dataset), batch_size=distill_settings.learning.batch_size, shuffle=True)
 
         student_model = create_model("cifar10")
         student_model.to(device)
