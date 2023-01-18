@@ -20,7 +20,7 @@ from accdfl.core.session_settings import LearningSettings, SessionSettings
 from scripts.distillation import loss_fn_kd
 
 NUM_ROUNDS = 10 if "NUM_ROUNDS" not in os.environ else int(os.environ["NUM_ROUNDS"])
-NUM_DISTILLATION_ROUNDS = 100 if "NUM_DISTILLATION_ROUNDS" not in os.environ else int(os.environ["NUM_DISTILLATION_ROUNDS"])
+NUM_DISTILLATION_ROUNDS = 10 if "NUM_DISTILLATION_ROUNDS" not in os.environ else int(os.environ["NUM_DISTILLATION_ROUNDS"])
 NUM_PEERS = 10 if "NUM_PEERS" not in os.environ else int(os.environ["NUM_PEERS"])
 
 logging.basicConfig(level=logging.INFO)
