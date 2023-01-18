@@ -21,6 +21,7 @@ from accdfl.core.session_settings import LearningSettings, SessionSettings
 from scripts.distillation import loss_fn_kd
 
 NUM_ROUNDS = 10 if "NUM_ROUNDS" not in os.environ else int(os.environ["NUM_ROUNDS"])
+NUM_LOCAL_TRAIN_ROUNDS = 10 if "NUM_LOCAL_TRAIN_ROUNDS" not in os.environ else int(os.environ["NUM_LOCAL_TRAIN_ROUNDS"])
 NUM_DISTILLATION_ROUNDS = 10 if "NUM_DISTILLATION_ROUNDS" not in os.environ else int(os.environ["NUM_DISTILLATION_ROUNDS"])
 NUM_PEERS = 10 if "NUM_PEERS" not in os.environ else int(os.environ["NUM_PEERS"])
 
@@ -104,9 +105,10 @@ async def run():
     for round_nr in range(NUM_ROUNDS):
         # Step 1) train all client models using their private data for one epoch
         for n in range(NUM_PEERS):
-            start_time = time.time()
-            await trainers[n].train(teacher_models[n], device_name=device)
-            logger.info("Training for peer %d done - time: %f", n, time.time() - start_time)
+            for r in range(NUM_LOCAL_TRAIN_ROUNDS):
+                start_time = time.time()
+                await trainers[n].train(teacher_models[n], device_name=device)
+                logger.info("Training for peer %d and round %d done - time: %f", n, r, time.time() - start_time)
 
             acc, loss = cifar10_testset.test(teacher_models[n], device_name=device)
             logger.info("Accuracy of teacher model %d after %d rounds: %f, %f", n, round_nr + 1, acc, loss)
