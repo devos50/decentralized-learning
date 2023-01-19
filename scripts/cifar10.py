@@ -14,13 +14,13 @@ from accdfl.core.datasets.CIFAR10 import CIFAR10
 from accdfl.core.models import create_model
 from accdfl.core.session_settings import SessionSettings, LearningSettings
 
-NUM_ROUNDS = 100
+NUM_ROUNDS = 100 if "NUM_ROUNDS" not in os.environ else int(os.environ["NUM_ROUNDS"])
 NUM_PEERS = 10 if "NUM_PEERS" not in os.environ else int(os.environ["NUM_PEERS"])
 
 logging.basicConfig(level=logging.INFO)
 
 learning_settings = LearningSettings(
-    learning_rate=0.001,
+    learning_rate=0.001 if "LEARNING_RATE" not in os.environ else float(os.environ["LEARNING_RATE"]),
     momentum=0.9,
     batch_size=200
 )
@@ -45,6 +45,9 @@ data_path = os.path.join("data", "n_%d" % NUM_PEERS)
 if not os.path.exists(data_path):
     os.mkdir(data_path)
 
+with open(os.path.join(data_path, "accuracies.csv"), "w") as out_file:
+    out_file.write("dataset,algorithm,peer,peers,round,learning_rate,accuracy,loss\n")
+
 device = "cpu" if not torch.cuda.is_available() else "cuda:0"
 print("Device to train/determine accuracy: %s" % device)
 
@@ -55,7 +58,7 @@ trainers = [ModelTrainer(data_dir, settings, n) for n in range(NUM_PEERS)]
 
 async def run():
     for n in range(NUM_PEERS):
-        highest_acc = 0
+        highest_acc, lowest_loss = 0, 0
         for round in range(NUM_ROUNDS):
             start_time = time.time()
             print("Starting training round %d for peer %d" % (round + 1, n))
@@ -68,6 +71,11 @@ async def run():
             if acc > highest_acc:
                 torch.save(models[n].state_dict(), os.path.join(data_path, "cifar10_%d.model" % n))
                 highest_acc = acc
+                lowest_loss = loss
+
+        # Write the final accuracy
+        with open(os.path.join(data_path, "accuracies.csv"), "a") as out_file:
+            out_file.write("%s,%s,%d,%d,%d,%f,%f,%f\n" % ("cifar10", "standalone", n, NUM_PEERS, NUM_ROUNDS, learning_settings.learning_rate, highest_acc, lowest_loss))
 
 
 loop = asyncio.get_event_loop()
