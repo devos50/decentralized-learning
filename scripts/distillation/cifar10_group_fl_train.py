@@ -8,7 +8,6 @@ import os
 import time
 
 import torch
-from torch.utils.data import Dataset
 
 from accdfl.core.datasets.CIFAR10 import CIFAR10
 from accdfl.core.mappings import Linear
@@ -62,8 +61,7 @@ async def run():
     cifar10_testset = CIFAR10(0, 0, mapping, train_dir=data_dir, test_dir=data_dir)
 
     # Train the model using FL per group
-    # TODO do this for all groups
-    for group in range(NUM_PEERS // NUM_ROUNDS):
+    for group in range(NUM_PEERS // GROUP_SIZE):
         logger.info("Starting FL process for group %d", group)
         models = [create_model(settings.dataset) for n in range(10)]
         trainers = [ModelTrainer(data_dir, settings, GROUP_SIZE * group + n) for n in range(10)]
