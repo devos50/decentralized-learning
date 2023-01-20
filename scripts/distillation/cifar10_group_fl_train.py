@@ -83,7 +83,7 @@ async def run():
             with open(os.path.join(data_path, "accuracies.csv"), "a") as out_file:
                 out_file.write("cifar10,%d,%d,%d,%f,%f,%f\n" % (group, NUM_PEERS, round_nr, learning_settings.learning_rate, acc, loss))
             if acc > highest_acc:
-                torch.save(avg_model.state_dict(), os.path.join(data_path, "cifar10_g%d.model" % group))
+                torch.save(avg_model.state_dict(), os.path.join(data_path, "cifar10_%d.model" % group))
                 highest_acc = acc
 
             # Replace the local models of peers in the group with the average model
