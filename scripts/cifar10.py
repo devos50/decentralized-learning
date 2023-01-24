@@ -38,7 +38,7 @@ s = CIFAR10(0, 0, mapping, train_dir=data_dir, test_dir=data_dir)
 print("Datasets prepared")
 
 # Model
-model = create_model(settings.dataset)
+model = create_model(settings.dataset, architecture=settings.model)
 print(model)
 
 print("Initial evaluation")

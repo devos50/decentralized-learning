@@ -63,6 +63,7 @@ class SessionSettings:
     dfl: Optional[DFLSettings] = None
     dl: Optional[DLSettings] = None
     gl: Optional[GLSettings] = None
+    model: Optional[str] = None
     data_distribution: str = "iid"
     gradient_aggregation: GradientAggregationMethod = GradientAggregationMethod.FEDAVG
     model_seed: int = 0

@@ -23,6 +23,7 @@ class SimulationSettings:
         self.duration: int = 3600  # Simulation duration in seconds
         self.profile: bool = False
         self.dataset: str = "cifar10"
+        self.model: Optional[str] = None
         self.data_distribution: str = "iid"
         self.accuracy_logging_interval: int = 1
         self.dl_accuracy_method: DLAccuracyMethod = DLAccuracyMethod.TEST_INDIVIDUAL_MODELS

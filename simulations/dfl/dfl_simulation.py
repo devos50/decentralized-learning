@@ -54,6 +54,7 @@ class DFLSimulation(LearningSimulation):
             all_participants=[hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
             target_participants=len(self.nodes),
             dfl=dfl_settings,
+            model=self.settings.model,
             data_distribution=self.settings.data_distribution,
             eva_block_size=1000,
             is_simulation=True,

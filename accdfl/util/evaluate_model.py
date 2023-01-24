@@ -23,7 +23,7 @@ if __name__ == "__main__":
     with open(os.path.join(work_dir, "settings.json")) as in_file:
         settings: SessionSettings = SessionSettings.from_json(in_file.read())
 
-    model = create_model(settings.dataset)
+    model = create_model(settings.dataset, architecture=settings.model)
     model.load_state_dict(torch.load(model_path))
 
     evaluator = ModelEvaluator(datadir, settings)

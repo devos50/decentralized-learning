@@ -384,7 +384,7 @@ class DFLCommunity(LearningCommunity):
         self.peer_manager.update_peer_activity(result.peer.public_key.key_to_bin(),
                                                max(json_data["round"], self.get_round_estimate()))
         self.update_population_view_history()
-        incoming_model = unserialize_model(serialized_model, self.settings.dataset)
+        incoming_model = unserialize_model(serialized_model, self.settings.dataset, architecture=self.settings.model)
 
         if json_data["type"] == "trained_model":
             await self.received_trained_model(result.peer, json_data["round"], incoming_model)
