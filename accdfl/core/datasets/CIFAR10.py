@@ -6,7 +6,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from accdfl.core.datasets.Dataset import Dataset
-from accdfl.core.datasets.Partitioner import DataPartitioner, KShardDataPartitioner
+from accdfl.core.datasets.Partitioner import DataPartitioner, KShardDataPartitioner, DirichletDataPartitioner
 from accdfl.core.mappings.Mapping import Mapping
 
 NUM_CLASSES = 10
@@ -38,7 +38,7 @@ class CIFAR10(Dataset):
         self.uid = self.mapping.get_uid(self.rank, self.machine_id)
 
         if not self.partition_niid:
-            self.trainset = DataPartitioner(trainset, self.sizes).use(self.uid)
+            self.trainset = DirichletDataPartitioner(trainset, self.sizes, alpha=1.0).use(self.uid)
         else:
             train_data = {key: [] for key in range(10)}
             for x, y in trainset:
@@ -46,9 +46,7 @@ class CIFAR10(Dataset):
             all_trainset = []
             for y, x in train_data.items():
                 all_trainset.extend([(a, y) for a in x])
-            self.trainset = KShardDataPartitioner(
-                all_trainset, self.sizes, shards=self.shards
-            ).use(self.uid)
+            self.trainset = DirichletDataPartitioner(all_trainset, self.sizes, alpha=1.0).use(self.uid)
 
         self.logger.info("Train dataset initialization done! UID: %d. Total samples: %d", self.uid, len(self.trainset))
 
