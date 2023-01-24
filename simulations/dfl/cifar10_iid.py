@@ -7,6 +7,7 @@ from simulations.dfl.dfl_simulation import DFLSimulation
 if __name__ == "__main__":
     settings = SimulationSettings()
     settings.duration = 3600 if "DURATION" not in os.environ else int(os.environ["DURATION"])
+    settings.num_rounds = None if "NUM_ROUNDS" not in os.environ else int(os.environ["NUM_ROUNDS"])
     settings.dataset = "cifar10"
     settings.model = None if "MODEL" not in os.environ else os.environ["MODEL"]
     settings.data_distribution = "iid"
