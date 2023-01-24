@@ -1,5 +1,7 @@
 from random import Random
 
+import numpy as np
+
 """ Adapted from https://pytorch.org/tutorials/intermediate/dist_tuto.html """
 
 
@@ -178,3 +180,75 @@ class KShardDataPartitioner(DataPartitioner):
                     index_start = indexes[:start]
                     index_start.extend(indexes[start + part_len :])
                     indexes = index_start
+
+
+class DirichletDataPartitioner(DataPartitioner):
+    """
+    Class to partition the dataset using Dirichlet Function
+
+    """
+
+    def __init__(self, data, sizes=[1.0], seed=1234, alpha=0.1, validation_set=False, num_classes=10):
+        """
+        Constructor. Partitions the data according the parameters
+
+        Parameters
+        ----------
+        data : indexable
+            An indexable list of data items
+        sizes : list(float)
+            A list of fractions for each process
+        shards : int
+            Number of shards to allot to process
+        seed : int, optional
+            Seed for generating a random subset
+        alpha : float
+            Degree of heterogeneity. Lower is more heterogeneous.
+        """
+        self.validation_set = validation_set
+        self.data = data
+        self.num_classes = num_classes
+        self.partitions, self.ratio = self.__getDirichletData__(data, sizes, seed, alpha, num_classes)
+
+    def __getDirichletData__(self, data, psizes, seed, alpha, num_classes):
+        n_nets = len(psizes)
+        K = num_classes
+        labelList = np.array(data.targets)
+        min_size = 0
+        N = len(labelList)
+        np.random.seed(seed)  # using seed instead of 2020
+
+        net_dataidx_map = {}
+        while min_size < K:
+            idx_batch = [[] for _ in range(n_nets)]
+            # for each class in the dataset
+            for k in range(K):
+                idx_k = np.where(labelList == k)[0]
+                np.random.shuffle(idx_k)
+                proportions = np.random.dirichlet(np.repeat(alpha, n_nets))
+                ## Balance
+                proportions = np.array([p * (len(idx_j) < N / n_nets) for p, idx_j in zip(proportions, idx_batch)])
+                proportions = proportions / proportions.sum()
+                proportions = (np.cumsum(proportions) * len(idx_k)).astype(int)[:-1]
+                idx_batch = [idx_j + idx.tolist() for idx_j, idx in zip(idx_batch, np.split(idx_k, proportions))]
+                min_size = min([len(idx_j) for idx_j in idx_batch])
+
+        for j in range(n_nets):
+            np.random.shuffle(idx_batch[j])
+            net_dataidx_map[j] = idx_batch[j]
+
+        net_cls_counts = {}
+
+        for net_i, dataidx in net_dataidx_map.items():
+            unq, unq_cnt = np.unique(labelList[dataidx], return_counts=True)
+            tmp = {unq[i]: unq_cnt[i] for i in range(len(unq))}
+            net_cls_counts[net_i] = tmp
+
+        local_sizes = []
+        for i in range(n_nets):
+            local_sizes.append(len(net_dataidx_map[i]))
+        local_sizes = np.array(local_sizes)
+        # weights = local_sizes/np.sum(local_sizes)
+        weights = local_sizes  # return counts insteads of ratios
+
+        return idx_batch, weights
