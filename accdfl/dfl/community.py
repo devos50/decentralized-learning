@@ -336,7 +336,11 @@ class DFLCommunity(LearningCommunity):
                 device = torch.device("cpu")
                 self.model_manager.model = self.model_manager.model.to(device)
 
-                ensure_future(self.received_trained_model(self.my_peer, sample_index, self.model_manager.model))
+                # Even when sending the model to oneself, serialize and deserialize the model to make sure all tensors are detached
+                detached_model = unserialize_model(serialize_model(self.model_manager.model),
+                                                   self.settings.dataset, architecture=self.settings.model)
+
+                ensure_future(self.received_trained_model(self.my_peer, sample_index, detached_model))
                 continue
 
             peer = self.get_peer_by_pk(aggregator)
