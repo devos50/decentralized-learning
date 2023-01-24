@@ -9,6 +9,7 @@ if __name__ == "__main__":
     settings.duration = 3600 if "DURATION" not in os.environ else int(os.environ["DURATION"])
     settings.num_rounds = None if "DURATION" not in os.environ else int(os.environ["NUM_ROUNDS"])
     settings.dataset = "cifar10"
+    settings.alpha = 1 if "ALPHA" not in os.environ else float(os.environ["ALPHA"])
     settings.model = None if "MODEL" not in os.environ else os.environ["MODEL"]
     settings.data_distribution = "iid"
     settings.peers = 100 if "NUM_PEERS" not in os.environ else int(os.environ["NUM_PEERS"])
