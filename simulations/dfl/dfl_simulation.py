@@ -17,7 +17,10 @@ class DFLSimulation(LearningSimulation):
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = super().get_ipv8_builder(peer_id)
-        builder.add_overlay("DFLCommunity", "my peer", [], [], {}, [])
+        if self.settings.bypass_model_transfers:
+            builder.add_overlay("DFLBypassNetworkCommunity", "my peer", [], [], {}, [])
+        else:
+            builder.add_overlay("DLFCommunity", "my peer", [], [], {}, [])
         return builder
 
     async def setup_simulation(self) -> None:
@@ -69,6 +72,11 @@ class DFLSimulation(LearningSimulation):
         if self.settings.fix_aggregator:
             print("Overriding max. EVA transfers for peer %d" % lowest_latency_peer_id)
             self.nodes[lowest_latency_peer_id].overlays[0].eva.settings.max_simultaneous_transfers = 100000
+
+        if self.settings.bypass_model_transfers:
+            # Inject the nodes in each community
+            for node in self.nodes:
+                node.overlays[0].nodes = self.nodes
 
     async def on_aggregate_complete(self, ind: int, round_nr: int, model):
         tot_up, tot_down = 0, 0
