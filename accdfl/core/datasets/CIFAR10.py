@@ -2,6 +2,7 @@ import torch
 import torch.nn.functional as F
 import torchvision
 import torchvision.transforms as transforms
+import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from accdfl.core.datasets.Dataset import Dataset
@@ -197,11 +198,16 @@ class CIFAR10(Dataset):
         model.to(device)
         model.eval()
 
+        ce_loss = nn.CrossEntropyLoss()
         with torch.no_grad():
             for data, target in iter(testloader):
                 data, target = data.to(device), target.to(device)
                 output = model.forward(data)
-                total_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
+                if model.__class__.__name__ == "ResNet":
+                    total_loss += ce_loss(output, target)
+                else:
+                    total_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
+
                 pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
                 correct += pred.eq(target.view_as(pred)).sum().item()
                 example_number += target.size(0)

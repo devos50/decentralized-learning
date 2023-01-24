@@ -98,7 +98,7 @@ class LeNet(Model):
         return x
 
 
-class GNLeNet(nn.Module):
+class GNLeNet(Model):
     """
     Inspired by original LeNet network for MNIST: https://ieeexplore.ieee.org/abstract/document/726791
     Layer parameters taken from: https://github.com/kevinhsieh/non_iid_dml/blob/master/apps/caffe/examples/cifar10/1parts/gnlenet_train_val.prototxt.template

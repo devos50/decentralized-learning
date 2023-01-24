@@ -72,7 +72,7 @@ class GLCommunity(LearningCommunity):
         self.logger.info(f'Participant {my_peer_id} received data from participant {peer_id}: {result.info.decode()}')
 
         json_data = json.loads(result.info.decode())
-        incoming_model = unserialize_model(result.data, self.settings.dataset)
+        incoming_model = unserialize_model(result.data, self.settings.dataset, architecture=self.settings.model)
 
         # Merge the incoming model with the current local model.
         # TODO use adaptive learning rate during the aggregation step.

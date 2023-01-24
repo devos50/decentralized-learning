@@ -112,7 +112,7 @@ class DLCommunity(LearningCommunity):
         self.logger.info(f'Participant {my_peer_id} received data from participant {peer_id}: {result.info.decode()}')
 
         json_data = json.loads(result.info.decode())
-        incoming_model = unserialize_model(result.data, self.settings.dataset)
+        incoming_model = unserialize_model(result.data, self.settings.dataset, architecture=self.settings.model)
         self.process_incoming_model(incoming_model, peer_pk, json_data["round"])
 
     def process_incoming_model(self, incoming_model: nn.Module, peer_pk: bytes, round_nr: int):
