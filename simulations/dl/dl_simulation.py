@@ -49,6 +49,7 @@ class DLSimulation(LearningSimulation):
             target_participants=len(self.nodes),
             dl=dl_settings,
             model=self.settings.model,
+            alpha=self.settings.alpha,
             data_distribution=self.settings.data_distribution,
             eva_block_size=1000,
             is_simulation=True,

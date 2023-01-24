@@ -6,7 +6,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from accdfl.core.datasets.Dataset import Dataset
-from accdfl.core.datasets.Partitioner import DataPartitioner, KShardDataPartitioner, DirichletDataPartitioner
+from accdfl.core.datasets.Partitioner import DirichletDataPartitioner
 from accdfl.core.mappings.Mapping import Mapping
 
 NUM_CLASSES = 10
@@ -16,52 +16,6 @@ class CIFAR10(Dataset):
     """
     Class for the CIFAR10 dataset
     """
-
-    def load_trainset(self):
-        """
-        Loads the training set. Partitions it if needed.
-
-        """
-        self.logger.info("Loading training set from directory %s", self.train_dir)
-        trainset = torchvision.datasets.CIFAR10(
-            root=self.train_dir, train=True, download=True, transform=self.transform
-        )
-        c_len = len(trainset)
-
-        if self.sizes == None:  # Equal distribution of data among processes
-            e = c_len // self.n_procs
-            frac = e / c_len
-            self.sizes = [frac] * self.n_procs
-            self.sizes[-1] += 1.0 - frac * self.n_procs
-            self.logger.debug("Size fractions: {}".format(self.sizes))
-
-        self.uid = self.mapping.get_uid(self.rank, self.machine_id)
-
-        if not self.partition_niid:
-            self.trainset = DirichletDataPartitioner(trainset, self.sizes, alpha=1.0).use(self.uid)
-        else:
-            train_data = {key: [] for key in range(10)}
-            for x, y in trainset:
-                train_data[y].append(x)
-            all_trainset = []
-            for y, x in train_data.items():
-                all_trainset.extend([(a, y) for a in x])
-            self.trainset = DirichletDataPartitioner(all_trainset, self.sizes, alpha=1.0).use(self.uid)
-
-        self.logger.info("Train dataset initialization done! UID: %d. Total samples: %d", self.uid, len(self.trainset))
-
-    def load_testset(self):
-        """
-        Loads the testing set.
-
-        """
-        self.logger.info("Loading testing set from data directory %s", self.test_dir)
-
-        self.testset = torchvision.datasets.CIFAR10(
-            root=self.test_dir, train=False, download=True, transform=self.transform
-        )
-
-        self.logger.info("Test dataset initialization done! Total samples: %d", len(self.testset))
 
     def __init__(
         self,
@@ -73,8 +27,7 @@ class CIFAR10(Dataset):
         test_dir="",
         sizes="",
         test_batch_size=1024,
-        partition_niid=False,
-        shards=1,
+        alpha: float = 1
     ):
         """
         Constructor which reads the data files, instantiates and partitions the dataset
@@ -98,8 +51,6 @@ class CIFAR10(Dataset):
             By default, each process gets an equal amount.
         test_batch_size : int, optional
             Batch size during testing. Default value is 64
-        partition_niid: bool, optional
-            When True, partitions dataset in a non-iid way
 
         """
         super().__init__(
@@ -112,8 +63,8 @@ class CIFAR10(Dataset):
             test_batch_size,
         )
 
-        self.partition_niid = partition_niid
-        self.shards = shards
+        self.alpha = alpha
+
         self.transform = transforms.Compose(
             [
                 transforms.ToTensor(),
@@ -127,6 +78,42 @@ class CIFAR10(Dataset):
             self.load_testset()
 
         # TODO: Add Validation
+
+    def load_trainset(self):
+        """
+        Loads the training set. Partitions it if needed.
+
+        """
+        self.logger.info("Loading training set from directory %s and with alpha %f", self.train_dir, self.alpha)
+        trainset = torchvision.datasets.CIFAR10(
+            root=self.train_dir, train=True, download=True, transform=self.transform
+        )
+        c_len = len(trainset)
+
+        if self.sizes == None:  # Equal distribution of data among processes
+            e = c_len // self.n_procs
+            frac = e / c_len
+            self.sizes = [frac] * self.n_procs
+            self.sizes[-1] += 1.0 - frac * self.n_procs
+            self.logger.debug("Size fractions: {}".format(self.sizes))
+
+        self.uid = self.mapping.get_uid(self.rank, self.machine_id)
+        self.trainset = DirichletDataPartitioner(trainset, self.sizes, alpha=self.alpha).use(self.uid)
+
+        self.logger.info("Train dataset initialization done! UID: %d. Total samples: %d", self.uid, len(self.trainset))
+
+    def load_testset(self):
+        """
+        Loads the testing set.
+
+        """
+        self.logger.info("Loading testing set from data directory %s", self.test_dir)
+
+        self.testset = torchvision.datasets.CIFAR10(
+            root=self.test_dir, train=False, download=True, transform=self.transform
+        )
+
+        self.logger.info("Test dataset initialization done! Total samples: %d", len(self.testset))
 
     def get_trainset(self, batch_size=1, shuffle=False):
         """

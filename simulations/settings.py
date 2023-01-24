@@ -23,6 +23,7 @@ class SimulationSettings:
         self.duration: int = 3600  # Simulation duration in seconds
         self.profile: bool = False
         self.dataset: str = "cifar10"
+        self.alpha: float = 1  # Related to the Dirichlet data distributor
         self.model: Optional[str] = None
         self.data_distribution: str = "iid"
         self.accuracy_logging_interval: int = 1
