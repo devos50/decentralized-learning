@@ -13,12 +13,13 @@ from accdfl.core.datasets.CIFAR10 import CIFAR10
 from accdfl.core.mappings import Linear
 from accdfl.core.model_manager import ModelManager
 from accdfl.core.model_trainer import ModelTrainer
-from accdfl.core.models import create_model
+from accdfl.core.models import create_model, unserialize_model, serialize_model
 from accdfl.core.session_settings import LearningSettings, SessionSettings
 
 NUM_ROUNDS = 100 if "NUM_ROUNDS" not in os.environ else int(os.environ["NUM_ROUNDS"])
 NUM_PEERS = 100 if "NUM_PEERS" not in os.environ else int(os.environ["NUM_PEERS"])
 GROUP_SIZE = 10 if "GROUP_SIZE" not in os.environ else int(os.environ["GROUP_SIZE"])
+ALPHA = 1 if "ALPHA" not in os.environ else float(os.environ["ALPHA"])
 
 if NUM_PEERS % GROUP_SIZE != 0:
     raise RuntimeError("Invalid number of peers/group size ratio")
@@ -29,8 +30,8 @@ logger = logging.getLogger("cifar10_group_fl_train")
 
 async def run():
     learning_settings = LearningSettings(
-        learning_rate=0.002 if "LEARNING_RATE" not in os.environ else float(os.environ["LEARNING_RATE"]),
-        momentum=0.9,
+        learning_rate=0.1 if "LEARNING_RATE" not in os.environ else float(os.environ["LEARNING_RATE"]),
+        momentum=0,
         batch_size=20,
     )
 
@@ -38,6 +39,8 @@ async def run():
         dataset="cifar10",
         work_dir="",
         learning=learning_settings,
+        model="resnet8",
+        alpha=ALPHA,
         participants=["a"],
         all_participants=["a"],
         target_participants=NUM_PEERS,
@@ -63,7 +66,7 @@ async def run():
     # Train the model using FL per group
     for group in range(NUM_PEERS // GROUP_SIZE):
         logger.info("Starting FL process for group %d", group)
-        models = [create_model(settings.dataset) for n in range(10)]
+        models = [create_model(settings.dataset, architecture=settings.model) for n in range(10)]
         trainers = [ModelTrainer(data_dir, settings, GROUP_SIZE * group + n) for n in range(10)]
         highest_acc = 0
 
@@ -73,7 +76,14 @@ async def run():
                 start_time = time.time()
                 await trainers[n].train(models[n], device_name=device)
                 logger.info("Training round %d for peer %d done - time: %f", round_nr + 1, n, time.time() - start_time)
-                model_manager.process_incoming_trained_model(b"%d" % n, models[n])
+
+                # We serialize the center model
+                if n == 0:
+                    copied_model = unserialize_model(serialize_model(models[n]), settings.dataset, architecture=settings.model)
+                    copied_model.to(device)
+                    model_manager.process_incoming_trained_model(b"%d" % n, copied_model)
+                else:
+                    model_manager.process_incoming_trained_model(b"%d" % n, models[n])
 
             # Average the models and replace them
             avg_model = model_manager.aggregate_trained_models()
@@ -88,7 +98,7 @@ async def run():
 
             # Replace the local models of peers in the group with the average model
             for n in range(GROUP_SIZE):
-                models[n] = copy.deepcopy(avg_model)
+                models[n] = unserialize_model(serialize_model(avg_model), settings.dataset, architecture=settings.model)
 
 loop = asyncio.get_event_loop()
 loop.run_until_complete(run())
