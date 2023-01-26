@@ -7,7 +7,6 @@ from accdfl.core.session_settings import SessionSettings
 class ModelEvaluator:
     """
     Contains the logic to evaluate the accuracy of a given model on a test dataset.
-    Runs in a separate process.
     """
 
     def __init__(self, data_dir: str, settings: SessionSettings):
@@ -18,5 +17,4 @@ class ModelEvaluator:
         self.dataset = create_dataset(settings, test_dir=test_dir)
 
     def evaluate_accuracy(self, model, device_name: str = "cpu"):
-        model.eval()
         return self.dataset.test(model, device_name)
