@@ -22,7 +22,7 @@ class ModelTrainer:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.settings: SessionSettings = settings
 
-        if settings.dataset in ["cifar10", "cifar10_niid", "mnist", "movielens"]:
+        if settings.dataset in ["cifar10", "mnist", "movielens"]:
             train_dir = data_dir
         else:
             train_dir = os.path.join(data_dir, "per_user_data", "train")
@@ -41,8 +41,8 @@ class ModelTrainer:
         if len(train_set.dataset) % self.settings.learning.batch_size != 0:
             local_steps += 1
 
-        self.logger.info("Will perform %d local steps of training on device %s (batch size: %d)",
-                         local_steps, device_name, self.settings.learning.batch_size)
+        self.logger.info("Will perform %d local steps of training on device %s (batch size: %d, data points: %d)",
+                         local_steps, device_name, self.settings.learning.batch_size, len(train_set.dataset))
 
         start_time = time.time()
         for local_step in range(local_steps):
@@ -56,8 +56,11 @@ class ModelTrainer:
 
                 if self.settings.dataset == "movielens":
                     lossf = MSELoss()
-                elif self.settings.dataset in ["cifar10", "cifar10_niid"]:
-                    lossf = NLLLoss()
+                elif self.settings.dataset == "cifar10":
+                    if self.settings.model == "resnet8":
+                        lossf = CrossEntropyLoss()
+                    else:
+                        lossf = NLLLoss()
                 else:
                     lossf = CrossEntropyLoss()
 

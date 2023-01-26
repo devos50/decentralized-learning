@@ -56,7 +56,6 @@ class TestDFLCommunityBase(TestBase):
             participants=[hexlify(node.my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
             all_participants=[hexlify(node.my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
             target_participants=self.TARGET_NUM_NODES,
-            data_distribution="iid",
             dfl=dfl_settings,
             train_in_subprocess=False,
         )

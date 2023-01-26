@@ -336,7 +336,11 @@ class DFLCommunity(LearningCommunity):
                 device = torch.device("cpu")
                 self.model_manager.model = self.model_manager.model.to(device)
 
-                ensure_future(self.received_trained_model(self.my_peer, sample_index, self.model_manager.model))
+                # Even when sending the model to oneself, serialize and deserialize the model to make sure all tensors are detached
+                detached_model = unserialize_model(serialize_model(self.model_manager.model),
+                                                   self.settings.dataset, architecture=self.settings.model)
+
+                ensure_future(self.received_trained_model(self.my_peer, sample_index, detached_model))
                 continue
 
             peer = self.get_peer_by_pk(aggregator)
@@ -384,7 +388,7 @@ class DFLCommunity(LearningCommunity):
         self.peer_manager.update_peer_activity(result.peer.public_key.key_to_bin(),
                                                max(json_data["round"], self.get_round_estimate()))
         self.update_population_view_history()
-        incoming_model = unserialize_model(serialized_model, self.settings.dataset)
+        incoming_model = unserialize_model(serialized_model, self.settings.dataset, architecture=self.settings.model)
 
         if json_data["type"] == "trained_model":
             await self.received_trained_model(result.peer, json_data["round"], incoming_model)

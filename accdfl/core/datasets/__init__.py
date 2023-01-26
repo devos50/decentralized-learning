@@ -13,11 +13,8 @@ def create_dataset(settings: SessionSettings, participant_index: int = 0, train_
         return Shakespeare(participant_index, 0, mapping, train_dir=train_dir, test_dir=test_dir)
     elif settings.dataset == "cifar10":
         from accdfl.core.datasets.CIFAR10 import CIFAR10
-        return CIFAR10(participant_index, 0, mapping, train_dir=train_dir, test_dir=test_dir)
-    elif settings.dataset == "cifar10_niid":
-        from accdfl.core.datasets.CIFAR10 import CIFAR10
-        return CIFAR10(participant_index, 0, mapping, train_dir=train_dir, test_dir=test_dir, partition_niid=True,
-                       shards=settings.target_participants)
+        return CIFAR10(participant_index, 0, mapping, settings.partitioner,
+                       train_dir=train_dir, test_dir=test_dir, shards=settings.target_participants, alpha=settings.alpha)
     elif settings.dataset == "celeba":
         from accdfl.core.datasets.Celeba import Celeba
         img_dir = None

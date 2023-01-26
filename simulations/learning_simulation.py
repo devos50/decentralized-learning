@@ -23,6 +23,7 @@ from simulation.discrete_loop import DiscreteLoop
 from simulation.simulation_endpoint import SimulationEndpoint
 
 from simulations.dl.bypass_network_community import DLBypassNetworkCommunity
+from simulations.dfl.bypass_network_community import DFLBypassNetworkCommunity
 from simulations.settings import SimulationSettings
 
 
@@ -57,6 +58,7 @@ class LearningSimulation:
                                 'GLCommunity': GLCommunity,
                                 'DLBypassNetworkCommunity': DLBypassNetworkCommunity,
                                 'DFLCommunity': DFLCommunity,
+                                'DFLBypassNetworkCommunity': DFLBypassNetworkCommunity,
                             })
             await instance.start()
 
@@ -145,7 +147,7 @@ class LearningSimulation:
         for ind, node in enumerate(self.nodes):
             node.overlays[0].start()
 
-        if self.settings.dataset in ["cifar10", "cifar10_niid", "mnist"]:
+        if self.settings.dataset in ["cifar10", "mnist"]:
             data_dir = os.path.join(os.environ["HOME"], "dfl-data")
         else:
             # The LEAF dataset
