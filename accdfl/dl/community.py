@@ -51,8 +51,12 @@ class DLCommunity(LearningCommunity):
         # Train
         await self.model_manager.train()
 
+        # Detach the tensors of the model by making a copy
+        model_cpy = unserialize_model(serialize_model(self.model_manager.model),
+                                      self.settings.dataset, architecture=self.settings.model)
+
         my_peer_pk = self.my_peer.public_key.key_to_bin()
-        self.incoming_models[self.round].append((my_peer_pk, self.model_manager.model))
+        self.incoming_models[self.round].append((my_peer_pk, model_cpy))
 
         # Send the trained model to your neighbours
         to_send = self.neighbours

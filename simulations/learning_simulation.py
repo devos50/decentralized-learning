@@ -38,6 +38,7 @@ class LearningSimulation:
         self.nodes = []
         self.data_dir = os.path.join("data", "n_%d_%s" % (self.settings.peers, self.settings.dataset))
         self.evaluator = None
+        self.logger = None
 
         self.loop = DiscreteLoop()
         asyncio.set_event_loop(self.loop)
@@ -79,6 +80,8 @@ class LearningSimulation:
         root = logging.getLogger()
         root.handlers[0].setFormatter(logging.Formatter("%(asctime)s:%(levelname)s:%(message)s"))
         root.setLevel(logging.INFO)
+
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     def ipv8_discover_peers(self) -> None:
         for node_a in self.nodes:
