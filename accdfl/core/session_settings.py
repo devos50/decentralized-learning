@@ -65,7 +65,7 @@ class SessionSettings:
     gl: Optional[GLSettings] = None
     model: Optional[str] = None
     alpha: float = 1
-    data_distribution: str = "iid"
+    partitioner: str = "iid"  # iid, shards or dirichlet
     gradient_aggregation: GradientAggregationMethod = GradientAggregationMethod.FEDAVG
     model_seed: int = 0
     model_send_delay: float = 1.0

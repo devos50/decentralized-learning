@@ -43,7 +43,7 @@ class GLSimulation(LearningSimulation):
                               self.nodes],
             target_participants=len(self.nodes),
             gl=gl_settings,
-            data_distribution=self.settings.data_distribution,
+            partitioner=self.settings.partitioner,
             eva_block_size=1000,
             is_simulation=True,
             train_device_name=self.settings.train_device_name,

@@ -59,7 +59,7 @@ class DFLSimulation(LearningSimulation):
             dfl=dfl_settings,
             model=self.settings.model,
             alpha=self.settings.alpha,
-            data_distribution=self.settings.data_distribution,
+            partitioner=self.settings.partitioner,
             eva_block_size=1000,
             is_simulation=True,
             train_device_name=self.settings.train_device_name,

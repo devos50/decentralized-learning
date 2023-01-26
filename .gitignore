@@ -8,3 +8,5 @@ simulations/data/**
 simulations/dfl/data/**
 simulations/dl/data/**
 simulations/gl/data/**
+
+scripts/data/**

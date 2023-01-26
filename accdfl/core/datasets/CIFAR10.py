@@ -6,7 +6,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from accdfl.core.datasets.Dataset import Dataset
-from accdfl.core.datasets.Partitioner import DirichletDataPartitioner
+from accdfl.core.datasets.Partitioner import DirichletDataPartitioner, DataPartitioner, KShardDataPartitioner
 from accdfl.core.mappings.Mapping import Mapping
 from accdfl.util.utils import Cutout
 
@@ -23,11 +23,12 @@ class CIFAR10(Dataset):
         rank: int,
         machine_id: int,
         mapping: Mapping,
-        n_procs="",
+        partitioner: str,
         train_dir="",
         test_dir="",
         sizes="",
         test_batch_size=1024,
+        shards=1,
         alpha: float = 1
     ):
         """
@@ -64,6 +65,8 @@ class CIFAR10(Dataset):
             test_batch_size,
         )
 
+        self.partitioner = partitioner
+        self.shards = shards
         self.alpha = alpha
 
         normalization_vectors = (0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.201)
@@ -107,7 +110,21 @@ class CIFAR10(Dataset):
             self.logger.debug("Size fractions: {}".format(self.sizes))
 
         self.uid = self.mapping.get_uid(self.rank, self.machine_id)
-        self.trainset = DirichletDataPartitioner(trainset, self.sizes, alpha=self.alpha).use(self.uid)
+
+        if self.partitioner == "iid":
+            self.trainset = DataPartitioner(trainset, self.sizes).use(self.uid)
+        elif self.partitioner == "shards":
+            train_data = {key: [] for key in range(10)}
+            for x, y in trainset:
+                train_data[y].append(x)
+            all_trainset = []
+            for y, x in train_data.items():
+                all_trainset.extend([(a, y) for a in x])
+            self.trainset = KShardDataPartitioner(all_trainset, self.sizes, shards=self.shards).use(self.uid)
+        elif self.partitioner == "dirichlet":
+            self.trainset = DirichletDataPartitioner(trainset, self.sizes, alpha=self.alpha).use(self.uid)
+        else:
+            raise RuntimeError("Unknown partitioner %s for CIFAR10 dataset", self.partitioner)
 
         self.logger.info("Train dataset initialization done! UID: %d. Total samples: %d", self.uid, len(self.trainset))
 

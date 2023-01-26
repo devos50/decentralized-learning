@@ -8,7 +8,7 @@ if __name__ == "__main__":
     settings = SimulationSettings()
     settings.duration = 3600 if "DURATION" not in os.environ else int(os.environ["DURATION"])
     settings.dataset = "cifar10"
-    settings.data_distribution = "iid"
+    settings.partitioner = "dirichlet"
     settings.peers = 100 if "NUM_PEERS" not in os.environ else int(os.environ["NUM_PEERS"])
     settings.momentum = 0.9
     settings.learning_rate = 0.002

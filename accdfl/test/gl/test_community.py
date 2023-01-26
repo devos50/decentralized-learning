@@ -40,7 +40,6 @@ class TestGLCommunityBase(TestBase):
             all_participants=[hexlify(node.my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
             target_participants=self.TARGET_NUM_NODES,
             gl=gl_settings,
-            data_distribution="iid",
             train_in_subprocess=False,
         )
 
