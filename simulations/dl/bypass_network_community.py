@@ -1,5 +1,6 @@
 import copy
 
+from accdfl.core.models import unserialize_model, serialize_model
 from accdfl.dl.community import DLCommunity
 
 
@@ -10,7 +11,8 @@ class DLBypassNetworkCommunity(DLCommunity):
         self.nodes = None
 
     async def eva_send_model(self, round, model, peer):
-        model_cpy = copy.deepcopy(model)
+        model_cpy = unserialize_model(serialize_model(self.model_manager.model),
+                                      self.settings.dataset, architecture=self.settings.model)
         found: bool = False
         for node in self.nodes:
             if node.overlays[0].my_peer == peer:
