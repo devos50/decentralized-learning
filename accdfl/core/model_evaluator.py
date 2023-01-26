@@ -11,7 +11,7 @@ class ModelEvaluator:
     """
 
     def __init__(self, data_dir: str, settings: SessionSettings):
-        if settings.dataset in ["cifar10", "cifar10_niid", "mnist", "movielens"]:
+        if settings.dataset in ["cifar10", "mnist", "movielens"]:
             test_dir = data_dir
         else:
             test_dir = os.path.join(data_dir, "data", "test")

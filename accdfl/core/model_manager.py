@@ -27,7 +27,7 @@ class ModelManager:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.training_times: List[float] = []
 
-        if self.settings.dataset in ["cifar10", "cifar10_niid", "mnist"]:
+        if self.settings.dataset in ["cifar10", "mnist"]:
             self.data_dir = os.path.join(os.environ["HOME"], "dfl-data")
         else:
             # The LEAF dataset

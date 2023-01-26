@@ -147,7 +147,7 @@ class LearningSimulation:
         for ind, node in enumerate(self.nodes):
             node.overlays[0].start()
 
-        if self.settings.dataset in ["cifar10", "cifar10_niid", "mnist"]:
+        if self.settings.dataset in ["cifar10", "mnist"]:
             data_dir = os.path.join(os.environ["HOME"], "dfl-data")
         else:
             # The LEAF dataset

@@ -20,7 +20,7 @@ def create_model(dataset: str, architecture: Optional[str] = None) -> Model:
     if dataset in ["shakespeare", "shakespeare_sub", "shakespeare_sub96"]:
         from accdfl.core.models.shakespeare import LSTM
         return LSTM()
-    elif dataset == "cifar10" or dataset == "cifar10_niid":
+    elif dataset == "cifar10":
         if not architecture:
             from accdfl.core.models.cifar10 import GNLeNet
             return GNLeNet(input_channel=3, output=10, model_input=(32, 32))
