@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader
 from accdfl.core.datasets.Dataset import Dataset
 from accdfl.core.datasets.Partitioner import DirichletDataPartitioner
 from accdfl.core.mappings.Mapping import Mapping
+from accdfl.util.utils import Cutout
 
 NUM_CLASSES = 10
 
@@ -64,11 +65,17 @@ class CIFAR10(Dataset):
 
         self.alpha = alpha
 
-        self.transform = transforms.Compose(
-            [
-                transforms.ToTensor(),
-            ]
-        )
+        self.train_transformer = transforms.Compose([
+            transforms.RandomCrop(32, padding=4),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+            Cutout(16),
+        ])
+
+        self.test_transformer = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.201))])
 
         if self.__training__:
             self.load_trainset()
@@ -85,7 +92,7 @@ class CIFAR10(Dataset):
         """
         self.logger.info("Loading training set from directory %s and with alpha %f", self.train_dir, self.alpha)
         trainset = torchvision.datasets.CIFAR10(
-            root=self.train_dir, train=True, download=True, transform=self.transform
+            root=self.train_dir, train=True, download=True, transform=self.train_transformer
         )
         c_len = len(trainset)
 
@@ -109,7 +116,7 @@ class CIFAR10(Dataset):
         self.logger.info("Loading testing set from data directory %s", self.test_dir)
 
         self.testset = torchvision.datasets.CIFAR10(
-            root=self.test_dir, train=False, download=True, transform=self.transform
+            root=self.test_dir, train=False, download=True, transform=self.test_transformer
         )
 
         self.logger.info("Test dataset initialization done! Total samples: %d", len(self.testset))
