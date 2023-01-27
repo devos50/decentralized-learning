@@ -28,6 +28,9 @@ class SimulationSettings:
         self.partitioner: str = "iid"
         self.accuracy_logging_interval: int = 1
         self.dl_accuracy_method: DLAccuracyMethod = DLAccuracyMethod.TEST_INDIVIDUAL_MODELS
+        self.dl_test_mode: str = "local"  # How we test the models, options: local and das_jobs
+        self.das_test_subprocess_jobs: int = 1  # The number of subprocesses we should spawn to evaluate the models
+        self.das_test_num_models_per_subprocess: int = 10  # The number of models we test per subprocess
         self.train_device_name: str = "cpu"
         self.accuracy_device_name: str = "cpu"
         self.checkpoint_interval: Optional[int] = None
