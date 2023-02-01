@@ -38,5 +38,8 @@ def create_model(dataset: str, architecture: Optional[str] = None) -> Model:
     elif dataset == "movielens":
         from accdfl.core.models.movielens import MatrixFactorization
         return MatrixFactorization()
+    elif dataset == "spambase":
+        from accdfl.core.models.linear import LinearModel
+        return LinearModel(57, 2)
     else:
         raise RuntimeError("Unknown dataset %s" % dataset)
