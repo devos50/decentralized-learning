@@ -30,5 +30,10 @@ def create_dataset(settings: SessionSettings, participant_index: int = 0, train_
         from accdfl.core.datasets.MovieLens import MovieLens
         data_dir = train_dir or test_dir
         return MovieLens(participant_index, 0, mapping, train_dir=data_dir, test_dir=data_dir)
+    elif settings.dataset == "spambase":
+        from accdfl.core.datasets.spambase import Spambase
+        data_dir = train_dir or test_dir
+        return Spambase(participant_index, 0, mapping, settings.partitioner, train_dir=data_dir, test_dir=data_dir,
+                        shards=settings.target_participants, alpha=settings.alpha)
     else:
         raise RuntimeError("Unknown dataset %s" % settings.dataset)

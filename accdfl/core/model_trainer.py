@@ -22,7 +22,7 @@ class ModelTrainer:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.settings: SessionSettings = settings
 
-        if settings.dataset in ["cifar10", "mnist", "movielens"]:
+        if settings.dataset in ["cifar10", "mnist", "movielens", "spambase"]:
             train_dir = data_dir
         else:
             train_dir = os.path.join(data_dir, "per_user_data", "train")

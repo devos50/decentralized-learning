@@ -1,22 +1,13 @@
 import torch
-import torch.nn.functional as F
+
+from accdfl.core.models import Model
 
 
-class LinearModel(torch.nn.Module):
-    """ Network architecture. """
+class LinearModel(Model):
 
-    def __init__(self, input_size):
+    def __init__(self, input_dim: int, output_dim: int):
         super(LinearModel, self).__init__()
-        self.fc = torch.nn.Linear(input_size,10)
-        self.input_size = input_size
+        self.model = torch.nn.Linear(input_dim, output_dim)
 
-    def forward(self, x):
-        x = self.fc(x.view(-1, self.input_size))
-        return F.log_softmax(x, dim=1)
-
-    def copy(self):
-        c = LinearModel(self.input_size)
-        for c1, s1 in zip(c.parameters(), self.parameters()):
-            c1.mul_(0)
-            c1.add_(s1)
-        return c
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.model(x)
