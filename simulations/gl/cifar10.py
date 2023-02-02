@@ -18,6 +18,7 @@ if __name__ == "__main__":
     settings.train_device_name = "cpu" if "TRAIN_DEVICE_NAME" not in os.environ else os.environ["TRAIN_DEVICE_NAME"]
     settings.accuracy_device_name = "cpu" if "ACC_DEVICE_NAME" not in os.environ else os.environ["ACC_DEVICE_NAME"]
     settings.gl_round_timeout = 60 if "GL_ROUND_TIMEOUT" not in os.environ else float(os.environ["GL_ROUND_TIMEOUT"])
+    settings.log_level = "INFO" if "LOG_LEVEL" not in os.environ else os.environ["LOG_LEVEL"]
     settings.latencies_file = "data/latencies.txt"
     simulation = GLSimulation(settings)
     ensure_future(simulation.run())

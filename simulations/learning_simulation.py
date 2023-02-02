@@ -79,7 +79,7 @@ class LearningSimulation:
     def setup_logger(self) -> None:
         root = logging.getLogger()
         root.handlers[0].setFormatter(logging.Formatter("%(asctime)s:%(levelname)s:%(message)s"))
-        root.setLevel(logging.INFO)
+        root.setLevel(getattr(logging, self.settings.log_level))
 
         self.logger = logging.getLogger(self.__class__.__name__)
 

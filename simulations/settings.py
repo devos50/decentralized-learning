@@ -41,3 +41,4 @@ class SimulationSettings:
         self.topology: Optional[str] = None
         self.bypass_model_transfers: bool = False
         self.gl_round_timeout: float = 60
+        self.log_level: str = "INFO"
