@@ -6,6 +6,7 @@ from typing import Optional, List
 from accdfl.core.model_manager import ModelManager
 from accdfl.core.session_settings import LearningSettings, SessionSettings, GLSettings
 from ipv8.configuration import ConfigBuilder
+from ipv8.taskmanager import TaskManager
 from simulations.settings import SimulationSettings
 
 from simulations.learning_simulation import LearningSimulation
@@ -16,6 +17,7 @@ class GLSimulation(LearningSimulation):
     def __init__(self, settings: SimulationSettings) -> None:
         super().__init__(settings)
         self.model_manager: Optional[ModelManager] = None
+        self.task_manager = TaskManager()
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = super().get_ipv8_builder(peer_id)
@@ -62,6 +64,23 @@ class GLSimulation(LearningSimulation):
             for node in self.nodes:
                 node.overlays[0].nodes = self.nodes
 
+        if self.settings.accuracy_logging_interval > 0 and self.settings.accuracy_logging_interval_is_in_sec:
+            interval = self.settings.accuracy_logging_interval
+            self.logger.info("Registering logging interval task that triggers every %d seconds", interval)
+            self.task_manager.register_task("acc_check", self.compute_all_accuracies, delay=interval, interval=interval)
+
+    def compute_all_accuracies(self):
+        cur_time = get_event_loop().time()
+        self.logger.info("Computing accuracies for all models, current time: %f", cur_time)
+        for ind, node in enumerate(self.nodes):
+            model = self.nodes[ind].overlays[0].model_manager.model
+            round_nr = self.nodes[ind].overlays[0].round
+            accuracy, loss = self.evaluator.evaluate_accuracy(
+                model, device_name=self.settings.accuracy_device_name)
+            with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
+                out_file.write("%s,GL,%f,%d,%d,%f,%f\n" % (self.settings.dataset, cur_time,
+                                                           ind, round_nr, accuracy, loss))
+
     def build_topology(self):
         """
         Build a fully connected topology where all peers know each other.
@@ -74,7 +93,8 @@ class GLSimulation(LearningSimulation):
 
     async def on_round_complete(self, peer_ind: int, round_nr: int):
         # Compute model accuracy
-        if round_nr % self.settings.accuracy_logging_interval == 0:
+        if not self.settings.accuracy_logging_interval_is_in_sec and \
+                round_nr % self.settings.accuracy_logging_interval == 0:
             print("Will compute accuracy of peer %d for round %d!" % (peer_ind, round_nr))
             try:
                 print("Testing model of peer %d on device %s..." % (peer_ind + 1, self.settings.accuracy_device_name))

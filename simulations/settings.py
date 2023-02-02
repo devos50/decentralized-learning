@@ -28,6 +28,7 @@ class SimulationSettings:
         self.model: Optional[str] = None
         self.partitioner: str = "iid"
         self.accuracy_logging_interval: int = 1
+        self.accuracy_logging_interval_is_in_sec: bool = False
         self.dl_accuracy_method: DLAccuracyMethod = DLAccuracyMethod.TEST_INDIVIDUAL_MODELS
         self.dl_test_mode: str = "local"  # How we test the models, options: local and das_jobs
         self.das_test_subprocess_jobs: int = 1  # The number of subprocesses we should spawn to evaluate the models

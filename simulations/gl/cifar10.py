@@ -14,6 +14,7 @@ if __name__ == "__main__":
     settings.learning_rate = 0.002 if "LEARNING_RATE" not in os.environ else float(os.environ["LEARNING_RATE"])
     settings.batch_size = 20
     settings.accuracy_logging_interval = 5 if "ACC_LOG_INTERVAL" not in os.environ else int(os.environ["ACC_LOG_INTERVAL"])
+    settings.accuracy_logging_interval_is_in_sec = False if "ACC_LOG_INTERVAL_IN_SEC" not in os.environ else bool(os.environ["ACC_LOG_INTERVAL_IN_SEC"])
     settings.checkpoint_interval = None if "CHECKPOINT_INTERVAL" not in os.environ else int(os.environ["CHECKPOINT_INTERVAL"])
     settings.train_device_name = "cpu" if "TRAIN_DEVICE_NAME" not in os.environ else os.environ["TRAIN_DEVICE_NAME"]
     settings.accuracy_device_name = "cpu" if "ACC_DEVICE_NAME" not in os.environ else os.environ["ACC_DEVICE_NAME"]
