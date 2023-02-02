@@ -76,6 +76,9 @@ class GLCommunity(LearningCommunity):
         incoming_model = unserialize_model(result.data, self.settings.dataset, architecture=self.settings.model)
 
         # Merge the incoming model with the current local model.
+        detached_model = unserialize_model(serialize_model(self.model_manager.model),
+                                           self.settings.dataset, architecture=self.settings.model)
+        self.model_manager.process_incoming_trained_model(self.my_peer.public_key.key_to_bin(), detached_model)
         self.model_manager.process_incoming_trained_model(peer_pk, incoming_model)
 
         age_sum = json_data["model_age"] + self.model_age
