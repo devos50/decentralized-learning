@@ -1,7 +1,6 @@
 import os
 from asyncio import get_event_loop
 from binascii import hexlify
-from typing import Optional, List
 
 from accdfl.core.model_manager import ModelManager
 from accdfl.core.session_settings import LearningSettings, SessionSettings, GLSettings
@@ -16,7 +15,6 @@ class GLSimulation(LearningSimulation):
 
     def __init__(self, settings: SimulationSettings) -> None:
         super().__init__(settings)
-        self.model_manager: Optional[ModelManager] = None
         self.task_manager = TaskManager()
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
@@ -72,14 +70,26 @@ class GLSimulation(LearningSimulation):
     def compute_all_accuracies(self):
         cur_time = get_event_loop().time()
         self.logger.info("Computing accuracies for all models, current time: %f", cur_time)
+
+        # Put all the models in the model manager
         for ind, node in enumerate(self.nodes):
             model = self.nodes[ind].overlays[0].model_manager.model
+            self.model_manager.process_incoming_trained_model(b"%d" % ind, model)
+
+        # Compute the accuracies
+        if self.settings.dl_test_mode == "das_jobs":
+            results = self.test_models_with_das_jobs()
+        else:
+            results = self.test_models()
+
+        for ind, acc_res in results.items():
+            accuracy, loss = acc_res
             round_nr = self.nodes[ind].overlays[0].round
-            accuracy, loss = self.evaluator.evaluate_accuracy(
-                model, device_name=self.settings.accuracy_device_name)
             with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
-                out_file.write("%s,GL,%f,%d,%d,%f,%f\n" % (self.settings.dataset, cur_time,
-                                                           ind, round_nr, accuracy, loss))
+                out_file.write("%s,GL,%f,%d,%d,%f,%f\n" %
+                               (self.settings.dataset, get_event_loop().time(), ind, round_nr, accuracy, loss))
+
+        self.model_manager.reset_incoming_trained_models()
 
     def build_topology(self):
         """
