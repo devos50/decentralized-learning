@@ -8,7 +8,7 @@ if __name__ == "__main__":
     settings = SimulationSettings()
     settings.duration = 3600 if "DURATION" not in os.environ else int(os.environ["DURATION"])
     settings.dataset = "cifar10"
-    settings.partitioner = "dirichlet"
+    settings.partitioner = "dirichlet" if "PARTITIONER" not in os.environ else os.environ["PARTITIONER"]
     settings.peers = 100 if "NUM_PEERS" not in os.environ else int(os.environ["NUM_PEERS"])
     settings.momentum = 0.9 if "MOMENTUM" not in os.environ else float(os.environ["MOMENTUM"])
     settings.learning_rate = 0.002 if "LEARNING_RATE" not in os.environ else float(os.environ["LEARNING_RATE"])
