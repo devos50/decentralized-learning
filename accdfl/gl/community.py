@@ -84,6 +84,7 @@ class GLCommunity(LearningCommunity):
         age_sum = json_data["model_age"] + self.model_age
         weights = [self.model_age / age_sum, json_data["model_age"] / age_sum] if age_sum > 0 else None
         self.model_age = max(json_data["model_age"], self.model_age)
+        self.logger.info("Aggregating local and remote model with weights: %s", weights)
         self.model_manager.model = self.model_manager.aggregate_trained_models(weights=weights)
         self.model_manager.reset_incoming_trained_models()
         if self.aggregate_complete_callback:

@@ -54,7 +54,6 @@ class ModelManager:
 
     def aggregate_trained_models(self, weights: List[float] = None) -> Optional[nn.Module]:
         models = [model for model in self.incoming_trained_models.values()]
-        self.logger.debug("Aggregating %d models with weights: %s", len(models), weights)
         return self.get_aggregation_method().aggregate(models, weights=weights)
 
     def dump_settings(self):
