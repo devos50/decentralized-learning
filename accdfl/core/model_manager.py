@@ -33,7 +33,7 @@ class ModelManager:
             # The LEAF dataset
             self.data_dir = os.path.join(os.environ["HOME"], "leaf", self.settings.dataset)
 
-        self.model_trainer = None  # Only used when not training in a subprocess (e.g., in the unit tests)
+        self.model_trainer: Optional[ModelTrainer] = None
 
         # Keeps track of the incoming trained models as aggregator
         self.incoming_trained_models: Dict[bytes, nn.Module] = {}
@@ -52,9 +52,10 @@ class ModelManager:
         if self.settings.gradient_aggregation == GradientAggregationMethod.FEDAVG:
             return FedAvg
 
-    def aggregate_trained_models(self) -> Optional[nn.Module]:
+    def aggregate_trained_models(self, weights: List[float] = None) -> Optional[nn.Module]:
         models = [model for model in self.incoming_trained_models.values()]
-        return self.get_aggregation_method().aggregate(models)
+        self.logger.debug("Aggregating %d models with weights: %s", len(models), weights)
+        return self.get_aggregation_method().aggregate(models, weights=weights)
 
     def dump_settings(self):
         """
@@ -66,7 +67,7 @@ class ModelManager:
                 print(self.settings)
                 settings_file.write(self.settings.to_json())
 
-    async def train(self):
+    async def train(self) -> int:
         if self.settings.train_in_subprocess:
             # Dump the model and settings to a file
             model_file_name = "%d.model" % random.randint(1, 1000000)
@@ -106,9 +107,10 @@ class ModelManager:
                 # Lazy initialize the model trainer
                 self.model_trainer = ModelTrainer(self.data_dir, self.settings, self.participant_index)
             train_start_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
-            await self.model_trainer.train(self.model, device_name=self.settings.train_device_name)
+            samples_trained_on = await self.model_trainer.train(self.model, device_name=self.settings.train_device_name)
             train_end_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
             self.training_times.append(train_end_time - train_start_time)
+            return samples_trained_on
 
     async def compute_accuracy(self, model: nn.Module):
         """

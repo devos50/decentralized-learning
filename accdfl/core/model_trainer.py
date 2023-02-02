@@ -45,6 +45,7 @@ class ModelTrainer:
                          local_steps, device_name, self.settings.learning.batch_size, len(train_set.dataset))
 
         start_time = time.time()
+        samples_trained_on = 0
         for local_step in range(local_steps):
             try:
                 data, target = next(train_set_it)
@@ -53,6 +54,7 @@ class ModelTrainer:
                 optimizer.optimizer.zero_grad()
                 self.logger.debug('d-sgd.next node forward propagation (step %d/%d)', local_step, local_steps)
                 output = model.forward(data)
+                samples_trained_on += len(data)
 
                 if self.settings.dataset == "movielens":
                     lossf = MSELoss()
@@ -77,4 +79,4 @@ class ModelTrainer:
             elapsed_time = time.time() - start_time
             await sleep(elapsed_time)
 
-        return model
+        return samples_trained_on
