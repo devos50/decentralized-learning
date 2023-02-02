@@ -1,3 +1,4 @@
+import argparse
 import os
 import time
 
@@ -9,26 +10,40 @@ from accdfl.core.models import create_model
 from accdfl.core.session_settings import SessionSettings, LearningSettings
 
 
-async def run(learning_settings: LearningSettings, dataset: str):
-    num_rounds = 100 if "NUM_ROUNDS" not in os.environ else int(os.environ["NUM_ROUNDS"])
-    num_peers = 10 if "NUM_PEERS" not in os.environ else int(os.environ["NUM_PEERS"])
+def get_args(default_lr: float, default_momentum: float = 0):
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--lr', type=float, default=default_lr)
+    parser.add_argument('--momentum', type=float, default=default_momentum)
+    parser.add_argument('--batch-size', type=int, default=20)
+    parser.add_argument('--peers', type=int, default=10)
+    parser.add_argument('--rounds', type=int, default=100)
+    parser.add_argument('--partitioner', type=str, default="iid")
+    parser.add_argument('--data-dir', type=str, default=os.path.join(os.environ["HOME"], "dfl-data"))
+    return parser.parse_args()
+
+
+async def run(args, dataset: str):
+    learning_settings = LearningSettings(
+        learning_rate=args.lr,
+        momentum=args.momentum,
+        batch_size=args.batch_size
+    )
 
     settings = SessionSettings(
         dataset=dataset,
-        partitioner="iid" if "PARTITIONER" not in os.environ else os.environ["PARTITIONER"],
+        partitioner=args.partitioner,
         work_dir="",
         learning=learning_settings,
         participants=["a"],
         all_participants=["a"],
-        target_participants=num_peers,
+        target_participants=args.peers,
     )
 
-    data_dir = os.path.join(os.environ["HOME"], "dfl-data")
-    test_dataset = create_dataset(settings, 0, test_dir=data_dir)
+    test_dataset = create_dataset(settings, 0, test_dir=args.data_dir)
 
     print("Datasets prepared")
 
-    data_path = os.path.join("data", "%s_n_%d" % (dataset, num_peers))
+    data_path = os.path.join("data", "%s_n_%d" % (dataset, args.peers))
     if not os.path.exists(data_path):
         os.makedirs(data_path, exist_ok=True)
 
@@ -39,12 +54,12 @@ async def run(learning_settings: LearningSettings, dataset: str):
     print("Device to train/determine accuracy: %s" % device)
 
     # Model
-    models = [create_model(settings.dataset, architecture=settings.model) for n in range(num_peers)]
-    trainers = [ModelTrainer(data_dir, settings, n) for n in range(num_peers)]
+    models = [create_model(settings.dataset, architecture=settings.model) for _ in range(args.peers)]
+    trainers = [ModelTrainer(args.data_dir, settings, n) for n in range(args.peers)]
 
-    for n in range(num_peers):
+    for n in range(args.peers):
         highest_acc, lowest_loss = 0, 0
-        for round in range(num_rounds):
+        for round in range(args.rounds):
             start_time = time.time()
             print("Starting training round %d for peer %d" % (round + 1, n))
             await trainers[n].train(models[n], device_name=device)
@@ -60,4 +75,4 @@ async def run(learning_settings: LearningSettings, dataset: str):
 
         # Write the final accuracy
         with open(os.path.join(data_path, "accuracies.csv"), "a") as out_file:
-            out_file.write("%s,%s,%d,%d,%d,%f,%f,%f\n" % (dataset, "standalone", n, num_peers, num_rounds, learning_settings.learning_rate, highest_acc, lowest_loss))
+            out_file.write("%s,%s,%d,%d,%d,%f,%f,%f\n" % (dataset, "standalone", n, args.peers, args.rounds, learning_settings.learning_rate, highest_acc, lowest_loss))
