@@ -6,7 +6,7 @@ from accdfl.core.model_manager import ModelManager
 from accdfl.core.session_settings import LearningSettings, SessionSettings, GLSettings
 from ipv8.configuration import ConfigBuilder
 from ipv8.taskmanager import TaskManager
-from simulations.settings import SimulationSettings
+from simulations.settings import SimulationSettings, DLAccuracyMethod
 
 from simulations.learning_simulation import LearningSimulation
 
@@ -76,18 +76,25 @@ class GLSimulation(LearningSimulation):
             model = self.nodes[ind].overlays[0].model_manager.model
             self.model_manager.process_incoming_trained_model(b"%d" % ind, model)
 
-        # Compute the accuracies
-        if self.settings.dl_test_mode == "das_jobs":
-            results = self.test_models_with_das_jobs()
-        else:
-            results = self.test_models()
-
-        for ind, acc_res in results.items():
-            accuracy, loss = acc_res
-            round_nr = self.nodes[ind].overlays[0].round
+        if self.settings.dl_accuracy_method == DLAccuracyMethod.AGGREGATE_THEN_TEST:
+            avg_model = self.model_manager.aggregate_trained_models()
+            accuracy, loss = self.evaluator.evaluate_accuracy(avg_model, device_name=self.settings.accuracy_device_name)
             with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
-                out_file.write("%s,GL,%f,%d,%d,%f,%f\n" %
-                               (self.settings.dataset, get_event_loop().time(), ind, round_nr, accuracy, loss))
+                out_file.write("%s,GL,%f,%d,%d,%f,%f\n" % (self.settings.dataset, get_event_loop().time(), 0,
+                                                           int(cur_time), accuracy, loss))
+        else:
+            # Compute the accuracies of all individual models
+            if self.settings.dl_test_mode == "das_jobs":
+                results = self.test_models_with_das_jobs()
+            else:
+                results = self.test_models()
+
+            for ind, acc_res in results.items():
+                accuracy, loss = acc_res
+                round_nr = self.nodes[ind].overlays[0].round
+                with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
+                    out_file.write("%s,GL,%f,%d,%d,%f,%f\n" %
+                                   (self.settings.dataset, cur_time, ind, round_nr, accuracy, loss))
 
         self.model_manager.reset_incoming_trained_models()
 
