@@ -2,6 +2,8 @@ import os
 from asyncio import get_event_loop
 from binascii import hexlify
 
+import torch
+
 from accdfl.core.session_settings import DFLSettings, LearningSettings, SessionSettings
 from ipv8.configuration import ConfigBuilder
 
@@ -14,6 +16,7 @@ class DFLSimulation(LearningSimulation):
     def __init__(self, settings: SimulationSettings) -> None:
         super().__init__(settings)
         self.latest_accuracy_check_round: int = 0
+        self.best_accuracy: float = 0.0
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = super().get_ipv8_builder(peer_id)
@@ -106,6 +109,11 @@ class DFLSimulation(LearningSimulation):
                 group = "\"s=%d, a=%d\"" % (self.settings.sample_size, self.settings.num_aggregators)
                 out_file.write("%s,%s,%f,%d,%d,%f,%f\n" % (self.settings.dataset, group, get_event_loop().time(),
                                                            ind, round_nr, accuracy, loss))
+
+                if self.settings.store_best_models and accuracy > self.best_accuracy:
+                    self.best_accuracy = accuracy
+                    torch.save(model.state_dict(), os.path.join(self.data_dir, "best.model"))
+
             self.latest_accuracy_check_round = round_nr
 
         if self.settings.num_rounds and round_nr >= self.settings.num_rounds:

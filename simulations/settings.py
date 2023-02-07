@@ -35,6 +35,7 @@ class SimulationSettings:
         self.train_device_name: str = "cpu"
         self.accuracy_device_name: str = "cpu"
         self.checkpoint_interval: Optional[int] = None
+        self.store_best_models: bool = False
         self.latencies_file: Optional[str] = None
         self.fix_aggregator: bool = False
         self.topology: Optional[str] = None
