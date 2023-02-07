@@ -20,7 +20,7 @@ class DFLSimulation(LearningSimulation):
         if self.settings.bypass_model_transfers:
             builder.add_overlay("DFLBypassNetworkCommunity", "my peer", [], [], {}, [])
         else:
-            builder.add_overlay("DLFCommunity", "my peer", [], [], {}, [])
+            builder.add_overlay("DFLCommunity", "my peer", [], [], {}, [])
         return builder
 
     async def setup_simulation(self) -> None:
