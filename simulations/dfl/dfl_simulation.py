@@ -26,10 +26,22 @@ class DFLSimulation(LearningSimulation):
     async def setup_simulation(self) -> None:
         await super().setup_simulation()
 
+        if self.settings.active_participants:
+            self.logger.info("Initial active participants: %s", self.settings.active_participants)
+            start_ind, end_ind = self.settings.active_participants.split("-")
+            start_ind, end_ind = int(start_ind), int(end_ind)
+            participants_pks = [hexlify(self.nodes[ind].overlays[0].my_peer.public_key.key_to_bin()).decode()
+                            for ind in range(start_ind, end_ind)]
+            participants_ids = list(range(start_ind, end_ind))
+        else:
+            participants_pks = [hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes]
+            participants_ids = list(range(len(self.nodes)))
+
+        # Determine who will be the aggregator
         peer_pk = None
         lowest_latency_peer_id = -1
         if self.settings.fix_aggregator:
-            lowest_latency_peer_id = self.determine_peer_with_lowest_median_latency()
+            lowest_latency_peer_id = self.determine_peer_with_lowest_median_latency(participants_ids)
             peer_pk = self.nodes[lowest_latency_peer_id].overlays[0].my_peer.public_key.key_to_bin()
 
         # Setup the training process
@@ -49,20 +61,11 @@ class DFLSimulation(LearningSimulation):
             fixed_aggregator=peer_pk if self.settings.fix_aggregator else None
         )
 
-        if self.settings.active_participants:
-            self.logger.info("Initial active participants: %s", self.settings.active_participants)
-            start_ind, end_ind = self.settings.active_participants.split("-")
-            start_ind, end_ind = int(start_ind), int(end_ind)
-            participants = [hexlify(self.nodes[ind].overlays[0].my_peer.public_key.key_to_bin()).decode()
-                            for ind in range(start_ind, end_ind)]
-        else:
-            participants = [hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes]
-
         self.session_settings = SessionSettings(
             work_dir=self.data_dir,
             dataset=self.settings.dataset,
             learning=learning_settings,
-            participants=participants,
+            participants=participants_pks,
             all_participants=[hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
             target_participants=len(self.nodes),
             dfl=dfl_settings,
