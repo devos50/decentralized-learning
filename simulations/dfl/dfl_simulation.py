@@ -49,11 +49,20 @@ class DFLSimulation(LearningSimulation):
             fixed_aggregator=peer_pk if self.settings.fix_aggregator else None
         )
 
+        if self.settings.active_participants:
+            self.logger.info("Initial active participants: %s", self.settings.active_participants)
+            start_ind, end_ind = self.settings.active_participants.split("-")
+            start_ind, end_ind = int(start_ind), int(end_ind)
+            participants = [hexlify(self.nodes[ind].overlays[0].my_peer.public_key.key_to_bin()).decode()
+                            for ind in range(start_ind, end_ind)]
+        else:
+            participants = [hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes]
+
         self.session_settings = SessionSettings(
             work_dir=self.data_dir,
             dataset=self.settings.dataset,
             learning=learning_settings,
-            participants=[hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
+            participants=participants,
             all_participants=[hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
             target_participants=len(self.nodes),
             dfl=dfl_settings,

@@ -14,6 +14,7 @@ class SimulationSettings:
 
     def __init__(self):
         self.peers: int = 10
+        self.active_participants: Optional[str] = None  # In the form "5-23"
         self.sample_size: int = 1
         self.batch_size: int = 500
         self.learning_rate: float = 0.002
