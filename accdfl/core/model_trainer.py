@@ -41,8 +41,9 @@ class ModelTrainer:
         if len(train_set.dataset) % self.settings.learning.batch_size != 0:
             local_steps += 1
 
-        self.logger.info("Will perform %d local steps of training on device %s (batch size: %d, data points: %d)",
-                         local_steps, device_name, self.settings.learning.batch_size, len(train_set.dataset))
+        self.logger.info("Will perform %d local steps of training on device %s (batch size: %d, lr: %f, data points: %d)",
+                         local_steps, device_name, self.settings.learning.batch_size,
+                         self.settings.learning.learning_rate, len(train_set.dataset))
 
         start_time = time.time()
         samples_trained_on = 0
