@@ -29,8 +29,10 @@ class DLCommunity(LearningCommunity):
         Start to participate in the training process.
         """
         assert self.did_setup, "Process has not been setup - call setup() first"
-        assert self.neighbours, "We need some neighbours"
-        self.start_next_round()
+        if self.neighbours:
+            self.start_next_round()
+        else:
+            self.logger.warning("Peer %s has no neighbours - not starting rounds", self.peer_manager.get_my_short_id())
 
     def eva_send_model(self, round, model, peer):
         start_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
