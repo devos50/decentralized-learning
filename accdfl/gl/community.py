@@ -18,6 +18,7 @@ class GLCommunity(LearningCommunity):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.round: int = 1
+        self.model_age: int = 0
         self.neighbours: List[bytes] = []  # The PKs of the neighbours we will send our model to
 
     def start(self):
@@ -28,10 +29,10 @@ class GLCommunity(LearningCommunity):
         assert self.neighbours, "We need some neighbours"
         self.start_next_round()
 
-    def eva_send_model(self, round, model, peer):
+    def eva_send_model(self, round: int, model_age: int, model, peer):
         start_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
         serialized_model = serialize_model(model)
-        response = {"round": round}
+        response = {"round": round, "model_age": model_age}
         serialized_response = json.dumps(response).encode()
         return self.schedule_eva_send_model(peer, serialized_response, serialized_model, start_time)
 
@@ -54,7 +55,7 @@ class GLCommunity(LearningCommunity):
             raise RuntimeError("Participant %s cannot find Peer object for participant %s!" % (
                                self.peer_manager.get_my_short_id(), self.peer_manager.get_short_id(peer_pk)))
 
-        await self.eva_send_model(self.round, self.model_manager.model, peer)
+        await self.eva_send_model(self.round, self.model_age, self.model_manager.model, peer)
 
         if self.round_complete_callback:
             ensure_future(self.round_complete_callback(self.round))
@@ -75,13 +76,20 @@ class GLCommunity(LearningCommunity):
         incoming_model = unserialize_model(result.data, self.settings.dataset, architecture=self.settings.model)
 
         # Merge the incoming model with the current local model.
-        # TODO use adaptive learning rate during the aggregation step.
+        detached_model = unserialize_model(serialize_model(self.model_manager.model),
+                                           self.settings.dataset, architecture=self.settings.model)
+        self.model_manager.process_incoming_trained_model(self.my_peer.public_key.key_to_bin(), detached_model)
         self.model_manager.process_incoming_trained_model(peer_pk, incoming_model)
-        self.model_manager.model = self.model_manager.aggregate_trained_models()
+
+        age_sum = json_data["model_age"] + self.model_age
+        weights = [self.model_age / age_sum, json_data["model_age"] / age_sum] if age_sum > 0 else None
+        self.model_age = max(json_data["model_age"], self.model_age)
+        self.logger.info("Aggregating local and remote model with weights: %s", weights)
+        self.model_manager.model = self.model_manager.aggregate_trained_models(weights=weights)
         self.model_manager.reset_incoming_trained_models()
         if self.aggregate_complete_callback:
             model_cpy = copy.deepcopy(self.model_manager.model)
             ensure_future(self.aggregate_complete_callback(self.round, model_cpy))
 
         # Train
-        await self.model_manager.train()
+        self.model_age += await self.model_manager.train()

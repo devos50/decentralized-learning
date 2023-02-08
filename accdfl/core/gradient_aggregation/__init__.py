@@ -13,5 +13,5 @@ class GradientAggregation:
 
     @staticmethod
     @abstractmethod
-    def aggregate(models: List[nn.Module]):
+    def aggregate(models: List[nn.Module], weights: List[float]):
         pass

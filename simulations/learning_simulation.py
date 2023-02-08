@@ -1,15 +1,20 @@
 import asyncio
 import logging
 import os
+import random
 import shutil
+import stat
+import subprocess
 import time
+from asyncio import get_event_loop
 from statistics import median, mean
-from typing import Optional, List
+from typing import Dict, List, Optional, Tuple
 
 import torch
 
 import yappi
 
+from accdfl.core.model_manager import ModelManager
 from accdfl.core.model_evaluator import ModelEvaluator
 from accdfl.core.session_settings import SessionSettings
 from accdfl.dfl.community import DFLCommunity
@@ -39,6 +44,7 @@ class LearningSimulation:
         self.data_dir = os.path.join("data", "n_%d_%s" % (self.settings.peers, self.settings.dataset))
         self.evaluator = None
         self.logger = None
+        self.model_manager: Optional[ModelManager] = None
 
         self.loop = DiscreteLoop()
         asyncio.set_event_loop(self.loop)
@@ -79,7 +85,7 @@ class LearningSimulation:
     def setup_logger(self) -> None:
         root = logging.getLogger()
         root.handlers[0].setFormatter(logging.Formatter("%(asctime)s:%(levelname)s:%(message)s"))
-        root.setLevel(logging.INFO)
+        root.setLevel(getattr(logging, self.settings.log_level))
 
         self.logger = logging.getLogger(self.__class__.__name__)
 
@@ -204,6 +210,112 @@ class LearningSimulation:
 
         model = self.nodes[peer_ind].overlays[0].model_manager.model
         torch.save(model.state_dict(), os.path.join(models_dir, "%d.model" % peer_ind))
+
+    def dump_settings(self):
+        """
+        Dump the session settings if they do not exist yet.
+        """
+        settings_file_path = os.path.join(self.session_settings.work_dir, "settings.json")
+        if not os.path.exists(settings_file_path):
+            with open(settings_file_path, "w") as settings_file:
+                settings_file.write(self.session_settings.to_json())
+
+    def test_models_with_das_jobs(self) -> Dict[int, Tuple[float, float]]:
+        """
+        Test the accuracy of all models in the model manager by spawning different DAS jobs.
+        """
+        results: Dict[int, Tuple[float, float]] = {}
+
+        self.dump_settings()
+
+        # Divide the clients over the DAS nodes
+        client_queue = list(range(len(self.model_manager.incoming_trained_models.values())))
+        while client_queue:
+            self.logger.info("Scheduling new batch on DAS nodes - %d clients left", len(client_queue))
+
+            processes = []
+            all_model_ids = set()
+            for job_ind in range(self.settings.das_test_subprocess_jobs):
+                if not client_queue:
+                    continue
+
+                clients_on_this_node = []
+                while client_queue and len(clients_on_this_node) < self.settings.das_test_num_models_per_subprocess:
+                    client = client_queue.pop(0)
+                    clients_on_this_node.append(client)
+
+                # Prepare the input files for the subjobs
+                model_ids = []
+                for client_id in clients_on_this_node:
+                    model_id = client_id
+                    model_ids.append(model_id)
+                    all_model_ids.add(model_id)
+                    model_file_name = "%d.model" % model_id
+                    model_path = os.path.join(self.session_settings.work_dir, model_file_name)
+                    node_id = b"%d" % client_id
+                    torch.save(self.model_manager.incoming_trained_models[node_id].state_dict(), model_path)
+
+                import accdfl.util as autil
+                script_dir = os.path.join(os.path.abspath(os.path.dirname(autil.__file__)), "evaluate_model.py")
+
+                # Prepare the files and spawn the processes!
+                out_file_path = os.path.join(os.getcwd(), "out_%d.log" % job_ind)
+                model_ids_str = ",".join(["%d" % model_id for model_id in model_ids])
+
+                train_cmd = "python3 %s %s %s %s" % (
+                script_dir, self.session_settings.work_dir, model_ids_str, self.model_manager.data_dir)
+                bash_file_name = "run_%d.sh" % job_ind
+                with open(bash_file_name, "w") as bash_file:
+                    bash_file.write("""#!/bin/bash
+module load cuda11.7/toolkit/11.7
+source /home/spandey/venv3/bin/activate
+cd %s
+export PYTHONPATH=%s
+%s
+""" % (os.getcwd(), os.getcwd(), train_cmd))
+                    st = os.stat(bash_file_name)
+                    os.chmod(bash_file_name, st.st_mode | stat.S_IEXEC)
+
+                cmd = "ssh fs3.das6.tudelft.nl \"prun -t 5:00 -np 1 -o %s %s\"" % (
+                out_file_path, os.path.join(os.getcwd(), bash_file_name))
+                self.logger.debug("Command: %s", cmd)
+                p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                processes.append((p, cmd, model_ids))
+
+            for p, cmd, model_ids in processes:
+                p.wait()
+                self.logger.info("Command %s completed!", cmd)
+                if p.returncode != 0:
+                    raise RuntimeError("Training subprocess exited with non-zero code %d" % p.returncode)
+
+                # This batch is done! Collect the results...
+                for model_id in model_ids:
+                    model_file_name = "%d.model" % model_id
+                    model_path = os.path.join(self.session_settings.work_dir, model_file_name)
+                    os.unlink(model_path)
+
+                    # Read the accuracy and the loss from the file
+                    results_file = os.path.join(self.session_settings.work_dir, "%d_results.csv" % model_id)
+                    with open(results_file) as in_file:
+                        content = in_file.read().strip().split(",")
+                        accuracy, loss = float(content[0]), float(content[1])
+                        results[model_id] = (accuracy, loss)
+
+                    os.unlink(results_file)
+
+        return results
+
+    def test_models(self) -> Dict[int, Tuple[float, float]]:
+        """
+        Test the accuracy of all models in the model manager locally.
+        """
+        results: Dict[int, Tuple[float, float]] = {}
+        for ind, model in enumerate(self.model_manager.incoming_trained_models.values()):
+            print("Testing model %d on device %s..." % (ind + 1, self.settings.accuracy_device_name))
+            accuracy, loss = self.evaluator.evaluate_accuracy(
+                model, device_name=self.settings.accuracy_device_name)
+            results[ind] = (accuracy, loss)
+        return results
 
     def on_simulation_finished(self) -> None:
         """

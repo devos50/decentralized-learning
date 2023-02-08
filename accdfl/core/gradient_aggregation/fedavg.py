@@ -10,9 +10,13 @@ from accdfl.core.gradient_aggregation import GradientAggregation
 class FedAvg(GradientAggregation):
 
     @staticmethod
-    def aggregate(models: List[nn.Module]):
-        with torch.no_grad():
+    def aggregate(models: List[nn.Module], weights: List[float]):
+        if not weights:
             weights = [float(1. / len(models)) for _ in range(len(models))]
+        else:
+            assert len(weights) == len(models)
+
+        with torch.no_grad():
             center_model = copy.deepcopy(models[0])
             for p in center_model.parameters():
                 p.mul_(0)
