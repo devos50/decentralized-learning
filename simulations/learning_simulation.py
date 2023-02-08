@@ -4,7 +4,7 @@ import os
 import shutil
 import time
 from statistics import median, mean
-from typing import Optional
+from typing import Optional, List
 
 import torch
 
@@ -117,7 +117,7 @@ class LearningSimulation:
 
         print("Latencies applied!")
 
-    def determine_peer_with_lowest_median_latency(self) -> int:
+    def determine_peer_with_lowest_median_latency(self, eligible_peers: List[int]) -> int:
         """
         Based on the latencies, determine the ID of the peer with the lowest median latency to other peers.
         """
@@ -130,14 +130,16 @@ class LearningSimulation:
         lowest_peer_id = 0
         avg_latencies = []
         for peer_id in range(min(len(self.nodes), len(latencies))):
+            if peer_id not in eligible_peers:
+                continue
             median_latency = median(latencies[peer_id])
             avg_latencies.append(mean(latencies[peer_id]))
             if median_latency < lowest_median_latency:
                 lowest_median_latency = median_latency
                 lowest_peer_id = peer_id
 
-        print("Determined peer %d with lowest median latency: %f" % (lowest_peer_id + 1, lowest_median_latency))
-        print("Average latency: %f" % mean(avg_latencies))
+        self.logger.info("Determined peer %d with lowest median latency: %f", lowest_peer_id + 1, lowest_median_latency)
+        self.logger.debug("Average latency: %f" % mean(avg_latencies))
         return lowest_peer_id
 
     async def setup_simulation(self) -> None:

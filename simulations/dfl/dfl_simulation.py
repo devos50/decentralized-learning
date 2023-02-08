@@ -2,6 +2,8 @@ import os
 from asyncio import get_event_loop
 from binascii import hexlify
 
+import torch
+
 from accdfl.core.session_settings import DFLSettings, LearningSettings, SessionSettings
 from ipv8.configuration import ConfigBuilder
 
@@ -14,6 +16,7 @@ class DFLSimulation(LearningSimulation):
     def __init__(self, settings: SimulationSettings) -> None:
         super().__init__(settings)
         self.latest_accuracy_check_round: int = 0
+        self.best_accuracy: float = 0.0
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = super().get_ipv8_builder(peer_id)
@@ -26,10 +29,22 @@ class DFLSimulation(LearningSimulation):
     async def setup_simulation(self) -> None:
         await super().setup_simulation()
 
+        if self.settings.active_participants:
+            self.logger.info("Initial active participants: %s", self.settings.active_participants)
+            start_ind, end_ind = self.settings.active_participants.split("-")
+            start_ind, end_ind = int(start_ind), int(end_ind)
+            participants_pks = [hexlify(self.nodes[ind].overlays[0].my_peer.public_key.key_to_bin()).decode()
+                            for ind in range(start_ind, end_ind)]
+            participants_ids = list(range(start_ind, end_ind))
+        else:
+            participants_pks = [hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes]
+            participants_ids = list(range(len(self.nodes)))
+
+        # Determine who will be the aggregator
         peer_pk = None
         lowest_latency_peer_id = -1
         if self.settings.fix_aggregator:
-            lowest_latency_peer_id = self.determine_peer_with_lowest_median_latency()
+            lowest_latency_peer_id = self.determine_peer_with_lowest_median_latency(participants_ids)
             peer_pk = self.nodes[lowest_latency_peer_id].overlays[0].my_peer.public_key.key_to_bin()
 
         # Setup the training process
@@ -53,7 +68,7 @@ class DFLSimulation(LearningSimulation):
             work_dir=self.data_dir,
             dataset=self.settings.dataset,
             learning=learning_settings,
-            participants=[hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
+            participants=participants_pks,
             all_participants=[hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
             target_participants=len(self.nodes),
             dfl=dfl_settings,
@@ -94,6 +109,11 @@ class DFLSimulation(LearningSimulation):
                 group = "\"s=%d, a=%d\"" % (self.settings.sample_size, self.settings.num_aggregators)
                 out_file.write("%s,%s,%f,%d,%d,%f,%f\n" % (self.settings.dataset, group, get_event_loop().time(),
                                                            ind, round_nr, accuracy, loss))
+
+                if self.settings.store_best_models and accuracy > self.best_accuracy:
+                    self.best_accuracy = accuracy
+                    torch.save(model.state_dict(), os.path.join(self.data_dir, "best.model"))
+
             self.latest_accuracy_check_round = round_nr
 
         if self.settings.num_rounds and round_nr >= self.settings.num_rounds:
