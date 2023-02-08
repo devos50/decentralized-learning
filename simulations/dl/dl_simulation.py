@@ -148,5 +148,9 @@ class DLSimulation(LearningSimulation):
 
         self.model_manager.reset_incoming_trained_models()
 
+        if self.settings.num_rounds and round_nr >= self.settings.num_rounds:
+            self.on_simulation_finished()
+            self.loop.stop()
+
         for ind in self.participants_ids:
             self.nodes[ind].overlays[0].start_next_round()
