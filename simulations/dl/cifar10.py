@@ -25,6 +25,7 @@ if __name__ == "__main__":
     settings.train_device_name = "cpu" if "TRAIN_DEVICE_NAME" not in os.environ else os.environ["TRAIN_DEVICE_NAME"]
     settings.accuracy_device_name = "cpu" if "ACC_DEVICE_NAME" not in os.environ else os.environ["ACC_DEVICE_NAME"]
     settings.bypass_model_transfers = False if "BYPASS_MODEL_TRANSFERS" not in os.environ else bool(os.environ["BYPASS_MODEL_TRANSFERS"])
+    settings.store_best_models = bool(os.environ["STORE_BEST_MODELS"]) if "STORE_BEST_MODELS" in os.environ else False
     settings.topology = "exp-one-peer"
     settings.latencies_file = "data/latencies.txt"
     simulation = DLSimulation(settings)

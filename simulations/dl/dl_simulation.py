@@ -3,6 +3,8 @@ from asyncio import get_event_loop
 from binascii import hexlify
 from typing import List
 
+import torch
+
 from accdfl.core.model_manager import ModelManager
 from accdfl.core.session_settings import LearningSettings, SessionSettings, DLSettings
 from ipv8.configuration import ConfigBuilder
@@ -18,6 +20,7 @@ class DLSimulation(LearningSimulation):
         super().__init__(settings)
         self.num_round_completed = 0
         self.participants_ids: List[int] = []
+        self.best_accuracy: float = 0.0
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = super().get_ipv8_builder(peer_id)
@@ -124,6 +127,10 @@ class DLSimulation(LearningSimulation):
                     with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
                         out_file.write("%s,DL,%f,%d,%d,%f,%f\n" % (self.settings.dataset, get_event_loop().time(), 0,
                                                                    round_nr, accuracy, loss))
+
+                    if self.settings.store_best_models and accuracy > self.best_accuracy:
+                        self.best_accuracy = accuracy
+                        torch.save(avg_model.state_dict(), os.path.join(self.data_dir, "best.model"))
                 elif self.settings.dl_accuracy_method == DLAccuracyMethod.TEST_INDIVIDUAL_MODELS:
                     if self.settings.dl_test_mode == "das_jobs":
                         results = self.test_models_with_das_jobs()
