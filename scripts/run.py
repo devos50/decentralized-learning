@@ -14,8 +14,8 @@ def get_args(default_lr: float, default_momentum: float = 0):
     parser = argparse.ArgumentParser()
     parser.add_argument('--lr', type=float, default=default_lr)
     parser.add_argument('--momentum', type=float, default=default_momentum)
-    parser.add_argument('--batch-size', type=int, default=20)
-    parser.add_argument('--peers', type=int, default=10)
+    parser.add_argument('--batch-size', type=int, default=512)
+    parser.add_argument('--peers', type=int, default=1)
     parser.add_argument('--rounds', type=int, default=100)
     parser.add_argument('--partitioner', type=str, default="iid")
     parser.add_argument('--data-dir', type=str, default=os.path.join(os.environ["HOME"], "dfl-data"))
@@ -55,6 +55,7 @@ async def run(args, dataset: str):
 
     # Model
     models = [create_model(settings.dataset, architecture=settings.model) for _ in range(args.peers)]
+    print("Created %d models of type %s..." % (len(models), models[0].__class__.__name__))
     trainers = [ModelTrainer(args.data_dir, settings, n) for n in range(args.peers)]
 
     for n in range(args.peers):

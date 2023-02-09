@@ -63,7 +63,7 @@ class ModelTrainer:
                     if self.settings.model == "resnet8":
                         lossf = CrossEntropyLoss()
                     else:
-                        lossf = NLLLoss()
+                        lossf = CrossEntropyLoss()
                 else:
                     lossf = CrossEntropyLoss()
 
