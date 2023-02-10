@@ -2,6 +2,7 @@ import logging
 import os
 import time
 from asyncio import sleep
+from typing import Optional, List
 
 import torch
 from torch.autograd import Variable
@@ -28,7 +29,7 @@ class ModelTrainer:
             train_dir = os.path.join(data_dir, "per_user_data", "train")
         self.dataset: Dataset = create_dataset(settings, participant_index=participant_index, train_dir=train_dir)
 
-    async def train(self, model, device_name: str = "cpu") -> int:
+    async def train(self, model, device_name: str = "cpu", proxy_dataset=None, predictions: Optional[List[float]] = None) -> int:
         """
         Train the model on a batch. Return an integer that indicates how many local steps we have done.
         """
@@ -37,6 +38,7 @@ class ModelTrainer:
         optimizer = SGDOptimizer(model, self.settings.learning.learning_rate, self.settings.learning.momentum)
         train_set = self.dataset.get_trainset(batch_size=self.settings.learning.batch_size, shuffle=True)
         train_set_it = iter(train_set)
+        proxy_set_it = iter(proxy_dataset)
         local_steps = len(train_set.dataset) // self.settings.learning.batch_size
         if len(train_set.dataset) % self.settings.learning.batch_size != 0:
             local_steps += 1
@@ -49,13 +51,13 @@ class ModelTrainer:
         samples_trained_on = 0
         for local_step in range(local_steps):
             try:
+                # First train on the local data
                 data, target = next(train_set_it)
                 model.train()
                 data, target = Variable(data.to(device)), Variable(target.to(device))
                 optimizer.optimizer.zero_grad()
                 self.logger.debug('d-sgd.next node forward propagation (step %d/%d)', local_step, local_steps)
                 output = model.forward(data)
-                samples_trained_on += len(data)
 
                 if self.settings.dataset == "movielens":
                     lossf = MSELoss()
@@ -68,9 +70,25 @@ class ModelTrainer:
                     lossf = CrossEntropyLoss()
 
                 loss = lossf(output, target)
+
+                # Then obtain the distillation loss
+                proxy_data, _ = next(proxy_set_it)
+                proxy_data = Variable(proxy_data.to(device))
+                # print("-- data --")
+                # print(data[0])
+                # print(target[0])
+                output = model.forward(proxy_data)
+                sub_predictions = torch.stack(predictions[samples_trained_on:samples_trained_on+self.settings.learning.batch_size])
+                # print("-- output -- ")
+                # print(output[0])
+                # print(sub_predictions[0])
+                dist_loss = torch.nn.L1Loss()(output, sub_predictions)
+                loss = loss + dist_loss
+
                 self.logger.debug('d-sgd.next node backward propagation (step %d/%d)', local_step, local_steps)
                 loss.backward()
                 optimizer.optimizer.step()
+                samples_trained_on += len(data)
             except StopIteration:
                 pass
 
