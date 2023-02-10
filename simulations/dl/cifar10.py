@@ -16,7 +16,7 @@ if __name__ == "__main__":
     settings.active_participants = None if "ACTIVE_PARTICIPANTS" not in os.environ else os.environ["ACTIVE_PARTICIPANTS"]
     settings.momentum = 0.9 if "MOMENTUM" not in os.environ else float(os.environ["MOMENTUM"])
     settings.learning_rate = 0.002 if "LEARNING_RATE" not in os.environ else float(os.environ["LEARNING_RATE"])
-    settings.batch_size = 20
+    settings.batch_size = 20 if "BATCH_SIZE" not in os.environ else int(os.environ["BATCH_SIZE"])
     settings.dl_test_mode = "local" if "DL_TEST_MODE" not in os.environ else os.environ["DL_TEST_MODE"]
     settings.das_test_subprocess_jobs = 1 if "DAS_TEST_SUBPROCESS_JOBS" not in os.environ else int(os.environ["DAS_TEST_SUBPROCESS_JOBS"])
     settings.accuracy_logging_interval = 5 if "ACC_LOG_INTERVAL" not in os.environ else int(os.environ["ACC_LOG_INTERVAL"])
