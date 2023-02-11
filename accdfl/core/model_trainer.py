@@ -1,10 +1,12 @@
 import logging
 import os
+import random
 import time
 from asyncio import sleep
 from typing import Optional, List
 
 import torch
+from torch import Tensor
 from torch.autograd import Variable
 from torch.nn import CrossEntropyLoss, MSELoss, NLLLoss
 
@@ -29,7 +31,7 @@ class ModelTrainer:
             train_dir = os.path.join(data_dir, "per_user_data", "train")
         self.dataset: Dataset = create_dataset(settings, participant_index=participant_index, train_dir=train_dir)
 
-    async def train(self, model, device_name: str = "cpu", proxy_dataset=None, predictions: Optional[List[float]] = None) -> int:
+    async def train(self, model, device_name: str = "cpu", proxy_dataset=None, predictions: Optional[List[List[Tensor]]] = None, my_id: Optional[int] = None) -> int:
         """
         Train the model on a batch. Return an integer that indicates how many local steps we have done.
         """
@@ -43,9 +45,13 @@ class ModelTrainer:
         if len(train_set.dataset) % self.settings.learning.batch_size != 0:
             local_steps += 1
 
-        self.logger.info("Will perform %d local steps of training on device %s (batch size: %d, lr: %f, data points: %d)",
+        # Choose which peer we're going to distill from
+        possibilities = [i for i in range(self.settings.target_participants) if i != my_id]
+        peer_to_distill_from = random.choice(possibilities)
+
+        self.logger.info("Will perform %d local steps of training on device %s (batch size: %d, lr: %f, data points: %d) - peer %d will distill from peer %d",
                          local_steps, device_name, self.settings.learning.batch_size,
-                         self.settings.learning.learning_rate, len(train_set.dataset))
+                         self.settings.learning.learning_rate, len(train_set.dataset), my_id, peer_to_distill_from)
 
         start_time = time.time()
         samples_trained_on = 0
@@ -78,7 +84,7 @@ class ModelTrainer:
                 # print(data[0])
                 # print(target[0])
                 output = model.forward(proxy_data)
-                sub_predictions = torch.stack(predictions[samples_trained_on:samples_trained_on+self.settings.learning.batch_size])
+                sub_predictions = torch.stack(predictions[peer_to_distill_from][samples_trained_on:samples_trained_on+self.settings.learning.batch_size])
                 # print("-- output -- ")
                 # print(output[0])
                 # print(sub_predictions[0])

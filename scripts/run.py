@@ -1,8 +1,10 @@
 import argparse
 import os
 import time
+from typing import List
 
 import torch
+from torch import Tensor
 from torch.autograd import Variable
 
 from accdfl.core.datasets import create_dataset
@@ -78,7 +80,7 @@ async def run(args, dataset: str):
         train_set = proxy_dataset.get_trainset(batch_size=settings.learning.batch_size, shuffle=False)
 
         # Determine outputs of the teacher model on the public training data
-        outputs = []
+        outputs: List[List[Tensor]] = []
         for n in range(args.peers):
             print("Inferring outputs for peer %d" % n)
             models[n].to(device)
@@ -96,17 +98,17 @@ async def run(args, dataset: str):
             outputs.append(teacher_outputs)
             print("Inferred %d outputs for teacher model %d" % (len(teacher_outputs), n))
 
-        # Aggregate the predicted outputs
-        print("Aggregating predictions...")
-        aggregated_predictions = []
-        for sample_ind in range(len(outputs[0])):
-            predictions = [outputs[n][sample_ind] for n in range(args.peers)]
-            aggregated_predictions.append(torch.mean(torch.stack(predictions), dim=0))
+        # # Aggregate the predicted outputs
+        # print("Aggregating predictions...")
+        # aggregated_predictions = []
+        # for sample_ind in range(len(outputs[0])):
+        #     predictions = [outputs[n][sample_ind] for n in range(args.peers)]
+        #     aggregated_predictions.append(torch.mean(torch.stack(predictions), dim=0))
 
         for n in range(args.peers):
             start_time = time.time()
             proxy_trainset = proxy_dataset.get_trainset(batch_size=settings.learning.batch_size, shuffle=False)
-            await trainers[n].train(models[n], device_name=device, proxy_dataset=proxy_trainset, predictions=aggregated_predictions)
+            await trainers[n].train(models[n], device_name=device, proxy_dataset=proxy_trainset, predictions=outputs, my_id=n)
             print("Training round %d for peer %d done - time: %f" % (round + 1, n, time.time() - start_time))
             acc, loss = test_dataset.test(models[n], device_name=device)
             print("Accuracy: %f, loss: %f" % (acc, loss))
