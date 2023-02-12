@@ -21,6 +21,7 @@ def get_args(default_lr: float, default_momentum: float = 0):
     parser.add_argument('--peers', type=int, default=1)
     parser.add_argument('--rounds', type=int, default=100)
     parser.add_argument('--partitioner', type=str, default="iid")
+    parser.add_argument('--model', type=str, default=None)
     parser.add_argument('--data-dir', type=str, default=os.path.join(os.environ["HOME"], "dfl-data"))
     return parser.parse_args()
 
@@ -40,6 +41,7 @@ async def run(args, dataset: str):
         participants=["a"],
         all_participants=["a"],
         target_participants=args.peers,
+        model=args.model,
     )
 
     dist_settings = SessionSettings(
@@ -50,6 +52,7 @@ async def run(args, dataset: str):
         participants=["a"],
         all_participants=["a"],
         target_participants=args.peers,
+        model=args.model,
     )
 
     test_dataset = create_dataset(settings, 0, test_dir=args.data_dir)
