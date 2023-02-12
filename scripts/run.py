@@ -6,6 +6,7 @@ from typing import List
 import torch
 from torch import Tensor
 from torch.autograd import Variable
+from torch.utils.data import Dataset, DataLoader
 
 from accdfl.core.datasets import create_dataset
 from accdfl.core.model_trainer import ModelTrainer
@@ -24,6 +25,18 @@ def get_args(default_lr: float, default_momentum: float = 0):
     parser.add_argument('--model', type=str, default=None)
     parser.add_argument('--data-dir', type=str, default=os.path.join(os.environ["HOME"], "dfl-data"))
     return parser.parse_args()
+
+
+class DatasetWithIndex(Dataset):
+    def __init__(self, dataset):
+        self.dataset = dataset
+
+    def __getitem__(self, index):
+        data, target = self.dataset[index]
+        return data, target, index
+
+    def __len__(self):
+        return len(self.dataset)
 
 
 async def run(args, dataset: str):
@@ -51,7 +64,7 @@ async def run(args, dataset: str):
         learning=learning_settings,
         participants=["a"],
         all_participants=["a"],
-        target_participants=args.peers,
+        target_participants=1,
         model=args.model,
     )
 
@@ -110,7 +123,7 @@ async def run(args, dataset: str):
 
         for n in range(args.peers):
             start_time = time.time()
-            proxy_trainset = proxy_dataset.get_trainset(batch_size=settings.learning.batch_size, shuffle=False)
+            proxy_trainset = DataLoader(DatasetWithIndex(train_set.dataset), batch_size=settings.learning.batch_size, shuffle=True)
             await trainers[n].train(models[n], device_name=device, proxy_dataset=proxy_trainset, predictions=outputs, my_id=n)
             print("Training round %d for peer %d done - time: %f" % (round + 1, n, time.time() - start_time))
             acc, loss = test_dataset.test(models[n], device_name=device)

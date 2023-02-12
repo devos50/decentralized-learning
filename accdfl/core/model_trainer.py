@@ -78,13 +78,13 @@ class ModelTrainer:
                 loss = lossf(output, target)
 
                 # Then obtain the distillation loss
-                proxy_data, _ = next(proxy_set_it)
+                proxy_data, _, indices = next(proxy_set_it)
                 proxy_data = Variable(proxy_data.to(device))
                 # print("-- data --")
                 # print(data[0])
                 # print(target[0])
                 output = model.forward(proxy_data)
-                sub_predictions = torch.stack(predictions[peer_to_distill_from][samples_trained_on:samples_trained_on+self.settings.learning.batch_size])
+                sub_predictions = torch.stack([predictions[peer_to_distill_from][ind].clone() for ind in indices])
                 # print("-- output -- ")
                 # print(output[0])
                 # print(sub_predictions[0])
