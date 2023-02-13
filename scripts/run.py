@@ -92,8 +92,8 @@ async def run(args, dataset: str):
 
     highest_accs, lowest_losses = [0] * args.peers, [0] * args.peers
     ordered_proxy_trainset = proxy_dataset.get_trainset(batch_size=settings.learning.batch_size, shuffle=False)
-    for round in range(args.rounds):
-        print("Starting training round %d" % (round + 1))
+    for round in range(1, args.rounds + 1):
+        print("Starting training round %d" % round)
 
         # Determine outputs of the teacher model on the public training data
         outputs: List[List[Tensor]] = []
@@ -144,7 +144,7 @@ async def run(args, dataset: str):
 
             predictions = outputs[peer_to_distill_from], outputs_indices[peer_to_distill_from]
             await trainers[n].train(models[n], device_name=device, proxy_dataset=ordered_proxy_trainset, predictions=predictions)
-            print("Training round %d for peer %d done - time: %f" % (round + 1, n, time.time() - start_time))
+            print("Training round %d for peer %d done - time: %f" % (round, n, time.time() - start_time))
 
             if round % args.check_interval == 0:
                 acc, loss = test_dataset.test(models[n], device_name=device)
