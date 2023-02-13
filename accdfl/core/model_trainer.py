@@ -6,6 +6,8 @@ from asyncio import sleep
 from typing import Optional, List
 
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 from torch import Tensor
 from torch.autograd import Variable
 from torch.nn import CrossEntropyLoss, MSELoss, NLLLoss
@@ -13,6 +15,17 @@ from torch.nn import CrossEntropyLoss, MSELoss, NLLLoss
 from accdfl.core.datasets import create_dataset, Dataset
 from accdfl.core.optimizer.sgd import SGDOptimizer
 from accdfl.core.session_settings import SessionSettings
+
+
+def loss_fn_kd(outputs, teacher_outputs, T: float):
+    """
+    Compute the knowledge-distillation (KD) loss given outputs, labels.
+    "Hyperparameters": temperature
+    NOTE: the KL Divergence for PyTorch comparing the softmaxs of teacher
+    and student expects the input tensor to be log probabilities! See Issue #2
+    Taken from https://github.com/haitongli/knowledge-distillation-pytorch/blob/9937528f0be0efa979c745174fbcbe9621cea8b7/model/net.py
+    """
+    return nn.KLDivLoss()(F.log_softmax(outputs/T, dim=1), F.softmax(teacher_outputs/T, dim=1)) * T * T
 
 
 class ModelTrainer:
@@ -88,7 +101,7 @@ class ModelTrainer:
                 # print("-- output -- ")
                 # print(output[0])
                 # print(sub_predictions[0])
-                dist_loss = torch.nn.L1Loss()(output, sub_predictions)
+                dist_loss = loss_fn_kd(output, sub_predictions, 3)
                 loss = loss + dist_loss
 
                 self.logger.debug('d-sgd.next node backward propagation (step %d/%d)', local_step, local_steps)
