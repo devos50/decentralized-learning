@@ -158,4 +158,4 @@ async def run(args, dataset: str):
 
                 # Write the final accuracy
                 with open(os.path.join(data_path, "accuracies.csv"), "a") as out_file:
-                    out_file.write("%s,%s,%d,%d,%d,%f,%f,%f\n" % (dataset, "standalone", n, args.peers, round, learning_settings.learning_rate, acc, loss))
+                    out_file.write("%s,%s,%d,%d,%d,%f,%f,%f\n" % (dataset, "distill", n, args.peers, round, learning_settings.learning_rate, acc, loss))
