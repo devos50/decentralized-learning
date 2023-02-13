@@ -3,7 +3,7 @@ import os
 import random
 import time
 from asyncio import sleep
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 import torch
 import torch.nn as nn
@@ -44,7 +44,7 @@ class ModelTrainer:
             train_dir = os.path.join(data_dir, "per_user_data", "train")
         self.dataset: Dataset = create_dataset(settings, participant_index=participant_index, train_dir=train_dir)
 
-    async def train(self, model, device_name: str = "cpu", proxy_dataset=None, predictions: Optional[List[List[Tensor]]] = None, my_id: Optional[int] = None) -> int:
+    async def train(self, model, device_name: str = "cpu", proxy_dataset=None, predictions: Optional[Tuple[List[Tensor], List[int]]] = None) -> int:
         """
         Train the model on a batch. Return an integer that indicates how many local steps we have done.
         """
@@ -53,18 +53,13 @@ class ModelTrainer:
         optimizer = SGDOptimizer(model, self.settings.learning.learning_rate, self.settings.learning.momentum)
         train_set = self.dataset.get_trainset(batch_size=self.settings.learning.batch_size, shuffle=True)
         train_set_it = iter(train_set)
-        proxy_set_it = iter(proxy_dataset)
         local_steps = len(train_set.dataset) // self.settings.learning.batch_size
         if len(train_set.dataset) % self.settings.learning.batch_size != 0:
             local_steps += 1
 
-        # Choose which peer we're going to distill from
-        possibilities = [i for i in range(self.settings.target_participants) if i != my_id]
-        peer_to_distill_from = random.choice(possibilities)
-
-        self.logger.info("Will perform %d local steps of training on device %s (batch size: %d, lr: %f, data points: %d) - peer %d will distill from peer %d",
+        self.logger.info("Will perform %d local steps of training on device %s (batch size: %d, lr: %f, data points: %d)",
                          local_steps, device_name, self.settings.learning.batch_size,
-                         self.settings.learning.learning_rate, len(train_set.dataset), my_id, peer_to_distill_from)
+                         self.settings.learning.learning_rate, len(train_set.dataset))
 
         start_time = time.time()
         samples_trained_on = 0
@@ -90,17 +85,15 @@ class ModelTrainer:
 
                 loss = lossf(output, target)
 
-                # Then obtain the distillation loss
-                proxy_data, _, indices = next(proxy_set_it)
+                # Create the proxy data based on the indices
+                proxy_data = []
+                for sample_ind in predictions[1][samples_trained_on:samples_trained_on+self.settings.learning.batch_size]:
+                    proxy_data.append(proxy_dataset.dataset[sample_ind][0])
+
+                proxy_data = torch.stack(proxy_data)
                 proxy_data = Variable(proxy_data.to(device))
-                # print("-- data --")
-                # print(data[0])
-                # print(target[0])
                 output = model.forward(proxy_data)
-                sub_predictions = torch.stack([predictions[peer_to_distill_from][ind].clone() for ind in indices])
-                # print("-- output -- ")
-                # print(output[0])
-                # print(sub_predictions[0])
+                sub_predictions = torch.stack(predictions[0][samples_trained_on:samples_trained_on+self.settings.learning.batch_size])
                 dist_loss = loss_fn_kd(output, sub_predictions, 3)
                 loss = loss + dist_loss
 

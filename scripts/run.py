@@ -1,5 +1,6 @@
 import argparse
 import os
+import random
 import time
 from typing import List
 
@@ -89,29 +90,37 @@ async def run(args, dataset: str):
     trainers = [ModelTrainer(args.data_dir, settings, n) for n in range(args.peers)]
 
     highest_accs, lowest_losses = [0] * args.peers, [0] * args.peers
+    ordered_proxy_trainset = proxy_dataset.get_trainset(batch_size=settings.learning.batch_size, shuffle=False)
     for round in range(args.rounds):
         print("Starting training round %d" % (round + 1))
 
-        # Generate and aggregate the predictions
-        train_set = proxy_dataset.get_trainset(batch_size=settings.learning.batch_size, shuffle=False)
-
         # Determine outputs of the teacher model on the public training data
         outputs: List[List[Tensor]] = []
+        outputs_indices: List[List[int]] = []
         for n in range(args.peers):
+            proxy_trainset = DataLoader(DatasetWithIndex(ordered_proxy_trainset.dataset), batch_size=settings.learning.batch_size, shuffle=True)
+
             print("Inferring outputs for peer %d" % n)
             models[n].to(device)
             teacher_outputs = []
-            train_set_it = iter(train_set)
+            teacher_indices = []
+
+            # Determine how many inferences we should do
+            train_set = trainers[n].dataset.get_trainset(batch_size=settings.learning.batch_size, shuffle=True)
+
+            train_set_it = iter(proxy_trainset)
             local_steps = len(train_set.dataset) // settings.learning.batch_size
             if len(train_set.dataset) % settings.learning.batch_size != 0:
                 local_steps += 1
             for local_step in range(local_steps):
-                data, _ = next(train_set_it)
+                data, _, indices = next(train_set_it)
                 data = Variable(data.to(device))
                 out = models[n].forward(data).detach()
                 teacher_outputs += out
+                teacher_indices += indices
 
             outputs.append(teacher_outputs)
+            outputs_indices.append(teacher_indices)
             print("Inferred %d outputs for teacher model %d" % (len(teacher_outputs), n))
 
         # # Aggregate the predicted outputs
@@ -123,8 +132,17 @@ async def run(args, dataset: str):
 
         for n in range(args.peers):
             start_time = time.time()
-            proxy_trainset = DataLoader(DatasetWithIndex(train_set.dataset), batch_size=settings.learning.batch_size, shuffle=True)
-            await trainers[n].train(models[n], device_name=device, proxy_dataset=proxy_trainset, predictions=outputs, my_id=n)
+
+            # Choose which peer we're going to distill from
+            possibilities = [i for i in range(settings.target_participants) if i != n]
+            if not possibilities:
+                peer_to_distill_from = n  # Distill from self
+            else:
+                peer_to_distill_from = random.choice(possibilities)
+            print("Peer %d distilling from peer %d" % (n, peer_to_distill_from))
+
+            predictions = outputs[peer_to_distill_from], outputs_indices[peer_to_distill_from]
+            await trainers[n].train(models[n], device_name=device, proxy_dataset=ordered_proxy_trainset, predictions=predictions)
             print("Training round %d for peer %d done - time: %f" % (round + 1, n, time.time() - start_time))
             acc, loss = test_dataset.test(models[n], device_name=device)
             print("Accuracy: %f, loss: %f" % (acc, loss))
