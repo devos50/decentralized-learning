@@ -17,6 +17,7 @@ def get_args(default_lr: float, default_momentum: float = 0):
     parser.add_argument('--batch-size', type=int, default=20)
     parser.add_argument('--peers', type=int, default=10)
     parser.add_argument('--rounds', type=int, default=100)
+    parser.add_argument('--acc-check-interval', type=int, default=1)
     parser.add_argument('--partitioner', type=str, default="iid")
     parser.add_argument('--data-dir', type=str, default=os.path.join(os.environ["HOME"], "dfl-data"))
     return parser.parse_args()
@@ -59,20 +60,22 @@ async def run(args, dataset: str):
 
     for n in range(args.peers):
         highest_acc, lowest_loss = 0, 0
-        for round in range(args.rounds):
+        for round in range(1, args.rounds + 1):
             start_time = time.time()
-            print("Starting training round %d for peer %d" % (round + 1, n))
+            print("Starting training round %d for peer %d" % (round, n))
             await trainers[n].train(models[n], device_name=device)
-            print("Training round %d for peer %d done - time: %f" % (round + 1, n, time.time() - start_time))
-            acc, loss = test_dataset.test(models[n], device_name=device)
-            print("Accuracy: %f, loss: %f" % (acc, loss))
+            print("Training round %d for peer %d done - time: %f" % (round, n, time.time() - start_time))
 
-            # Save the model if it's better
-            if acc > highest_acc:
-                torch.save(models[n].state_dict(), os.path.join(data_path, "cifar10_%d.model" % n))
-                highest_acc = acc
-                lowest_loss = loss
+            if round % args.acc_check_interval == 0:
+                acc, loss = test_dataset.test(models[n], device_name=device)
+                print("Accuracy: %f, loss: %f" % (acc, loss))
 
-        # Write the final accuracy
-        with open(os.path.join(data_path, "accuracies.csv"), "a") as out_file:
-            out_file.write("%s,%s,%d,%d,%d,%f,%f,%f\n" % (dataset, "standalone", n, args.peers, args.rounds, learning_settings.learning_rate, highest_acc, lowest_loss))
+                # Save the model if it's better
+                if acc > highest_acc:
+                    torch.save(models[n].state_dict(), os.path.join(data_path, "cifar10_%d.model" % n))
+                    highest_acc = acc
+                    lowest_loss = loss
+
+                # Write the final accuracy
+                with open(os.path.join(data_path, "accuracies.csv"), "a") as out_file:
+                    out_file.write("%s,%s,%d,%d,%d,%f,%f,%f\n" % (dataset, "standalone", n, args.peers, round, learning_settings.learning_rate, acc, loss))
