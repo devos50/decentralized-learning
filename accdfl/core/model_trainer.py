@@ -97,7 +97,7 @@ class ModelTrainer:
                 proxy_data = Variable(proxy_data.to(device))
                 output = model.forward(proxy_data)
                 sub_predictions = torch.stack(predictions[0][samples_trained_on:samples_trained_on+self.settings.learning.batch_size])
-                dist_loss = loss_fn_kd(output, sub_predictions, 3)
+                dist_loss = loss_fn_kd(output, sub_predictions, 3) * 200
                 total_distill_loss += dist_loss
                 loss = loss + dist_loss
 
