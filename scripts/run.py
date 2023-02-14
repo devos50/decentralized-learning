@@ -109,19 +109,13 @@ async def run(args, dataset: str):
             teacher_outputs = []
             teacher_indices = []
 
-            # Determine how many inferences we should do
-            train_set = trainers[n].dataset.get_trainset(batch_size=settings.learning.batch_size, shuffle=True)
-
+            # Do one batch of inferences
             train_set_it = iter(proxy_trainset)
-            local_steps = len(train_set.dataset) // settings.learning.batch_size
-            if len(train_set.dataset) % settings.learning.batch_size != 0:
-                local_steps += 1
-            for local_step in range(local_steps):
-                data, _, indices = next(train_set_it)
-                data = Variable(data.to(device))
-                out = models[n].forward(data).detach()
-                teacher_outputs += out
-                teacher_indices += indices
+            data, _, indices = next(train_set_it)
+            data = Variable(data.to(device))
+            out = models[n].forward(data).detach()
+            teacher_outputs += out
+            teacher_indices += indices
 
             outputs.append(teacher_outputs)
             outputs_indices.append(teacher_indices)

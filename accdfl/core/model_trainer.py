@@ -53,18 +53,16 @@ class ModelTrainer:
         optimizer = SGDOptimizer(model, self.settings.learning.learning_rate, self.settings.learning.momentum)
         train_set = self.dataset.get_trainset(batch_size=self.settings.learning.batch_size, shuffle=True)
         train_set_it = iter(train_set)
-        local_steps = len(train_set.dataset) // self.settings.learning.batch_size
-        if len(train_set.dataset) % self.settings.learning.batch_size != 0:
-            local_steps += 1
 
-        self.logger.info("Will perform %d local steps of training on device %s (batch size: %d, lr: %f, data points: %d)",
-                         local_steps, device_name, self.settings.learning.batch_size,
-                         self.settings.learning.learning_rate, len(train_set.dataset))
+        self.logger.info("Will perform a local step of training on device %s (batch size: %d, lr: %f)",
+                         device_name, self.settings.learning.batch_size,
+                         self.settings.learning.learning_rate)
 
         start_time = time.time()
         samples_trained_on = 0
         total_local_loss = 0
         total_distill_loss = 0
+        local_steps = 1
         for local_step in range(local_steps):
             try:
                 # First train on the local data
