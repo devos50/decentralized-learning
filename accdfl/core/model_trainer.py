@@ -95,6 +95,7 @@ class ModelTrainer:
                 output = model.forward(proxy_data)
                 sub_predictions = torch.stack(predictions[0][samples_trained_on:samples_trained_on+self.settings.learning.batch_size])
                 dist_loss = loss_fn_kd(output, sub_predictions, 3)
+                self.logger.info("Local loss: %f, distillation loss: %f", loss, dist_loss)
                 loss = loss + dist_loss
 
                 self.logger.debug('d-sgd.next node backward propagation (step %d/%d)', local_step, local_steps)
