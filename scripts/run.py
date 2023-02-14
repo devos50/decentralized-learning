@@ -1,4 +1,5 @@
 import argparse
+import logging
 import os
 import random
 import time
@@ -39,6 +40,9 @@ class DatasetWithIndex(Dataset):
 
     def __len__(self):
         return len(self.dataset)
+
+
+logger = logging.getLogger('Distillation')
 
 
 async def run(args, dataset: str):
@@ -96,7 +100,7 @@ async def run(args, dataset: str):
     highest_accs, lowest_losses = [0] * args.peers, [0] * args.peers
     ordered_proxy_trainset = proxy_dataset.get_trainset(batch_size=settings.learning.batch_size, shuffle=False)
     for round in range(1, args.rounds + 1):
-        print("Starting training round %d" % round)
+        print("Starting communication round %d" % round)
 
         # Determine outputs of the teacher model on the public training data
         outputs: List[List[Tensor]] = []
@@ -104,7 +108,6 @@ async def run(args, dataset: str):
         for n in range(args.peers):
             proxy_trainset = DataLoader(DatasetWithIndex(ordered_proxy_trainset.dataset), batch_size=settings.learning.batch_size, shuffle=True)
 
-            print("Inferring outputs for peer %d" % n)
             models[n].to(device)
             teacher_outputs = []
             teacher_indices = []
@@ -119,7 +122,6 @@ async def run(args, dataset: str):
 
             outputs.append(teacher_outputs)
             outputs_indices.append(teacher_indices)
-            print("Inferred %d outputs for teacher model %d" % (len(teacher_outputs), n))
 
         # # Aggregate the predicted outputs
         # print("Aggregating predictions...")
@@ -137,16 +139,16 @@ async def run(args, dataset: str):
                 peer_to_distill_from = n  # Distill from self
             else:
                 peer_to_distill_from = random.choice(possibilities)
-            print("Peer %d distilling from peer %d" % (n, peer_to_distill_from))
+            logger.debug("Peer %d distilling from peer %d", n, peer_to_distill_from)
 
             predictions = outputs[peer_to_distill_from], outputs_indices[peer_to_distill_from]
             _, local_loss, distill_loss = await trainers[n].train(models[n], device_name=device, proxy_dataset=ordered_proxy_trainset, predictions=predictions)
-            print("Training round %d for peer %d done - time: %f" % (round, n, time.time() - start_time))
-
-            with open(os.path.join(data_path, "train.csv"), "a") as out_file:
-                out_file.write("%s,%s,%d,%d,%d,%f,%f\n" % (dataset, "distill", n, args.peers, round, local_loss, distill_loss))
+            logger.debug("Training round %d for peer %d done - time: %f", round, n, time.time() - start_time)
 
             if round % args.check_interval == 0:
+                with open(os.path.join(data_path, "train.csv"), "a") as out_file:
+                    out_file.write("%s,%s,%d,%d,%d,%f,%f\n" % (dataset, "distill", n, args.peers, round, local_loss, distill_loss))
+
                 acc, loss = test_dataset.test(models[n], device_name=device)
                 print("Accuracy: %f, loss: %f" % (acc, loss))
 

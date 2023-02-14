@@ -54,9 +54,9 @@ class ModelTrainer:
         train_set = self.dataset.get_trainset(batch_size=self.settings.learning.batch_size, shuffle=True)
         train_set_it = iter(train_set)
 
-        self.logger.info("Will perform a local step of training on device %s (batch size: %d, lr: %f)",
-                         device_name, self.settings.learning.batch_size,
-                         self.settings.learning.learning_rate)
+        self.logger.debug("Will perform a local step of training on device %s (batch size: %d, lr: %f)",
+                          device_name, self.settings.learning.batch_size,
+                          self.settings.learning.learning_rate)
 
         start_time = time.time()
         samples_trained_on = 0
