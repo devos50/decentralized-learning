@@ -63,6 +63,8 @@ class ModelTrainer:
 
         start_time = time.time()
         samples_trained_on = 0
+        total_local_loss = 0
+        total_distill_loss = 0
         for local_step in range(local_steps):
             try:
                 # First train on the local data
@@ -84,6 +86,7 @@ class ModelTrainer:
                     lossf = CrossEntropyLoss()
 
                 loss = lossf(output, target)
+                total_local_loss += loss
 
                 # Create the proxy data based on the indices
                 proxy_data = []
@@ -95,7 +98,7 @@ class ModelTrainer:
                 output = model.forward(proxy_data)
                 sub_predictions = torch.stack(predictions[0][samples_trained_on:samples_trained_on+self.settings.learning.batch_size])
                 dist_loss = loss_fn_kd(output, sub_predictions, 3)
-                self.logger.info("Local loss: %f, distillation loss: %f", loss, dist_loss)
+                total_distill_loss += dist_loss
                 loss = loss + dist_loss
 
                 self.logger.debug('d-sgd.next node backward propagation (step %d/%d)', local_step, local_steps)
@@ -111,4 +114,6 @@ class ModelTrainer:
             elapsed_time = time.time() - start_time
             await sleep(elapsed_time)
 
-        return samples_trained_on
+        total_local_loss /= float(samples_trained_on)
+        total_distill_loss /= float(samples_trained_on)
+        return samples_trained_on, total_local_loss, total_distill_loss
