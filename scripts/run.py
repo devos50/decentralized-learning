@@ -118,7 +118,7 @@ async def run(args, dataset: str):
             train_set_it = iter(proxy_trainset)
             data, _, indices = next(train_set_it)
             data = Variable(data.to(device))
-            out = models[n].forward(data).detach()
+            out = torch.softmax(models[n].forward(data).detach(), dim=1)
             teacher_outputs += out
             teacher_indices += indices
 
