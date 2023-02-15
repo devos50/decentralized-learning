@@ -5,6 +5,7 @@ import time
 from asyncio import sleep
 from typing import Optional, List, Tuple
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -99,6 +100,11 @@ class ModelTrainer:
                 dist_loss = dist_loss_fn(output, sub_predictions) * self.settings.learning.beta
                 total_distill_loss += dist_loss
                 loss = loss + dist_loss
+
+                float_loss = float(loss)
+                if float_loss > 1e4 or np.isnan(float_loss):
+                    print("Invalid loss: %f" % float_loss)
+                    exit(1)
 
                 self.logger.debug('d-sgd.next node backward propagation (step %d/%d)', local_step, local_steps)
                 loss.backward()
