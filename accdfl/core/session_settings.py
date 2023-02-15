@@ -16,6 +16,7 @@ class LearningSettings:
     learning_rate: float
     momentum: float
     batch_size: int
+    beta: float
 
 
 @dataclass

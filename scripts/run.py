@@ -19,6 +19,7 @@ from accdfl.core.session_settings import SessionSettings, LearningSettings
 def get_args(default_lr: float, default_momentum: float = 0):
     parser = argparse.ArgumentParser()
     parser.add_argument('--lr', type=float, default=default_lr)
+    parser.add_argument('--beta', type=float, default=1)
     parser.add_argument('--momentum', type=float, default=default_momentum)
     parser.add_argument('--batch-size', type=int, default=512)
     parser.add_argument('--peers', type=int, default=1)
@@ -49,7 +50,8 @@ async def run(args, dataset: str):
     learning_settings = LearningSettings(
         learning_rate=args.lr,
         momentum=args.momentum,
-        batch_size=args.batch_size
+        batch_size=args.batch_size,
+        beta=args.beta
     )
 
     settings = SessionSettings(

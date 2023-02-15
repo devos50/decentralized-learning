@@ -63,6 +63,7 @@ class ModelTrainer:
         total_local_loss = 0
         total_distill_loss = 0
         local_steps = 1
+        dist_loss_fn = MSELoss()
         for local_step in range(local_steps):
             try:
                 # First train on the local data
@@ -95,7 +96,7 @@ class ModelTrainer:
                 proxy_data = Variable(proxy_data.to(device))
                 output = model.forward(proxy_data)
                 sub_predictions = torch.stack(predictions[0][samples_trained_on:samples_trained_on+self.settings.learning.batch_size])
-                dist_loss = MSELoss()(output, sub_predictions) * 16
+                dist_loss = dist_loss_fn(output, sub_predictions) * self.settings.learning.beta
                 total_distill_loss += dist_loss
                 loss = loss + dist_loss
 
