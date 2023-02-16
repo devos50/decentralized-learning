@@ -86,7 +86,7 @@ async def run(args, dataset: str):
         os.makedirs(data_path, exist_ok=True)
 
     with open(os.path.join(data_path, "accuracies.csv"), "w") as out_file:
-        out_file.write("dataset,algorithm,peer,peers,round,learning_rate,accuracy,loss\n")
+        out_file.write("dataset,algorithm,peer,peers,round,beta,learning_rate,accuracy,loss\n")
 
     with open(os.path.join(data_path, "train.csv"), "w") as out_file:
         out_file.write("dataset,algorithm,peer,peers,round,local_loss,distill_loss\n")
@@ -162,4 +162,4 @@ async def run(args, dataset: str):
 
                 # Write the final accuracy
                 with open(os.path.join(data_path, "accuracies.csv"), "a") as out_file:
-                    out_file.write("%s,%s,%d,%d,%d,%f,%f,%f\n" % (dataset, "distill", n, args.peers, round, learning_settings.learning_rate, acc, loss))
+                    out_file.write("%s,%s,%d,%d,%d,%d,%f,%f,%f\n" % (dataset, "distill", n, args.peers, round, learning_settings.beta, learning_settings.learning_rate, acc, loss))
