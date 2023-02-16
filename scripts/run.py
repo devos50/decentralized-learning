@@ -107,17 +107,23 @@ async def run(args, dataset: str):
         # Determine outputs of the teacher model on the public training data
         outputs: List[List[Tensor]] = []
         outputs_indices: List[List[int]] = []
-        for n in range(args.peers):
-            proxy_trainset = DataLoader(DatasetWithIndex(ordered_proxy_trainset.dataset), batch_size=settings.learning.batch_size, shuffle=True)
+        proxy_trainset = DataLoader(DatasetWithIndex(ordered_proxy_trainset.dataset), batch_size=settings.learning.batch_size, shuffle=True)
+        train_set_it = iter(proxy_trainset)
 
+        try:
+            data, _, indices = next(train_set_it)
+        except StopIteration:
+            proxy_trainset = DataLoader(DatasetWithIndex(ordered_proxy_trainset.dataset), batch_size=settings.learning.batch_size, shuffle=True)
+            train_set_it = iter(proxy_trainset)
+            data, _, indices = next(train_set_it)
+        data = Variable(data.to(device))
+
+        for n in range(args.peers):
             models[n].to(device)
             teacher_outputs = []
             teacher_indices = []
 
             # Do one batch of inferences
-            train_set_it = iter(proxy_trainset)
-            data, _, indices = next(train_set_it)
-            data = Variable(data.to(device))
             out = torch.softmax(models[n].forward(data).detach(), dim=1)
             teacher_outputs += out
             teacher_indices += indices
