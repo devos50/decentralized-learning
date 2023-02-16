@@ -106,50 +106,36 @@ async def run(args, dataset: str):
 
         # Determine outputs of the teacher model on the public training data
         outputs: List[List[Tensor]] = []
-        outputs_indices: List[List[int]] = []
         proxy_trainset = DataLoader(DatasetWithIndex(ordered_proxy_trainset.dataset), batch_size=settings.learning.batch_size, shuffle=True)
         train_set_it = iter(proxy_trainset)
 
         try:
-            data, _, indices = next(train_set_it)
+            data, _, outputs_indices = next(train_set_it)
         except StopIteration:
             proxy_trainset = DataLoader(DatasetWithIndex(ordered_proxy_trainset.dataset), batch_size=settings.learning.batch_size, shuffle=True)
             train_set_it = iter(proxy_trainset)
-            data, _, indices = next(train_set_it)
+            data, _, outputs_indices = next(train_set_it)
         data = Variable(data.to(device))
 
         for n in range(args.peers):
             models[n].to(device)
             teacher_outputs = []
-            teacher_indices = []
 
             # Do one batch of inferences
             out = torch.softmax(models[n].forward(data).detach(), dim=1)
             teacher_outputs += out
-            teacher_indices += indices
-
             outputs.append(teacher_outputs)
-            outputs_indices.append(teacher_indices)
 
-        # # Aggregate the predicted outputs
-        # print("Aggregating predictions...")
-        # aggregated_predictions = []
-        # for sample_ind in range(len(outputs[0])):
-        #     predictions = [outputs[n][sample_ind] for n in range(args.peers)]
-        #     aggregated_predictions.append(torch.mean(torch.stack(predictions), dim=0))
+        # Aggregate the predicted outputs
+        aggregated_predictions = []
+        for sample_ind in range(len(outputs[0])):
+            predictions = [outputs[n][sample_ind] for n in range(args.peers)]
+            aggregated_predictions.append(torch.mean(torch.stack(predictions), dim=0))
 
         for n in range(args.peers):
             start_time = time.time()
 
-            # Choose which peer we're going to distill from
-            possibilities = [i for i in range(settings.target_participants) if i != n]
-            if not possibilities:
-                peer_to_distill_from = n  # Distill from self
-            else:
-                peer_to_distill_from = random.choice(possibilities)
-            logger.debug("Peer %d distilling from peer %d", n, peer_to_distill_from)
-
-            predictions = outputs[peer_to_distill_from], outputs_indices[peer_to_distill_from]
+            predictions = aggregated_predictions, outputs_indices
             _, local_loss, distill_loss = await trainers[n].train(models[n], device_name=device, proxy_dataset=ordered_proxy_trainset, predictions=predictions)
             logger.debug("Training round %d for peer %d done - time: %f", round, n, time.time() - start_time)
 
