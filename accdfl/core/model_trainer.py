@@ -98,9 +98,6 @@ class ModelTrainer:
                 output = torch.softmax(model.forward(proxy_data), dim=1)
                 sub_predictions = torch.stack(predictions[0][samples_trained_on:samples_trained_on+self.settings.learning.batch_size])
                 dist_loss = dist_loss_fn(output, sub_predictions) * self.settings.learning.beta
-                print(output[0])
-                print(sub_predictions[0])
-                print("^ loss: %f" % dist_loss)
                 total_distill_loss += dist_loss
                 loss = loss + dist_loss
 
