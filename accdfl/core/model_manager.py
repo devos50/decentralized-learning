@@ -12,7 +12,7 @@ import torch.nn as nn
 from accdfl.core.gradient_aggregation import GradientAggregationMethod
 from accdfl.core.gradient_aggregation.fedavg import FedAvg
 from accdfl.core.model_trainer import ModelTrainer
-from accdfl.core.session_settings import SessionSettings
+from accdfl.core.session_settings import SessionSettings, dump_settings
 
 
 class ModelManager:
@@ -56,23 +56,13 @@ class ModelManager:
         models = [model for model in self.incoming_trained_models.values()]
         return self.get_aggregation_method().aggregate(models, weights=weights)
 
-    def dump_settings(self):
-        """
-        Dump the session settings if they do not exist yet.
-        """
-        settings_file_path = os.path.join(self.settings.work_dir, "settings.json")
-        if not os.path.exists(settings_file_path):
-            with open(settings_file_path, "w") as settings_file:
-                print(self.settings)
-                settings_file.write(self.settings.to_json())
-
     async def train(self) -> int:
         if self.settings.train_in_subprocess:
             # Dump the model and settings to a file
             model_file_name = "%d.model" % random.randint(1, 1000000)
             model_path = os.path.join(self.settings.work_dir, model_file_name)
             torch.save(self.model.state_dict(), model_path)
-            self.dump_settings()
+            dump_settings(self.settings)
 
             # Get full path to the script
             import accdfl.util as autil
@@ -123,7 +113,7 @@ class ModelManager:
         model_file_name = "%d.model" % model_id
         model_path = os.path.join(self.settings.work_dir, model_file_name)
         torch.save(model.state_dict(), model_path)
-        self.dump_settings()
+        dump_settings(self.settings)
 
         # Get full path to the script
         import accdfl.util as autil

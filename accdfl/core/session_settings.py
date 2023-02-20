@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass
 from typing import List, Optional, Type
 
@@ -5,7 +6,6 @@ from dataclasses_json import dataclass_json
 
 from accdfl.core import TransmissionMethod
 from accdfl.core.gradient_aggregation import GradientAggregationMethod
-from accdfl.core.gradient_aggregation.fedavg import FedAvg
 
 
 @dataclass
@@ -15,6 +15,7 @@ class LearningSettings:
     """
     learning_rate: float
     momentum: float
+    weight_decay: float
     batch_size: int
 
 
@@ -75,3 +76,13 @@ class SessionSettings:
     eva_max_simultaneous_transfers: int = 30  # Corresponds to a peak usage of ~3.4 MB/s for an aggregator
     is_simulation: bool = False
     train_device_name: str = "cpu"
+
+
+def dump_settings(settings: SessionSettings):
+    """
+    Dump the session settings if they do not exist yet.
+    """
+    settings_file_path = os.path.join(settings.work_dir, "settings.json")
+    if not os.path.exists(settings_file_path):
+        with open(settings_file_path, "w") as settings_file:
+            settings_file.write(settings.to_json())

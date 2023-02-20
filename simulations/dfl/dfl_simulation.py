@@ -51,7 +51,8 @@ class DFLSimulation(LearningSimulation):
         learning_settings = LearningSettings(
             learning_rate=self.settings.learning_rate,
             momentum=self.settings.momentum,
-            batch_size=self.settings.batch_size
+            batch_size=self.settings.batch_size,
+            weight_decay=self.settings.weight_decay,
         )
 
         dfl_settings = DFLSettings(
