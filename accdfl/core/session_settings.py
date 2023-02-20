@@ -6,7 +6,6 @@ from dataclasses_json import dataclass_json
 
 from accdfl.core import TransmissionMethod
 from accdfl.core.gradient_aggregation import GradientAggregationMethod
-from accdfl.core.gradient_aggregation.fedavg import FedAvg
 
 
 @dataclass
@@ -16,6 +15,7 @@ class LearningSettings:
     """
     learning_rate: float
     momentum: float
+    weight_decay: float
     batch_size: int
 
 

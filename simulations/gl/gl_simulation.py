@@ -29,7 +29,8 @@ class GLSimulation(LearningSimulation):
         learning_settings = LearningSettings(
             learning_rate=self.settings.learning_rate,
             momentum=self.settings.momentum,
-            batch_size=self.settings.batch_size
+            batch_size=self.settings.batch_size,
+            weight_decay=self.settings.weight_decay,
         )
 
         gl_settings = GLSettings(self.settings.gl_round_timeout)

@@ -19,6 +19,7 @@ class SimulationSettings:
         self.batch_size: int = 500
         self.learning_rate: float = 0.002
         self.momentum: float = 0.0
+        self.weight_decay: float = 0.0
         self.num_rounds: Optional[int] = None
         self.num_aggregators: int = 1
         self.duration: int = 3600  # Simulation duration in seconds

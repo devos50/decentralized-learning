@@ -34,16 +34,18 @@ class ModelTrainer:
         """
         device = torch.device(device_name)
         model.to(device)
-        optimizer = SGDOptimizer(model, self.settings.learning.learning_rate, self.settings.learning.momentum)
+        optimizer = SGDOptimizer(model, self.settings.learning.learning_rate, self.settings.learning.momentum, self.settings.learning.weight_decay)
         train_set = self.dataset.get_trainset(batch_size=self.settings.learning.batch_size, shuffle=True)
         train_set_it = iter(train_set)
         local_steps = len(train_set.dataset) // self.settings.learning.batch_size
         if len(train_set.dataset) % self.settings.learning.batch_size != 0:
             local_steps += 1
 
-        self.logger.info("Will perform %d local steps of training on device %s (batch size: %d, lr: %f, data points: %d)",
+        self.logger.info("Will perform %d local steps of training on device %s (batch size: %d, lr: %f, wd: %f, "
+                         "data points: %d)",
                          local_steps, device_name, self.settings.learning.batch_size,
-                         self.settings.learning.learning_rate, len(train_set.dataset))
+                         self.settings.learning.learning_rate, self.settings.learning.weight_decay,
+                         len(train_set.dataset))
 
         start_time = time.time()
         samples_trained_on = 0

@@ -22,6 +22,7 @@ def get_args(default_lr: float, default_momentum: float = 0):
     parser = argparse.ArgumentParser()
     parser.add_argument('--lr', type=float, default=default_lr)
     parser.add_argument('--momentum', type=float, default=default_momentum)
+    parser.add_argument('--weight-decay', type=float, default=0)
     parser.add_argument('--batch-size', type=int, default=20)
     parser.add_argument('--peers', type=int, default=10)
     parser.add_argument('--rounds', type=int, default=100)
@@ -41,7 +42,8 @@ async def run(args, dataset: str):
     learning_settings = LearningSettings(
         learning_rate=args.lr,
         momentum=args.momentum,
-        batch_size=args.batch_size
+        weight_decay=args.weight_decay,
+        batch_size=args.batch_size,
     )
 
     settings = SessionSettings(
