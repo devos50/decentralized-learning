@@ -16,7 +16,7 @@ import yappi
 
 from accdfl.core.model_manager import ModelManager
 from accdfl.core.model_evaluator import ModelEvaluator
-from accdfl.core.session_settings import SessionSettings
+from accdfl.core.session_settings import SessionSettings, dump_settings
 from accdfl.dfl.community import DFLCommunity
 from accdfl.dl.community import DLCommunity
 from accdfl.gl.community import GLCommunity
@@ -211,22 +211,13 @@ class LearningSimulation:
         model = self.nodes[peer_ind].overlays[0].model_manager.model
         torch.save(model.state_dict(), os.path.join(models_dir, "%d.model" % peer_ind))
 
-    def dump_settings(self):
-        """
-        Dump the session settings if they do not exist yet.
-        """
-        settings_file_path = os.path.join(self.session_settings.work_dir, "settings.json")
-        if not os.path.exists(settings_file_path):
-            with open(settings_file_path, "w") as settings_file:
-                settings_file.write(self.session_settings.to_json())
-
     def test_models_with_das_jobs(self) -> Dict[int, Tuple[float, float]]:
         """
         Test the accuracy of all models in the model manager by spawning different DAS jobs.
         """
         results: Dict[int, Tuple[float, float]] = {}
 
-        self.dump_settings()
+        dump_settings(self.session_settings)
 
         # Divide the clients over the DAS nodes
         client_queue = list(range(len(self.model_manager.incoming_trained_models.values())))
