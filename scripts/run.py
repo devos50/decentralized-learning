@@ -27,6 +27,7 @@ def get_args(default_lr: float, default_momentum: float = 0):
     parser.add_argument('--rounds', type=int, default=100)
     parser.add_argument('--acc-check-interval', type=int, default=1)
     parser.add_argument('--partitioner', type=str, default="iid")
+    parser.add_argument('--alpha', type=float, default=1)
     parser.add_argument('--model', type=str, default=None)
     parser.add_argument('--train-method', type=str, default="local")
     parser.add_argument('--das-subprocess-jobs', type=int, default=1)
@@ -46,6 +47,7 @@ async def run(args, dataset: str):
     settings = SessionSettings(
         dataset=dataset,
         partitioner=args.partitioner,
+        alpha=args.alpha,
         work_dir="",
         learning=learning_settings,
         participants=["a"],
