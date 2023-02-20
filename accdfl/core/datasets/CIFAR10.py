@@ -214,7 +214,11 @@ class CIFAR10(Dataset):
             for data, target in iter(testloader):
                 data, target = data.to(device), target.to(device)
                 output = model.forward(data)
-                total_loss += ce_loss(output, target)
+                if model.__class__.__name__ == "ResNet":
+                    total_loss += ce_loss(output, target)
+                else:
+                    total_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
+
                 pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
                 correct += pred.eq(target.view_as(pred)).sum().item()
                 example_number += target.size(0)
