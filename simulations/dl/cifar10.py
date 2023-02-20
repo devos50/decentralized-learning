@@ -15,6 +15,7 @@ if __name__ == "__main__":
     settings.peers = 100 if "NUM_PEERS" not in os.environ else int(os.environ["NUM_PEERS"])
     settings.active_participants = None if "ACTIVE_PARTICIPANTS" not in os.environ else os.environ["ACTIVE_PARTICIPANTS"]
     settings.momentum = 0.9 if "MOMENTUM" not in os.environ else float(os.environ["MOMENTUM"])
+    settings.weight_decay = 0.0 if "WEIGHT_DECAY" not in os.environ else float(os.environ["WEIGHT_DECAY"])
     settings.learning_rate = 0.002 if "LEARNING_RATE" not in os.environ else float(os.environ["LEARNING_RATE"])
     settings.batch_size = 20 if "BATCH_SIZE" not in os.environ else int(os.environ["BATCH_SIZE"])
     settings.dl_test_mode = "local" if "DL_TEST_MODE" not in os.environ else os.environ["DL_TEST_MODE"]
