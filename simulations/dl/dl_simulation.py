@@ -102,6 +102,19 @@ class DLSimulation(LearningSimulation):
         else:
             raise RuntimeError("Unknown DL topology %s" % self.session_settings.dl.topology)
 
+    def test_avg_model(self, round_nr: int, write_results: bool = True):
+        avg_model = self.model_manager.aggregate_trained_models()
+        accuracy, loss = self.evaluator.evaluate_accuracy(avg_model)
+        self.logger.info("Accuracy of central model for round %d: %f (loss: %f)", round_nr, accuracy, loss)
+        if write_results:
+            with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
+                out_file.write("%s,DL,%f,%d,%d,%f,%f\n" % (self.settings.dataset, get_event_loop().time(), 0,
+                                                           round_nr, accuracy, loss))
+
+        if self.settings.store_best_models and accuracy > self.best_accuracy:
+            self.best_accuracy = accuracy
+            torch.save(avg_model.state_dict(), os.path.join(self.data_dir, "best.model"))
+
     async def on_round_complete(self, peer_ind: int, round_nr: int):
         self.num_round_completed += 1
         peer_pk = self.nodes[peer_ind].overlays[0].my_peer.public_key.key_to_bin()
@@ -123,15 +136,7 @@ class DLSimulation(LearningSimulation):
             self.logger.info("Will compute accuracy for round %d!" % round_nr)
             try:
                 if self.settings.dl_accuracy_method == DLAccuracyMethod.AGGREGATE_THEN_TEST:
-                    avg_model = self.model_manager.aggregate_trained_models()
-                    accuracy, loss = self.evaluator.evaluate_accuracy(avg_model)
-                    with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
-                        out_file.write("%s,DL,%f,%d,%d,%f,%f\n" % (self.settings.dataset, get_event_loop().time(), 0,
-                                                                   round_nr, accuracy, loss))
-
-                    if self.settings.store_best_models and accuracy > self.best_accuracy:
-                        self.best_accuracy = accuracy
-                        torch.save(avg_model.state_dict(), os.path.join(self.data_dir, "best.model"))
+                    self.test_avg_model(round_nr)
                 elif self.settings.dl_accuracy_method == DLAccuracyMethod.TEST_INDIVIDUAL_MODELS:
                     if self.settings.dl_test_mode == "das_jobs":
                         results = self.test_models_with_das_jobs()
@@ -144,6 +149,9 @@ class DLSimulation(LearningSimulation):
                             out_file.write("%s,DL,%f,%d,%d,%f,%f\n" %
                                            (self.settings.dataset, get_event_loop().time(), ind, round_nr, accuracy,
                                             loss))
+
+                    # Also test the avg. model
+                    self.test_avg_model(round_nr, write_results=False)
 
             except ValueError as e:
                 print("Encountered error during evaluation check - dumping models and stopping")
