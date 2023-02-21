@@ -1,4 +1,5 @@
 import os
+from argparse import Namespace
 from asyncio import get_event_loop
 from binascii import hexlify
 from typing import List
@@ -9,22 +10,21 @@ from accdfl.core.model_manager import ModelManager
 from accdfl.core.session_settings import LearningSettings, SessionSettings, DLSettings
 from ipv8.configuration import ConfigBuilder
 from simulations.dl import ExponentialTwoGraph, GetDynamicOnePeerSendRecvRanks
-from simulations.settings import SimulationSettings, DLAccuracyMethod
 
 from simulations.learning_simulation import LearningSimulation
 
 
 class DLSimulation(LearningSimulation):
 
-    def __init__(self, settings: SimulationSettings) -> None:
-        super().__init__(settings)
+    def __init__(self, args: Namespace) -> None:
+        super().__init__(args)
         self.num_round_completed = 0
         self.participants_ids: List[int] = []
         self.best_accuracy: float = 0.0
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = super().get_ipv8_builder(peer_id)
-        if self.settings.bypass_model_transfers:
+        if self.args.bypass_model_transfers:
             builder.add_overlay("DLBypassNetworkCommunity", "my peer", [], [], {}, [])
         else:
             builder.add_overlay("DLCommunity", "my peer", [], [], {}, [])
@@ -33,9 +33,9 @@ class DLSimulation(LearningSimulation):
     async def setup_simulation(self) -> None:
         await super().setup_simulation()
 
-        if self.settings.active_participants:
-            self.logger.info("Initial active participants: %s", self.settings.active_participants)
-            start_ind, end_ind = self.settings.active_participants.split("-")
+        if self.args.active_participants:
+            self.logger.info("Initial active participants: %s", self.args.active_participants)
+            start_ind, end_ind = self.args.active_participants.split("-")
             start_ind, end_ind = int(start_ind), int(end_ind)
             participants_pks = [hexlify(self.nodes[ind].overlays[0].my_peer.public_key.key_to_bin()).decode()
                             for ind in range(start_ind, end_ind)]
@@ -46,29 +46,29 @@ class DLSimulation(LearningSimulation):
 
         # Setup the training process
         learning_settings = LearningSettings(
-            learning_rate=self.settings.learning_rate,
-            momentum=self.settings.momentum,
-            batch_size=self.settings.batch_size,
-            weight_decay=self.settings.weight_decay,
+            learning_rate=self.args.learning_rate,
+            momentum=self.args.momentum,
+            batch_size=self.args.batch_size,
+            weight_decay=self.args.weight_decay,
         )
 
-        dl_settings = DLSettings(topology=self.settings.topology or "ring")
+        dl_settings = DLSettings(topology=self.args.topology or "ring")
 
         self.session_settings = SessionSettings(
             work_dir=self.data_dir,
-            dataset=self.settings.dataset,
+            dataset=self.args.dataset,
             learning=learning_settings,
             participants=participants_pks,
             all_participants=[hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in
                               self.nodes],
             target_participants=len(self.nodes),
             dl=dl_settings,
-            model=self.settings.model,
-            alpha=self.settings.alpha,
-            partitioner=self.settings.partitioner,
+            model=self.args.model,
+            alpha=self.args.alpha,
+            partitioner=self.args.partitioner,
             eva_block_size=1000,
             is_simulation=True,
-            train_device_name=self.settings.train_device_name,
+            train_device_name=self.args.train_device_name,
         )
 
         self.model_manager = ModelManager(None, self.session_settings, 0)
@@ -79,7 +79,7 @@ class DLSimulation(LearningSimulation):
 
         self.build_topology()
 
-        if self.settings.bypass_model_transfers:
+        if self.args.bypass_model_transfers:
             # Inject the nodes in each community
             for node in self.nodes:
                 node.overlays[0].nodes = self.nodes
@@ -108,10 +108,10 @@ class DLSimulation(LearningSimulation):
         self.logger.info("Accuracy of central model for round %d: %f (loss: %f)", round_nr, accuracy, loss)
         if write_results:
             with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
-                out_file.write("%s,DL,%f,%d,%d,%f,%f\n" % (self.settings.dataset, get_event_loop().time(), 0,
+                out_file.write("%s,DL,%f,%d,%d,%f,%f\n" % (self.args.dataset, get_event_loop().time(), 0,
                                                            round_nr, accuracy, loss))
 
-        if self.settings.store_best_models and accuracy > self.best_accuracy:
+        if self.args.store_best_models and accuracy > self.best_accuracy:
             self.best_accuracy = accuracy
             torch.save(avg_model.state_dict(), os.path.join(self.data_dir, "best.model"))
 
@@ -132,13 +132,13 @@ class DLSimulation(LearningSimulation):
         self.num_round_completed = 0
 
         # Compute model accuracy
-        if round_nr % self.settings.accuracy_logging_interval == 0:
+        if round_nr % self.args.accuracy_logging_interval == 0:
             self.logger.info("Will compute accuracy for round %d!" % round_nr)
             try:
-                if self.settings.dl_accuracy_method == DLAccuracyMethod.AGGREGATE_THEN_TEST:
+                if self.args.dl_accuracy_method == "aggregate":
                     self.test_avg_model(round_nr)
-                elif self.settings.dl_accuracy_method == DLAccuracyMethod.TEST_INDIVIDUAL_MODELS:
-                    if self.settings.dl_test_mode == "das_jobs":
+                elif self.args.dl_accuracy_method == "individual":
+                    if self.args.dl_test_mode == "das_jobs":
                         results = self.test_models_with_das_jobs()
                     else:
                         results = self.test_models()
@@ -147,7 +147,7 @@ class DLSimulation(LearningSimulation):
                         accuracy, loss = acc_res
                         with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
                             out_file.write("%s,DL,%f,%d,%d,%f,%f\n" %
-                                           (self.settings.dataset, get_event_loop().time(), ind, round_nr, accuracy,
+                                           (self.args.dataset, get_event_loop().time(), ind, round_nr, accuracy,
                                             loss))
 
                     # Also test the avg. model
@@ -159,12 +159,12 @@ class DLSimulation(LearningSimulation):
                 raise e
 
         # Checkpoint models
-        if self.settings.checkpoint_interval and round_nr % self.settings.checkpoint_interval == 0:
+        if self.args.checkpoint_interval and round_nr % self.args.checkpoint_interval == 0:
             self.checkpoint_models(round_nr)
 
         self.model_manager.reset_incoming_trained_models()
 
-        if self.settings.num_rounds and round_nr >= self.settings.num_rounds:
+        if self.args.rounds and round_nr >= self.args.rounds:
             self.on_simulation_finished()
             self.loop.stop()
 
