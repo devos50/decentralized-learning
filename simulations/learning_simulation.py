@@ -1,12 +1,11 @@
 import asyncio
 import logging
 import os
-import random
 import shutil
 import stat
 import subprocess
 import time
-from asyncio import get_event_loop
+from argparse import Namespace
 from statistics import median, mean
 from typing import Dict, List, Optional, Tuple
 
@@ -29,7 +28,6 @@ from simulation.simulation_endpoint import SimulationEndpoint
 
 from simulations.dl.bypass_network_community import DLBypassNetworkCommunity
 from simulations.dfl.bypass_network_community import DFLBypassNetworkCommunity
-from simulations.settings import SimulationSettings
 
 
 class LearningSimulation:
@@ -37,11 +35,11 @@ class LearningSimulation:
     Base class for any simulation that involves learning.
     """
 
-    def __init__(self, settings: SimulationSettings) -> None:
-        self.settings = settings
+    def __init__(self, args: Namespace) -> None:
+        self.args = args
         self.session_settings: Optional[SessionSettings] = None
         self.nodes = []
-        self.data_dir = os.path.join("data", "n_%d_%s" % (self.settings.peers, self.settings.dataset))
+        self.data_dir = os.path.join("data", "n_%d_%s" % (self.args.peers, self.args.dataset))
         self.evaluator = None
         self.logger = None
         self.model_manager: Optional[ModelManager] = None
@@ -55,7 +53,7 @@ class LearningSimulation:
         return builder
 
     async def start_ipv8_nodes(self) -> None:
-        for peer_id in range(1, self.settings.peers + 1):
+        for peer_id in range(1, self.args.peers + 1):
             if peer_id % 100 == 0:
                 print("Created %d peers..." % peer_id)
             endpoint = SimulationEndpoint()
@@ -85,7 +83,7 @@ class LearningSimulation:
     def setup_logger(self) -> None:
         root = logging.getLogger()
         root.handlers[0].setFormatter(logging.Formatter("%(asctime)s:%(levelname)s:%(message)s"))
-        root.setLevel(getattr(logging, self.settings.log_level))
+        root.setLevel(getattr(logging, self.args.log_level))
 
         self.logger = logging.getLogger(self.__class__.__name__)
 
@@ -103,11 +101,11 @@ class LearningSimulation:
         """
         If specified in the settings, add latencies between the endpoints.
         """
-        if not self.settings.latencies_file:
+        if not self.args.latencies_file:
             return
 
         latencies = []
-        with open(self.settings.latencies_file) as latencies_file:
+        with open(self.args.latencies_file) as latencies_file:
             for line in latencies_file.readlines():
                 latencies.append([float(l) for l in line.strip().split(",")])
 
@@ -128,7 +126,7 @@ class LearningSimulation:
         Based on the latencies, determine the ID of the peer with the lowest median latency to other peers.
         """
         latencies = []
-        with open(self.settings.latencies_file) as latencies_file:
+        with open(self.args.latencies_file) as latencies_file:
             for line in latencies_file.readlines():
                 latencies.append([float(l) for l in line.strip().split(",")])
 
@@ -149,7 +147,7 @@ class LearningSimulation:
         return lowest_peer_id
 
     async def setup_simulation(self) -> None:
-        print("Setting up simulation with %d peers..." % self.settings.peers)
+        print("Setting up simulation with %d peers..." % self.args.peers)
 
         with open(os.path.join(self.data_dir, "accuracies.csv"), "w") as out_file:
             out_file.write("dataset,group,time,peer,round,accuracy,loss\n")
@@ -158,22 +156,22 @@ class LearningSimulation:
         for ind, node in enumerate(self.nodes):
             node.overlays[0].start()
 
-        if self.settings.dataset in ["cifar10", "mnist"]:
+        if self.args.dataset in ["cifar10", "mnist"]:
             data_dir = os.path.join(os.environ["HOME"], "dfl-data")
         else:
             # The LEAF dataset
-            data_dir = os.path.join(os.environ["HOME"], "leaf", self.settings.dataset)
+            data_dir = os.path.join(os.environ["HOME"], "leaf", self.args.dataset)
 
         self.evaluator = ModelEvaluator(data_dir, self.session_settings)
 
-        if self.settings.profile:
+        if self.args.profile:
             yappi.start(builtins=True)
 
         start_time = time.time()
-        await asyncio.sleep(self.settings.duration)
+        await asyncio.sleep(self.args.duration)
         print("Simulation took %f seconds" % (time.time() - start_time))
 
-        if self.settings.profile:
+        if self.args.profile:
             yappi.stop()
             yappi_stats = yappi.get_func_stats()
             yappi_stats.sort("tsub")
@@ -226,12 +224,12 @@ class LearningSimulation:
 
             processes = []
             all_model_ids = set()
-            for job_ind in range(self.settings.das_test_subprocess_jobs):
+            for job_ind in range(self.args.das_test_subprocess_jobs):
                 if not client_queue:
                     continue
 
                 clients_on_this_node = []
-                while client_queue and len(clients_on_this_node) < self.settings.das_test_num_models_per_subprocess:
+                while client_queue and len(clients_on_this_node) < self.args.das_test_num_models_per_subprocess:
                     client = client_queue.pop(0)
                     clients_on_this_node.append(client)
 
@@ -302,9 +300,9 @@ export PYTHONPATH=%s
         """
         results: Dict[int, Tuple[float, float]] = {}
         for ind, model in enumerate(self.model_manager.incoming_trained_models.values()):
-            print("Testing model %d on device %s..." % (ind + 1, self.settings.accuracy_device_name))
+            print("Testing model %d on device %s..." % (ind + 1, self.args.accuracy_device_name))
             accuracy, loss = self.evaluator.evaluate_accuracy(
-                model, device_name=self.settings.accuracy_device_name)
+                model, device_name=self.args.accuracy_device_name)
             results[ind] = (accuracy, loss)
         return results
 
