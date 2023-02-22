@@ -26,6 +26,11 @@ class DFLSimulation(LearningSimulation):
             builder.add_overlay("DFLCommunity", "my peer", [], [], {}, [])
         return builder
 
+    @staticmethod
+    def split_list(lst, chunk_size):
+        for i in range(0, len(lst), chunk_size):
+            yield lst[i:i + chunk_size]
+
     async def setup_simulation(self) -> None:
         await super().setup_simulation()
 
@@ -33,62 +38,63 @@ class DFLSimulation(LearningSimulation):
             self.logger.info("Initial active participants: %s", self.args.active_participants)
             start_ind, end_ind = self.args.active_participants.split("-")
             start_ind, end_ind = int(start_ind), int(end_ind)
-            participants_pks = [hexlify(self.nodes[ind].overlays[0].my_peer.public_key.key_to_bin()).decode()
-                            for ind in range(start_ind, end_ind)]
             participants_ids = list(range(start_ind, end_ind))
         else:
-            participants_pks = [hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes]
             participants_ids = list(range(len(self.nodes)))
 
-        # Determine who will be the aggregator
-        peer_pk = None
-        lowest_latency_peer_id = -1
-        if self.args.fix_aggregator:
-            lowest_latency_peer_id = self.determine_peer_with_lowest_median_latency(participants_ids)
-            peer_pk = self.nodes[lowest_latency_peer_id].overlays[0].my_peer.public_key.key_to_bin()
+        # Setup the different (D)FL sessions
+        assert len(self.nodes) % self.args.fl_groups == 0, \
+            "Participant list cannot evenly be divided into %d groups" % self.args.fl_groups
 
-        # Setup the training process
-        learning_settings = LearningSettings(
-            learning_rate=self.args.learning_rate,
-            momentum=self.args.momentum,
-            batch_size=self.args.batch_size,
-            weight_decay=self.args.weight_decay,
-        )
+        participants_parts = list(DFLSimulation.split_list(participants_ids, len(self.nodes) // self.args.fl_groups))
+        for group_id, group_participants_ids in enumerate(participants_parts):
+            self.logger.info("Setting up group %d", group_id)
+            group_participants_pks = [hexlify(self.nodes[peer_id].overlays[0].my_peer.public_key.key_to_bin()).decode() for peer_id in group_participants_ids]
 
-        dfl_settings = DFLSettings(
-            sample_size=self.args.sample_size,
-            num_aggregators=self.args.num_aggregators,
-            success_fraction=1.0,
-            aggregation_timeout=2.0,
-            ping_timeout=5,
-            inactivity_threshold=1000,
-            fixed_aggregator=peer_pk if self.args.fix_aggregator else None
-        )
+            # Determine who will be the aggregator
+            peer_pk = None
+            if self.args.fix_aggregator:
+                lowest_latency_peer_id = self.determine_peer_with_lowest_median_latency(group_participants_ids)
+                peer_pk = self.nodes[lowest_latency_peer_id].overlays[0].my_peer.public_key.key_to_bin()
+                self.nodes[lowest_latency_peer_id].overlays[0].eva.settings.max_simultaneous_transfers = 100000
 
-        self.session_settings = SessionSettings(
-            work_dir=self.data_dir,
-            dataset=self.args.dataset,
-            learning=learning_settings,
-            participants=participants_pks,
-            all_participants=[hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
-            target_participants=len(self.nodes),
-            dfl=dfl_settings,
-            model=self.args.model,
-            alpha=self.args.alpha,
-            partitioner=self.args.partitioner,
-            eva_block_size=1000,
-            is_simulation=True,
-            train_device_name=self.args.train_device_name,
-        )
+            # Setup the training process
+            learning_settings = LearningSettings(
+                learning_rate=self.args.learning_rate,
+                momentum=self.args.momentum,
+                batch_size=self.args.batch_size,
+                weight_decay=self.args.weight_decay,
+            )
 
-        for ind, node in enumerate(self.nodes):
-            node.overlays[0].aggregate_complete_callback = lambda round_nr, model, i=ind: self.on_aggregate_complete(i, round_nr, model)
-            node.overlays[0].setup(self.session_settings)
+            dfl_settings = DFLSettings(
+                sample_size=self.args.sample_size,
+                num_aggregators=self.args.num_aggregators,
+                success_fraction=1.0,
+                aggregation_timeout=2.0,
+                ping_timeout=5,
+                inactivity_threshold=1000,
+                fixed_aggregator=peer_pk if self.args.fix_aggregator else None
+            )
 
-        # If we fix the aggregator, we assume unlimited upload/download slots
-        if self.args.fix_aggregator:
-            print("Overriding max. EVA transfers for peer %d" % lowest_latency_peer_id)
-            self.nodes[lowest_latency_peer_id].overlays[0].eva.settings.max_simultaneous_transfers = 100000
+            self.session_settings = SessionSettings(
+                work_dir=self.data_dir,
+                dataset=self.args.dataset,
+                learning=learning_settings,
+                participants=group_participants_pks,
+                all_participants=[hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
+                target_participants=len(self.nodes),
+                dfl=dfl_settings,
+                model=self.args.model,
+                alpha=self.args.alpha,
+                partitioner=self.args.partitioner,
+                eva_block_size=1000,
+                is_simulation=True,
+                train_device_name=self.args.train_device_name,
+            )
+
+            for peer_id in group_participants_ids:
+                self.nodes[peer_id].overlays[0].aggregate_complete_callback = lambda round_nr, model, i=peer_id: self.on_aggregate_complete(i, round_nr, model)
+                self.nodes[peer_id].overlays[0].setup(self.session_settings)
 
         if self.args.bypass_model_transfers:
             # Inject the nodes in each community
@@ -103,23 +109,27 @@ class DFLSimulation(LearningSimulation):
 
         print("Round %d completed - bytes up: %d, bytes down: %d" % (round_nr, tot_up, tot_down))
 
-        if round_nr % self.args.accuracy_logging_interval == 0 and round_nr > self.latest_accuracy_check_round:
-            print("Will compute accuracy for round %d!" % round_nr)
-            accuracy, loss = self.evaluator.evaluate_accuracy(model, device_name=self.args.accuracy_device_name)
-            with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
-                group = "\"s=%d, a=%d\"" % (self.args.sample_size, self.args.num_aggregators)
-                out_file.write("%s,%s,%f,%d,%d,%f,%f\n" % (self.args.dataset, group, get_event_loop().time(),
-                                                           ind, round_nr, accuracy, loss))
-
-                if self.args.store_best_models and accuracy > self.best_accuracy:
-                    self.best_accuracy = accuracy
-                    torch.save(model.state_dict(), os.path.join(self.data_dir, "best.model"))
-
-            self.latest_accuracy_check_round = round_nr
+        if round_nr % self.args.accuracy_logging_interval == 0:
+            if self.args.num_aggregators == 1 or round_nr > self.latest_accuracy_check_round:
+                self.compute_accuracy(ind, round_nr, model)
 
         if self.args.rounds and round_nr >= self.args.rounds:
             self.on_simulation_finished()
             self.loop.stop()
+
+    def compute_accuracy(self, ind: int, round_nr: int, model):
+        print("Will compute accuracy for round %d!" % round_nr)
+        accuracy, loss = self.evaluator.evaluate_accuracy(model, device_name=self.args.accuracy_device_name)
+        with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
+            group = "\"s=%d, a=%d\"" % (self.args.sample_size, self.args.num_aggregators)
+            out_file.write("%s,%s,%f,%d,%d,%f,%f\n" % (self.args.dataset, group, get_event_loop().time(),
+                                                       ind, round_nr, accuracy, loss))
+
+            if self.args.store_best_models and accuracy > self.best_accuracy:
+                self.best_accuracy = accuracy
+                torch.save(model.state_dict(), os.path.join(self.data_dir, "best.model"))
+
+        self.latest_accuracy_check_round = round_nr
 
     def on_simulation_finished(self) -> None:
         super().on_simulation_finished()
