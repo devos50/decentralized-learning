@@ -142,7 +142,7 @@ export PYTHONPATH=%s
                 st = os.stat(bash_file_name)
                 os.chmod(bash_file_name, st.st_mode | stat.S_IEXEC)
 
-            cmd = "ssh fs3.das6.tudelft.nl \"prun -t 1:00:00 -np 1 -o %s %s\"" % (
+            cmd = "ssh fs3.das6.tudelft.nl \"prun -t 2:00:00 -np 1 -o %s %s\"" % (
                 out_file_path, os.path.join(os.getcwd(), bash_file_name))
             logger.debug("Command: %s", cmd)
             p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
