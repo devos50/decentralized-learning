@@ -167,17 +167,19 @@ class LearningSimulation:
         if self.args.profile:
             yappi.start(builtins=True)
 
-        start_time = time.time()
-        await asyncio.sleep(self.args.duration)
-        print("Simulation took %f seconds" % (time.time() - start_time))
-
         if self.args.profile:
             yappi.stop()
             yappi_stats = yappi.get_func_stats()
             yappi_stats.sort("tsub")
             yappi_stats.save(os.path.join(self.data_dir, "yappi.stats"), type='callgrind')
 
-        self.loop.stop()
+        start_time = time.time()
+        if self.args.duration > 0:
+            await asyncio.sleep(self.args.duration)
+            print("Simulation took %f seconds" % (time.time() - start_time))
+            self.loop.stop()
+        else:
+            print("Running simulation for undefined time")
 
     def on_ipv8_ready(self) -> None:
         """
