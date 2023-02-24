@@ -78,6 +78,43 @@ async def run(args):
     with open(os.path.join("data", "distill_accuracies.csv"), "w") as out_file:
         out_file.write("epoch,accuracy,loss,best_acc,train_time,total_time\n")
 
+    # Determine the class distribution per cohort
+    full_settings = SessionSettings(
+        dataset="cifar10",
+        work_dir="",
+        learning=learning_settings,
+        participants=["a"],
+        all_participants=["a"],
+        target_participants=200,
+        partitioner="dirichlet",
+    )
+
+    grouped_samples_per_class = []
+    weights = []
+    total_per_class = [0] * 10
+    for group in range(20):
+        samples_per_class = [0] * 10
+        for peer_id_in_group in range(10):
+            peer_id = group * 10 + peer_id_in_group
+            start_time = time.time()
+            dataset = create_dataset(full_settings, peer_id, train_dir=args.data_dir)
+            print("Creating dataset took %f sec." % (time.time() - start_time))
+            for _, (_, clsses) in enumerate(dataset.get_trainset(512, shuffle=False)):
+                for cls in clsses:
+                    samples_per_class[cls] += 1
+                    total_per_class[cls] += 1
+        print(samples_per_class)
+        grouped_samples_per_class.append(samples_per_class)
+
+    print("Total per class: %s" % total_per_class)
+    for group in range(20):
+        weights_this_group = [grouped_samples_per_class[group][i] / total_per_class[i] for i in range(10)]
+        weights.append(weights_this_group)
+        print("Weights for group %d: %s" % (group, weights_this_group))
+
+    weights = torch.Tensor(weights)
+    weights = weights.to(device)
+
     start_time = time.time()
     time_for_testing = 0  # Keep track of the time we spend on testing - we want to exclude this
 
@@ -100,9 +137,9 @@ async def run(args):
         model.to(device)
         teacher_models.append(model)
 
-        # # Test accuracy of the teacher model
-        # acc, loss = cifar10_testset.test(model, device_name=device)
-        # logger.info("Accuracy of teacher model %d: %f, %f", i, acc, loss)
+        # Test accuracy of the teacher model
+        acc, loss = cifar10_testset.test(model, device_name=device)
+        logger.info("Accuracy of teacher model %d: %f, %f", i, acc, loss)
 
     # Create the student model
     student_model = create_model(args.private_dataset, architecture=args.student_model)
@@ -116,6 +153,7 @@ async def run(args):
             images = images.to(device)
             with torch.no_grad():
                 out = teacher_model.forward(images).detach()
+                out *= weights[teacher_ind]
             teacher_logits += out
 
         logits.append(teacher_logits)
@@ -126,7 +164,7 @@ async def run(args):
     aggregated_predictions = []
     for sample_ind in range(len(logits[0])):
         predictions = [logits[n][sample_ind] for n in range(args.peers)]
-        aggregated_predictions.append(torch.mean(torch.stack(predictions), dim=0))
+        aggregated_predictions.append(torch.sum(torch.stack(predictions), dim=0))
 
     # Reset loader
     cifar100_loader = DataLoader(dataset=DatasetWithIndex(cifar100_dataset.trainset), batch_size=args.batch_size, shuffle=True)
