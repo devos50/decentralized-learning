@@ -18,6 +18,7 @@ def get_args(dataset: str, default_lr: float, default_momentum: float = 0):
     parser.add_argument('--dl-accuracy-method', type=str, default="individual")  # individual or aggregate
 
     # Other settings
+    parser.add_argument('--datadir', type=str, default=None)
     parser.add_argument('--log-level', type=str, default="INFO")
     parser.add_argument('--dataset', type=str, default=dataset)
     parser.add_argument('--duration', type=int, default=3600)  # Set to 0 to run forever
@@ -34,7 +35,7 @@ def get_args(dataset: str, default_lr: float, default_momentum: float = 0):
     parser.add_argument('--store-best-models', action=argparse.BooleanOptionalAction)
     parser.add_argument('--profile', action=argparse.BooleanOptionalAction)
     parser.add_argument('--topology', type=str, default="exp-one-peer")
-    parser.add_argument('--latencies-file', type=str, default="data/latencies.txt")
+    parser.add_argument('--latencies-file', type=str, default="latencies.txt")
     parser.add_argument('--gl-round-timeout', type=int, default=60)
     parser.add_argument('--fix-aggregator', action=argparse.BooleanOptionalAction)
     parser.add_argument('--sample-size', type=int, default=10)

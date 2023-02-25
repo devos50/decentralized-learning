@@ -113,6 +113,8 @@ class DFLSimulation(LearningSimulation):
 
                 if self.args.store_best_models and accuracy > self.best_accuracy:
                     self.best_accuracy = accuracy
+                    time_in_sec = int(get_event_loop().time())
+                    torch.save(model.state_dict(), os.path.join(self.data_dir, "best_%d.model" % time_in_sec))
                     torch.save(model.state_dict(), os.path.join(self.data_dir, "best.model"))
 
             self.latest_accuracy_check_round = round_nr

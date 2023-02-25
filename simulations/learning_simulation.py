@@ -39,7 +39,7 @@ class LearningSimulation:
         self.args = args
         self.session_settings: Optional[SessionSettings] = None
         self.nodes = []
-        self.data_dir = os.path.join("data", "n_%d_%s" % (self.args.peers, self.args.dataset))
+        self.data_dir = args.datadir or os.path.join("data", "n_%d_%s" % (self.args.peers, self.args.dataset))
         self.evaluator = None
         self.logger = None
         self.model_manager: Optional[ModelManager] = None
