@@ -28,8 +28,8 @@ while groups_queue:
         data_dir = "data_%d" % group
         train_cmd = "python3 -u simulations/dfl/cifar10.py --num-aggregators 1 --fix-aggregator --sample-size 10 --peers 200 \
 --model resnet8 --batch-size 16 --learning-rate 0.0025 --weight-decay 0.0003 --accuracy-logging-interval 1 --train-device-name \"cuda:0\" \
---accuracy-device-name \"cuda:0\" --bypass-model-transfers --store-best-model --partitioner dirichlet --active-participants %s \
---duration 500000 --datadir %s > g%d.log 2>&1 &" % (active_participants, data_dir, group)
+--accuracy-device-name \"cuda:0\" --bypass-model-transfers --store-best-model --partitioner dirichlet --active-participants %s --alpha 0.1 \
+--duration 600000 --datadir %s > g%d.log 2>&1 &" % (active_participants, data_dir, group)
         train_cmds += train_cmd + "\n"
 
     bash_file_name = "run_%d.sh" % job_nr
