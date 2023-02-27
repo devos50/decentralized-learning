@@ -81,6 +81,7 @@ async def run(args):
     # Determine the class distribution per cohort
     full_settings = SessionSettings(
         dataset="cifar10",
+        alpha=0.1,
         work_dir="",
         learning=learning_settings,
         participants=["a"],
