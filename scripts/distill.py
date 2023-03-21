@@ -153,6 +153,7 @@ async def run(args):
             test_start_time = time.time()
             acc, loss = cifar10_testset.test(student_model, device_name=device)
             if acc > best_acc:
+                torch.save(student_model.state_dict(), os.path.join(args.models_dir, "best_distilled.model"))
                 best_acc = acc
             logger.info("Accuracy of student model after %d epochs: %f, %f (best: %f)", epoch + 1, acc, loss, best_acc)
             time_for_testing += (time.time() - test_start_time)
