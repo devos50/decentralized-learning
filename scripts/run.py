@@ -101,12 +101,14 @@ async def train_local(args, dataset: str, settings: SessionSettings, data_path: 
 
                 # Save the model if it's better
                 if acc > highest_acc:
-                    torch.save(model.state_dict(), os.path.join(data_path, "cifar10_%d.model" % n))
+                    torch.save(model.state_dict(), os.path.join(data_path, "cifar10_best_%d.model" % n))
                     highest_acc = acc
 
                 acc_file_name = "accuracies.csv" if args.train_method == "local" else "accuracies_%d.csv" % n
                 with open(os.path.join(data_path, acc_file_name), "a") as out_file:
                     out_file.write("%s,%s,%d,%d,%d,%f,%f,%f\n" % (dataset, "standalone", n, args.peers, round, settings.learning.learning_rate, acc, loss))
+
+        torch.save(model.state_dict(), os.path.join(data_path, "cifar10_last_%d.model" % n))
 
 
 async def train_das(args, data_path: str):
