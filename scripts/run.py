@@ -25,6 +25,7 @@ def get_args(default_lr: float, default_momentum: float = 0):
     parser.add_argument('--weight-decay', type=float, default=0)
     parser.add_argument('--batch-size', type=int, default=20)
     parser.add_argument('--peers', type=int, default=10)
+    parser.add_argument('--max-peers-to-train', type=int, default=0)
     parser.add_argument('--rounds', type=int, default=100)
     parser.add_argument('--acc-check-interval', type=int, default=1)
     parser.add_argument('--partitioner', type=str, default="iid")
@@ -61,6 +62,9 @@ async def run(args, dataset: str):
     data_path = os.path.join("data", "%s_n_%d" % (dataset, args.peers))
     if not os.path.exists(data_path):
         os.makedirs(data_path, exist_ok=True)
+
+    if args.max_peers_to_train == 0:
+        args.max_peers_to_train = args.peers
 
     with open(os.path.join(data_path, "accuracies.csv"), "w") as out_file:
         out_file.write("dataset,algorithm,peer,peers,round,learning_rate,accuracy,loss\n")
@@ -111,7 +115,7 @@ async def train_das(args, data_path: str):
     """
 
     # Divide the clients over the DAS nodes
-    client_queue = list(range(args.peers))
+    client_queue = list(range(args.max_peers_to_train))
     while client_queue:
         logger.info("Scheduling new batch on DAS nodes - %d clients left", len(client_queue))
 
