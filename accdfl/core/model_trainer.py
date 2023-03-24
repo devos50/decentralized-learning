@@ -67,7 +67,29 @@ class ModelTrainer:
         dist_loss_fn = MSELoss()
         for local_step in range(local_steps):
             try:
-                # First train on the local data
+                # First train on the distillation predictions
+                proxy_data = []
+                for sample_ind in predictions[1][
+                                  samples_trained_on:samples_trained_on + self.settings.learning.batch_size]:
+                    proxy_data.append(proxy_dataset.dataset[sample_ind][0])
+
+                proxy_data = torch.stack(proxy_data)
+                proxy_data = Variable(proxy_data.to(device))
+                output = torch.softmax(model.forward(proxy_data), dim=1)
+                sub_predictions = torch.stack(
+                    predictions[0][samples_trained_on:samples_trained_on + self.settings.learning.batch_size])
+                loss = dist_loss_fn(output, sub_predictions) * self.settings.learning.beta
+
+                float_loss = float(loss)
+                if float_loss > 1e4 or np.isnan(float_loss):
+                    print("Invalid loss: %f" % float_loss)
+                    exit(1)
+
+                self.logger.debug('d-sgd.next node backward propagation (step %d/%d)', local_step, local_steps)
+                loss.backward()
+                optimizer.optimizer.step()
+
+                # Then train on the local data
                 data, target = next(train_set_it)
                 model.train()
                 data, target = Variable(data.to(device)), Variable(target.to(device))
@@ -86,27 +108,6 @@ class ModelTrainer:
                     lossf = CrossEntropyLoss()
 
                 loss = lossf(output, target)
-                total_local_loss += loss
-
-                # Create the proxy data based on the indices
-                proxy_data = []
-                for sample_ind in predictions[1][samples_trained_on:samples_trained_on+self.settings.learning.batch_size]:
-                    proxy_data.append(proxy_dataset.dataset[sample_ind][0])
-
-                proxy_data = torch.stack(proxy_data)
-                proxy_data = Variable(proxy_data.to(device))
-                output = torch.softmax(model.forward(proxy_data), dim=1)
-                sub_predictions = torch.stack(predictions[0][samples_trained_on:samples_trained_on+self.settings.learning.batch_size])
-                dist_loss = dist_loss_fn(output, sub_predictions) * self.settings.learning.beta
-                total_distill_loss += dist_loss
-                loss = loss + dist_loss
-
-                float_loss = float(loss)
-                if float_loss > 1e4 or np.isnan(float_loss):
-                    print("Invalid loss: %f" % float_loss)
-                    exit(1)
-
-                self.logger.debug('d-sgd.next node backward propagation (step %d/%d)', local_step, local_steps)
                 loss.backward()
                 optimizer.optimizer.step()
                 samples_trained_on += len(data)
