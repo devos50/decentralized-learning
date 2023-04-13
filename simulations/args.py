@@ -43,5 +43,6 @@ def get_args(dataset: str, default_lr: float, default_momentum: float = 0):
     parser.add_argument('--fix-aggregator', action=argparse.BooleanOptionalAction)
     parser.add_argument('--sample-size', type=int, default=10)
     parser.add_argument('--num-aggregators', type=int, default=1)
+    parser.add_argument('--activity-log-interval', type=int, default=None)
 
     return parser.parse_args()
