@@ -22,6 +22,7 @@ from accdfl.dl.community import DLCommunity
 from accdfl.gl.community import GLCommunity
 
 from ipv8.configuration import ConfigBuilder
+from ipv8.taskmanager import TaskManager
 from ipv8_service import IPv8
 
 from simulation.discrete_loop import DiscreteLoop
@@ -31,12 +32,13 @@ from simulations.dl.bypass_network_community import DLBypassNetworkCommunity
 from simulations.dfl.bypass_network_community import DFLBypassNetworkCommunity
 
 
-class LearningSimulation:
+class LearningSimulation(TaskManager):
     """
     Base class for any simulation that involves learning.
     """
 
     def __init__(self, args: Namespace) -> None:
+        super().__init__()
         self.args = args
         self.session_settings: Optional[SessionSettings] = None
         self.nodes = []
@@ -178,6 +180,26 @@ class LearningSimulation:
         self.logger.info("Setting up simulation with %d peers..." % self.args.peers)
         with open(os.path.join(self.data_dir, "accuracies.csv"), "w") as out_file:
             out_file.write("dataset,group,time,peer,round,accuracy,loss\n")
+
+        if self.args.activity_log_interval:
+            with open(os.path.join(self.data_dir, "activities.csv"), "w") as out_file:
+                out_file.write("time,online,offline\n")
+            self.register_task("check_activity", self.check_activity, interval=self.args.activity_log_interval)
+
+    def check_activity(self):
+        """
+        Count the number of online/offline peers and write it away.
+        """
+        online, offline = 0, 0
+        for node in self.nodes:
+            if node.overlays[0].is_active:
+                online += 1
+            else:
+                offline += 1
+
+        cur_time = asyncio.get_event_loop().time()
+        with open(os.path.join(self.data_dir, "activities.csv"), "a") as out_file:
+            out_file.write("%d,%d,%d\n" % (cur_time, online, offline))
 
     async def start_simulation(self) -> None:
         nodes_started: int = 0
