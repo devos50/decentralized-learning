@@ -7,6 +7,7 @@ import stat
 import subprocess
 import time
 from argparse import Namespace
+from random import Random
 from statistics import median, mean
 from typing import Dict, List, Optional, Tuple
 
@@ -104,23 +105,24 @@ class LearningSimulation(TaskManager):
         """
         Set the relevant traces.
         """
+        rand = Random(self.args.traces_seed)
         if self.args.availability_traces:
             self.logger.info("Applying availability trace file %s", self.args.availability_traces)
             with open(self.args.availability_traces, "rb") as traces_file:
                 data = pickle.load(traces_file)
 
-            # TODO we simply pick the first n devices from the list for now
+            device_ids = rand.sample(list(data.keys()), self.args.peers)
             for ind, node in enumerate(self.nodes):
-                node.overlays[0].set_traces(data[ind + 1])
+                node.overlays[0].set_traces(data[device_ids[ind]])
 
         if self.args.capability_traces:
             self.logger.info("Applying capability trace file %s", self.args.availability_traces)
             with open(self.args.capability_traces, "rb") as traces_file:
                 data = pickle.load(traces_file)
 
-            # TODO we simply pick the first n devices from the list for now
+            device_ids = rand.sample(list(data.keys()), self.args.peers)
             for ind, node in enumerate(self.nodes):
-                node.overlays[0].model_manager.model_trainer.simulated_speed = data[ind + 1]["computation"]
+                node.overlays[0].model_manager.model_trainer.simulated_speed = data[device_ids[ind]]["computation"]
                 if self.args.bypass_model_transfers:
                     # Also apply the network latencies
                     node.overlays[0].bandwidth = data[ind + 1]["communication"]
