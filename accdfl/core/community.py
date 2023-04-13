@@ -74,7 +74,12 @@ class LearningCommunity(Community):
             self.register_anonymous_task("leave", self.go_offline, delay=inactive_timestamp)
             events += 1
 
-        self.logger.info("Scheduled %d join/leave events for peer %s", events, self.peer_manager.get_my_short_id())
+        self.logger.info("Scheduled %d join/leave events for peer %s (trace length in sec: %d)", events,
+                         self.peer_manager.get_my_short_id(), traces["finish_time"])
+
+        # Schedule the next call to set_traces
+        self.register_task("reapply-trace-%s" % self.peer_manager.get_my_short_id(), self.set_traces, self.traces,
+                           delay=self.traces["finish_time"])
 
     def go_online(self):
         self.is_active = True
