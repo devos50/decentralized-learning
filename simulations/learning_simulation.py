@@ -376,8 +376,8 @@ export PYTHONPATH=%s
 
     async def run(self) -> None:
         self.setup_directories()
-        await self.start_ipv8_nodes()
         self.setup_logger()
+        await self.start_ipv8_nodes()
         self.ipv8_discover_peers()
         self.apply_latencies()
         self.on_ipv8_ready()
