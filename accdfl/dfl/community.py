@@ -63,9 +63,7 @@ class DFLCommunity(LearningCommunity):
         """
         Start to participate in the training process.
         """
-        assert self.did_setup, "Process has not been setup - call setup() first"
-
-        self.is_active = True
+        super().start()
 
         if advertise_join:
             self.advertise_membership(NodeMembershipChange.JOIN)
@@ -91,10 +89,12 @@ class DFLCommunity(LearningCommunity):
         max_round_in_population_view = self.peer_manager.get_highest_round_in_population_view()
         return max(self.train_sample_estimate, self.aggregate_sample_estimate, max_round_in_population_view)
 
-    def go_offline(self, graceful: bool = True) -> None:
-        self.is_active = False
+    def go_online(self):
+        super().go_online()
+        self.advertise_membership(NodeMembershipChange.JOIN)
 
-        self.logger.info("Participant %s will go offline", self.peer_manager.get_my_short_id())
+    def go_offline(self, graceful: bool = True) -> None:
+        super().go_offline()
 
         if graceful:
             self.advertise_membership(NodeMembershipChange.LEAVE)

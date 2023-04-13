@@ -15,7 +15,8 @@ class DLBypassNetworkCommunity(DLCommunity):
         for node in self.nodes:
             if node.overlays[0].my_peer == peer:
                 found = True
-                node.overlays[0].process_incoming_model(model_cpy, peer.public_key.key_to_bin(), round)
+                if node.overlays[0].is_active:
+                    node.overlays[0].process_incoming_model(model_cpy, peer.public_key.key_to_bin(), round)
                 break
 
         if not found:

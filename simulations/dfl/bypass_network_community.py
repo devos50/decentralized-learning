@@ -20,6 +20,9 @@ class DFLBypassNetworkCommunity(DFLCommunity):
                 found = True
                 peer_pk = peer.public_key.key_to_bin()
 
+                if not node.overlays[0].is_active:
+                    break
+
                 # Simulate the time it takes for a transfer
                 if peer_pk in self.model_send_times:
                     await sleep(self.model_send_times[peer_pk])
