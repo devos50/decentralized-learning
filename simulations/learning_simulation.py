@@ -56,7 +56,7 @@ class LearningSimulation:
     async def start_ipv8_nodes(self) -> None:
         for peer_id in range(1, self.args.peers + 1):
             if peer_id % 100 == 0:
-                self.logger.info("Created %d peers..." % peer_id)
+                print("Created %d peers..." % peer_id)  # The logger has not been setup at this point
             endpoint = SimulationEndpoint()
             instance = IPv8(self.get_ipv8_builder(peer_id).finalize(), endpoint_override=endpoint,
                             extra_communities={
@@ -376,8 +376,8 @@ export PYTHONPATH=%s
 
     async def run(self) -> None:
         self.setup_directories()
-        self.setup_logger()
         await self.start_ipv8_nodes()
+        self.setup_logger()
         self.ipv8_discover_peers()
         self.apply_latencies()
         self.on_ipv8_ready()
