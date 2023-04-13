@@ -12,7 +12,7 @@ def settings(tmpdir) -> SessionSettings:
     return SessionSettings(
         work_dir=str(tmpdir),
         dataset="cifar10",
-        learning=LearningSettings(batch_size=20, learning_rate=0.002, momentum=0.9),
+        learning=LearningSettings(batch_size=20, learning_rate=0.002, momentum=0.9, weight_decay=0),
         participants=["a"],
         all_participants=["a"],
         target_participants=100

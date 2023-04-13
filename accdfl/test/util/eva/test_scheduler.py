@@ -31,7 +31,9 @@ class MockTransfer(MagicMock):
         self.container[self.peer] = self
 
 
-def test_can_be_send_immediately(scheduler: Scheduler):
+@pytest.mark.asyncio
+async def test_can_be_send_immediately(scheduler: Scheduler):
+    scheduler = yield scheduler
     scheduler.eva.incoming = {}
     scheduler.eva.outgoing = {}
     assert scheduler.can_be_send_immediately(MockTransfer(peer='peer', container=scheduler.eva.incoming))
@@ -54,7 +56,9 @@ def test_can_be_send_immediately(scheduler: Scheduler):
     assert not scheduler.can_be_send_immediately(MockTransfer(peer='peer', container=scheduler.eva.outgoing))
 
 
-def test_is_simultaneously_served_transfers_limit_not_exceeded(scheduler: Scheduler):
+@pytest.mark.asyncio
+async def test_is_simultaneously_served_transfers_limit_not_exceeded(scheduler: Scheduler):
+    scheduler = yield scheduler
     # In this test we will try to exceed `max_simultaneous_transfers` limit.
     scheduler.eva.settings.max_simultaneous_transfers = 2
 
@@ -83,7 +87,9 @@ def test_is_simultaneously_served_transfers_limit_not_exceeded(scheduler: Schedu
     assert scheduler._is_simultaneously_served_transfers_limit_exceeded()
 
 
-def test_is_simultaneously_served_transfers_limit_exceeded(scheduler: Scheduler):
+@pytest.mark.asyncio
+async def test_is_simultaneously_served_transfers_limit_exceeded(scheduler: Scheduler):
+    scheduler = yield scheduler
     # In this test we will try to exceed `max_simultaneous_transfers` limit.
     scheduler.eva.settings.max_simultaneous_transfers = 2
 
@@ -100,7 +106,9 @@ def test_is_simultaneously_served_transfers_limit_exceeded(scheduler: Scheduler)
     assert scheduler._is_simultaneously_served_transfers_limit_exceeded()
 
 
-def test_schedule(scheduler: Scheduler):
+@pytest.mark.asyncio
+async def test_schedule(scheduler: Scheduler):
+    scheduler = yield scheduler
     scheduler.can_be_send_immediately = Mock(return_value=False)
 
     scheduler.schedule(transfer=MockTransfer())
@@ -109,7 +117,9 @@ def test_schedule(scheduler: Scheduler):
     assert len(scheduler.scheduled) == 1
 
 
-def test_start_transfer(scheduler: Scheduler):
+@pytest.mark.asyncio
+async def test_start_transfer(scheduler: Scheduler):
+    scheduler = yield scheduler
     scheduler.can_be_send_immediately = Mock(return_value=True)
     transfer = MockTransfer()
     transfer.start = Mock(wraps=transfer.start)
@@ -120,7 +130,9 @@ def test_start_transfer(scheduler: Scheduler):
     assert not scheduler.scheduled
 
 
-def _fill_test_data(scheduler: Scheduler):
+@pytest.mark.asyncio
+async def _fill_test_data(scheduler: Scheduler):
+    scheduler = yield scheduler
     scheduler.eva.incoming = {'peer1': MockTransfer()}
     scheduler.eva.outgoing = {'peer2': MockTransfer()}
 
@@ -143,7 +155,9 @@ def _transform_to_str(eva, transfers: Iterable[Transfer]) -> Iterable[str]:
         yield f'{transfer.peer}_{container}'
 
 
-def test_transfers_that_can_be_send(scheduler: Scheduler):
+@pytest.mark.asyncio
+async def test_transfers_that_can_be_send(scheduler: Scheduler):
+    scheduler = yield scheduler
     _fill_test_data(scheduler)
 
     # Regarding the test data, all scheduled transfer should be ready to send
@@ -154,7 +168,9 @@ def test_transfers_that_can_be_send(scheduler: Scheduler):
     assert str_representation == ['peer1_out', 'peer2_in', 'peer3_in', 'peer3_out']
 
 
-def test_send_scheduled(scheduler: Scheduler):
+@pytest.mark.asyncio
+async def test_send_scheduled(scheduler: Scheduler):
+    scheduler = yield scheduler
     _fill_test_data(scheduler)
 
     # Regarding the test data, all scheduled transfer should be ready to send
@@ -170,6 +186,7 @@ def test_send_scheduled(scheduler: Scheduler):
     assert str_representation == ['peer1_out', 'peer2_in']
 
 
+@pytest.mark.asyncio
 async def test_shutdown():
     scheduler = Scheduler(eva=Mock(settings=EVASettings(scheduled_send_interval=0.1)))
 

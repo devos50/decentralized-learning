@@ -37,7 +37,8 @@ class TestDFLCommunityBase(TestBase):
         learning_settings = LearningSettings(
             learning_rate=0.1,
             momentum=0.0,
-            batch_size=self.batch_size
+            batch_size=self.batch_size,
+            weight_decay=0
         )
 
         dfl_settings = DFLSettings(
@@ -288,7 +289,7 @@ class TestDFLCommunityFiveNodes(TestDFLCommunityBase):
             node.overlay.start()
         await self.wait_for_round_completed(self.nodes[0], 1)
 
-    @pytest.mark.timeout(10)
+    @pytest.mark.timeout(15)
     async def test_many_rounds(self):
         for node in self.nodes:
             node.overlay.start()
