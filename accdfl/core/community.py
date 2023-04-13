@@ -78,11 +78,13 @@ class LearningCommunity(Community):
 
     def go_online(self):
         self.is_active = True
-        self.logger.info("Participant %s come online", self.peer_manager.get_my_short_id())
+        cur_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
+        self.logger.info("Participant %s comes online (t=%d)", self.peer_manager.get_my_short_id(), cur_time)
 
     def go_offline(self, graceful: bool = True):
         self.is_active = False
-        self.logger.info("Participant %s will go offline", self.peer_manager.get_my_short_id())
+        cur_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
+        self.logger.info("Participant %s will go offline (t=%d)", self.peer_manager.get_my_short_id(), cur_time)
 
     def setup(self, settings: SessionSettings):
         self.settings = settings

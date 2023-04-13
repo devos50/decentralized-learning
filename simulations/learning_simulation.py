@@ -111,6 +111,18 @@ class LearningSimulation:
             for ind, node in enumerate(self.nodes):
                 node.overlays[0].set_traces(data[ind + 1])
 
+        if self.args.capability_traces:
+            self.logger.info("Applying capability trace file %s", self.args.availability_traces)
+            with open(self.args.capability_traces, "rb") as traces_file:
+                data = pickle.load(traces_file)
+
+            # TODO we simply pick the first n devices from the list for now
+            for ind, node in enumerate(self.nodes):
+                node.overlays[0].model_manager.model_trainer.simulated_speed = data[ind + 1]["computation"]
+                if self.args.bypass_model_transfers:
+                    # Also apply the network latencies
+                    node.overlays[0].bandwidth = data[ind + 1]["communication"]
+
         self.logger.info("Traces applied!")
 
     def apply_latencies(self):
@@ -367,9 +379,9 @@ export PYTHONPATH=%s
         await self.start_ipv8_nodes()
         self.setup_logger()
         self.ipv8_discover_peers()
-        self.apply_traces()
         self.apply_latencies()
         self.on_ipv8_ready()
         await self.setup_simulation()
+        self.apply_traces()
         await self.start_simulation()
         self.on_simulation_finished()
