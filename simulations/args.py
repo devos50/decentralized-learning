@@ -19,6 +19,7 @@ def get_args(dataset: str, default_lr: float, default_momentum: float = 0):
 
     # Traces
     parser.add_argument('--availability-traces', type=str, default=None)
+    parser.add_argument('--capability-traces', type=str, default=None)
 
     # Other settings
     parser.add_argument('--log-level', type=str, default="INFO")

@@ -33,7 +33,7 @@ class ModelManager:
             # The LEAF dataset
             self.data_dir = os.path.join(os.environ["HOME"], "leaf", self.settings.dataset)
 
-        self.model_trainer: Optional[ModelTrainer] = None
+        self.model_trainer: ModelTrainer = ModelTrainer(self.data_dir, self.settings, self.participant_index)
 
         # Keeps track of the incoming trained models as aggregator
         self.incoming_trained_models: Dict[bytes, nn.Module] = {}
@@ -92,9 +92,6 @@ class ModelManager:
             self.model.load_state_dict(torch.load(model_path))
             os.unlink(model_path)
         else:
-            if not self.model_trainer:
-                # Lazy initialize the model trainer
-                self.model_trainer = ModelTrainer(self.data_dir, self.settings, self.participant_index)
             train_start_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
             samples_trained_on = await self.model_trainer.train(self.model, device_name=self.settings.train_device_name)
             train_end_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
