@@ -70,6 +70,11 @@ class GLCommunity(LearningCommunity):
         peer_pk = result.peer.public_key.key_to_bin()
         peer_id = self.peer_manager.get_short_id(peer_pk)
         my_peer_id = self.peer_manager.get_my_short_id()
+
+        if not self.is_active:
+            self.logger.warning("Participant %s ignoring message from %s due to inactivity", my_peer_id, peer_id)
+            return
+
         self.logger.info(f'Participant {my_peer_id} received data from participant {peer_id}: {result.info.decode()}')
 
         json_data = json.loads(result.info.decode())

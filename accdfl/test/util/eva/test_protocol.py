@@ -590,7 +590,9 @@ def peer():
     return Mock()
 
 
+@pytest.mark.asyncio
 async def test_on_write_request_data_size_le0(eva: EVAProtocol, peer):
+    eva = yield eva
     # validate that data_size can not be less or equal to 0
     with patch.object(EVAProtocol, '_finish_with_error') as method_mock:
         await eva.on_write_request_packet(peer, WriteRequest(0, 0, b''))
@@ -599,7 +601,9 @@ async def test_on_write_request_data_size_le0(eva: EVAProtocol, peer):
         assert method_mock.call_count == 2
 
 
+@pytest.mark.asyncio
 async def test_on_write_request_with_transfers_limit(eva: EVAProtocol):
+    eva = yield eva
     # Test that in case of exceeded incoming transfers limit, TransferLimitException
     # will be returned
     eva.settings.max_simultaneous_transfers = 1
@@ -613,7 +617,9 @@ async def test_on_write_request_with_transfers_limit(eva: EVAProtocol):
     assert isinstance(actual_exception, TransferLimitException)
 
 
+@pytest.mark.asyncio
 async def test_on_error_correct_nonce(eva: EVAProtocol):
+    eva = yield eva
     # In this test we call `eva.on_error` and ensure that the corresponding transfer
     # is terminated
     peer = Mock()
@@ -625,7 +631,9 @@ async def test_on_error_correct_nonce(eva: EVAProtocol):
     assert isinstance(transfer.finish.call_args.kwargs['exception'], TransferException)
 
 
+@pytest.mark.asyncio
 async def test_on_error_wrong_nonce(eva: EVAProtocol):
+    eva = yield eva
     # In this test we call `eva.on_error` with incorrect nonce and ensure that
     # the corresponding transfer is not terminated
     peer = Mock()
@@ -637,7 +645,9 @@ async def test_on_error_wrong_nonce(eva: EVAProtocol):
     transfer.terminate.assert_not_called()
 
 
+@pytest.mark.asyncio
 async def test_shutdown(eva: EVAProtocol):
+    eva = yield eva
     # Test that for all transfers will be called terminate in the case of a 'shutdown'
     transfer1 = Mock()
     transfer2 = Mock()

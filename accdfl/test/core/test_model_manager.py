@@ -10,7 +10,7 @@ def settings(tmpdir) -> SessionSettings:
     return SessionSettings(
         work_dir=str(tmpdir),
         dataset="cifar10",
-        learning=LearningSettings(batch_size=20, learning_rate=0.002, momentum=0.9),
+        learning=LearningSettings(batch_size=20, learning_rate=0.002, momentum=0.9, weight_decay=0),
         participants=["a"],
         all_participants=["a"],
         target_participants=100
@@ -24,12 +24,13 @@ def model_manager(tmpdir, settings):
 
 
 @pytest.mark.timeout(10)
+@pytest.mark.asyncio
 async def test_train(model_manager):
     await model_manager.train()
 
 
 @pytest.mark.timeout(15)
-@pytest.mark.skip("Not working")
+@pytest.mark.asyncio
 async def test_compute_accuracy(model_manager):
     accuracy, loss = await model_manager.compute_accuracy(model_manager.model)
     assert accuracy > 0

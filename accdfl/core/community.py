@@ -2,7 +2,7 @@ import asyncio
 import time
 from asyncio import Future, ensure_future
 from binascii import unhexlify, hexlify
-from typing import Optional, Callable
+from typing import Optional, Callable, Dict
 
 import torch
 
@@ -45,8 +45,44 @@ class LearningCommunity(Community):
         self.eva = EVAProtocol(self, self.on_receive, self.on_send_complete, self.on_error)
         self.transfer_times = []
 
+        # Availability traces
+        self.traces: Optional[Dict] = None
+
         self.logger.info("The %s started with peer ID: %s", self.__class__.__name__,
                          self.peer_manager.get_my_short_id())
+
+    def start(self):
+        """
+        Start to participate in the training process.
+        """
+        assert self.did_setup, "Process has not been setup - call setup() first"
+        self.is_active = True
+
+    def set_traces(self, traces: Dict) -> None:
+        self.traces = traces
+        events: int = 0
+
+        # Schedule the join/leave events
+        for active_timestamp in self.traces["active"]:
+            if active_timestamp == 0:
+                continue  # We assume peers will be online at t=0
+
+            self.register_anonymous_task("join", self.go_online, delay=active_timestamp)
+            events += 1
+
+        for inactive_timestamp in self.traces["inactive"]:
+            self.register_anonymous_task("leave", self.go_offline, delay=inactive_timestamp)
+            events += 1
+
+        self.logger.info("Scheduled %d join/leave events for peer %s", events, self.peer_manager.get_my_short_id())
+
+    def go_online(self):
+        self.is_active = True
+        self.logger.info("Participant %s come online", self.peer_manager.get_my_short_id())
+
+    def go_offline(self, graceful: bool = True):
+        self.is_active = False
+        self.logger.info("Participant %s will go offline", self.peer_manager.get_my_short_id())
 
     def setup(self, settings: SessionSettings):
         self.settings = settings

@@ -9,7 +9,7 @@ from accdfl.util.eva.container import Container
 
 
 @pytest.fixture
-async def container():
+def container():
     eva = Mock()
     return Container(eva)
 

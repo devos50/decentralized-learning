@@ -9,5 +9,6 @@ class FakeModelManager(ModelManager):
     """
     train_time = 0.001
 
-    async def train(self):
+    async def train(self) -> int:
         await sleep(self.train_time)
+        return 0

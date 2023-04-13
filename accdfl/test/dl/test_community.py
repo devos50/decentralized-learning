@@ -27,7 +27,8 @@ class TestDLCommunityBase(TestBase):
         learning_settings = LearningSettings(
             learning_rate=0.1,
             momentum=0.0,
-            batch_size=1
+            batch_size=1,
+            weight_decay=0
         )
 
         dl_settings = DLSettings()

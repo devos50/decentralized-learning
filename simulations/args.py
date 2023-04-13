@@ -17,6 +17,9 @@ def get_args(dataset: str, default_lr: float, default_momentum: float = 0):
     parser.add_argument('--accuracy-logging-interval-is-in-sec', action=argparse.BooleanOptionalAction)
     parser.add_argument('--dl-accuracy-method', type=str, default="individual")  # individual or aggregate
 
+    # Traces
+    parser.add_argument('--availability-traces', type=str, default=None)
+
     # Other settings
     parser.add_argument('--log-level', type=str, default="INFO")
     parser.add_argument('--dataset', type=str, default=dataset)
