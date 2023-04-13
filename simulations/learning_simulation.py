@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import pickle
 import shutil
 import stat
 import subprocess
@@ -55,7 +56,7 @@ class LearningSimulation:
     async def start_ipv8_nodes(self) -> None:
         for peer_id in range(1, self.args.peers + 1):
             if peer_id % 100 == 0:
-                print("Created %d peers..." % peer_id)
+                self.logger.info("Created %d peers..." % peer_id)
             endpoint = SimulationEndpoint()
             instance = IPv8(self.get_ipv8_builder(peer_id).finalize(), endpoint_override=endpoint,
                             extra_communities={
@@ -95,7 +96,22 @@ class LearningSimulation:
 
                 node_a.network.verified_peers.add(node_b.overlays[0].my_peer)
                 node_a.network.discover_services(node_b.overlays[0].my_peer, [node_a.overlays[0].community_id, ])
-        print("IPv8 peer discovery complete")
+        self.logger.info("IPv8 peer discovery complete")
+
+    def apply_traces(self):
+        """
+        Set the relevant traces.
+        """
+        if self.args.availability_traces:
+            self.logger.info("Applying availability trace file %s", self.args.availability_traces)
+            with open(self.args.availability_traces, "rb") as traces_file:
+                data = pickle.load(traces_file)
+
+            # TODO we simply pick the first n devices from the list for now
+            for ind, node in enumerate(self.nodes):
+                node.overlays[0].set_traces(data[ind + 1])
+
+        self.logger.info("Traces applied!")
 
     def apply_latencies(self):
         """
@@ -109,7 +125,7 @@ class LearningSimulation:
             for line in latencies_file.readlines():
                 latencies.append([float(l) for l in line.strip().split(",")])
 
-        print("Read latency matrix with %d sites!" % len(latencies))
+        self.logger.info("Read latency matrix with %d sites!" % len(latencies))
 
         # Assign nodes to sites in a round-robin fashion and apply latencies accordingly
         for from_ind, from_node in enumerate(self.nodes):
@@ -119,7 +135,7 @@ class LearningSimulation:
                 latency_ms = int(latencies[from_site_ind][to_site_ind]) / 1000
                 from_node.endpoint.latencies[to_node.endpoint.wan_address] = latency_ms
 
-        print("Latencies applied!")
+        self.logger.info("Latencies applied!")
 
     def determine_peer_with_lowest_median_latency(self, eligible_peers: List[int]) -> int:
         """
@@ -147,14 +163,17 @@ class LearningSimulation:
         return lowest_peer_id
 
     async def setup_simulation(self) -> None:
-        print("Setting up simulation with %d peers..." % self.args.peers)
-
+        self.logger.info("Setting up simulation with %d peers..." % self.args.peers)
         with open(os.path.join(self.data_dir, "accuracies.csv"), "w") as out_file:
             out_file.write("dataset,group,time,peer,round,accuracy,loss\n")
 
     async def start_simulation(self) -> None:
+        nodes_started: int = 0
         for ind, node in enumerate(self.nodes):
-            node.overlays[0].start()
+            if node.overlays[0].traces and node.overlays[0].traces["active"][0] == 0:
+                node.overlays[0].start()
+                nodes_started += 1
+        self.logger.info("Started %d nodes...", nodes_started)
 
         if self.args.dataset in ["cifar10", "mnist"]:
             data_dir = os.path.join(os.environ["HOME"], "dfl-data")
@@ -176,10 +195,10 @@ class LearningSimulation:
         start_time = time.time()
         if self.args.duration > 0:
             await asyncio.sleep(self.args.duration)
-            print("Simulation took %f seconds" % (time.time() - start_time))
+            self.logger.info("Simulation took %f seconds" % (time.time() - start_time))
             self.loop.stop()
         else:
-            print("Running simulation for undefined time")
+            self.logger.info("Running simulation for undefined time")
 
     def on_ipv8_ready(self) -> None:
         """
@@ -302,7 +321,7 @@ export PYTHONPATH=%s
         """
         results: Dict[int, Tuple[float, float]] = {}
         for ind, model in enumerate(self.model_manager.incoming_trained_models.values()):
-            print("Testing model %d on device %s..." % (ind + 1, self.args.accuracy_device_name))
+            self.logger.info("Testing model %d on device %s..." % (ind + 1, self.args.accuracy_device_name))
             accuracy, loss = self.evaluator.evaluate_accuracy(
                 model, device_name=self.args.accuracy_device_name)
             results[ind] = (accuracy, loss)
@@ -312,7 +331,7 @@ export PYTHONPATH=%s
         """
         Write away the most important data.
         """
-        print("Writing away experiment statistics")
+        self.logger.info("Writing away experiment statistics")
 
         # Write away the model transfer times
         with open(os.path.join(self.data_dir, "transfer_times.csv"), "w") as transfer_times_file:
@@ -348,6 +367,7 @@ export PYTHONPATH=%s
         await self.start_ipv8_nodes()
         self.setup_logger()
         self.ipv8_discover_peers()
+        self.apply_traces()
         self.apply_latencies()
         self.on_ipv8_ready()
         await self.setup_simulation()
