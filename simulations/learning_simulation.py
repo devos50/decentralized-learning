@@ -15,8 +15,10 @@ import torch
 
 import yappi
 
+from accdfl.core import NodeMembershipChange
 from accdfl.core.model_manager import ModelManager
 from accdfl.core.model_evaluator import ModelEvaluator
+from accdfl.core.peer_manager import PeerManager
 from accdfl.core.session_settings import SessionSettings, dump_settings
 from accdfl.dfl.community import DFLCommunity
 from accdfl.dl.community import DLCommunity
@@ -204,12 +206,33 @@ class LearningSimulation(TaskManager):
             out_file.write("%d,%d,%d\n" % (cur_time, online, offline))
 
     async def start_simulation(self) -> None:
-        nodes_started: int = 0
+        active_nodes: List = []
         for ind, node in enumerate(self.nodes):
             if node.overlays[0].traces and node.overlays[0].traces["active"][0] == 0:
                 node.overlays[0].start()
-                nodes_started += 1
-        self.logger.info("Started %d nodes...", nodes_started)
+                active_nodes.append(node)
+        self.logger.info("Started %d nodes...", len(active_nodes))
+
+        # Update the membership status of inactive peers in all peer managers. This assumption should be
+        # reasonable as availability at the very start of the training process can easily be synchronized using an
+        # out-of-band mechanism (e.g., published on a website).
+        active_nodes_pks = [node.overlays[0].my_peer.public_key.key_to_bin() for node in active_nodes]
+        for node in self.nodes:
+            peer_manager: PeerManager = node.overlays[0].peer_manager
+            for peer_pk in peer_manager.last_active:
+                if peer_pk not in active_nodes_pks:
+                    # Toggle the status to inactive as this peer is not active from the beginning
+                    peer_info = peer_manager.last_active[peer_pk]
+                    peer_manager.last_active[peer_pk] = (peer_info[0], (0, NodeMembershipChange.LEAVE))
+
+        # We will now start round 1. The nodes that participate in the first round are always selected from the pool of
+        # active peers. If we use our sampling function, training might not start at all if many offline nodes
+        # are selected for the first round.
+        rand_sampler = Random(42)
+        for initial_active_node in rand_sampler.sample(active_nodes, min(len(active_nodes), self.args.sample_size)):
+            overlay = initial_active_node.overlays[0]
+            self.logger.info("Activating peer %s in round 1", overlay.peer_manager.get_my_short_id())
+            overlay.received_aggregated_model(overlay.my_peer, 1, overlay.model_manager.model)
 
         if self.args.dataset in ["cifar10", "mnist"]:
             data_dir = os.path.join(os.environ["HOME"], "dfl-data")

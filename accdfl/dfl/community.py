@@ -68,12 +68,6 @@ class DFLCommunity(LearningCommunity):
         if advertise_join:
             self.advertise_membership(NodeMembershipChange.JOIN)
 
-        # Start the process
-        if self.sample_manager.is_participant_in_round(self.my_id, 1):
-            self.received_aggregated_model(self.my_peer, 1, self.model_manager.model)
-        else:
-            self.logger.info("Participant %s won't participate in round 1", self.peer_manager.get_my_short_id())
-
     def setup(self, settings: SessionSettings):
         self.logger.info("Setting up experiment with %d initial participants and sample size %d (I am participant %s)" %
                          (len(settings.participants), settings.dfl.sample_size, self.peer_manager.get_my_short_id()))
@@ -141,6 +135,9 @@ class DFLCommunity(LearningCommunity):
         """
         We received a membership advertisement from a new peer.
         """
+        if not self.is_active:
+            return
+
         peer_pk = peer.public_key.key_to_bin()
         peer_id = self.peer_manager.get_short_id(peer_pk)
         self.logger.info("Participant %s updating membership of participant %s",
@@ -252,6 +249,9 @@ class DFLCommunity(LearningCommunity):
             task.add_done_callback(lambda f, r=round: self.on_train_completed(f, r))
 
     def on_train_completed(self, _, round):
+        if not self.is_active:
+            return
+
         self.completed_training = True
         self.ongoing_training_task_name = None
         self.logger.info("Participant %s completed round %d", self.peer_manager.get_my_short_id(), round)
@@ -270,6 +270,11 @@ class DFLCommunity(LearningCommunity):
 
         # 1. Train the model
         await self.model_manager.train()
+
+        # It might be that we went offline at this point - check for it
+        if not self.is_active:
+            self.logger.warning("Participant %s went offline during model training in round %d - not proceeding", self.peer_manager.get_my_short_id(), round)
+            return
 
         # 2. Determine the aggregators of the next sample that are available
         aggregators = await self.determine_available_peers_for_sample(round + 1, self.settings.dfl.num_aggregators,
