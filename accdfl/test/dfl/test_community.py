@@ -45,7 +45,6 @@ class TestDFLCommunityBase(TestBase):
             sample_size=self.SAMPLE_SIZE,
             num_aggregators=self.NUM_AGGREGATORS,
             success_fraction=self.SUCCESS_FRACTION,
-            aggregation_timeout=0.5,
             ping_timeout=0.1,
             inactivity_threshold=self.INACTIVITY_THRESHOLD
         )

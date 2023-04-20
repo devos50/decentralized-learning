@@ -42,6 +42,7 @@ def get_args(dataset: str, default_lr: float, default_momentum: float = 0):
     parser.add_argument('--latencies-file', type=str, default="data/latencies.txt")
     parser.add_argument('--gl-round-timeout', type=int, default=60)
     parser.add_argument('--fix-aggregator', action=argparse.BooleanOptionalAction)
+    parser.add_argument('--success-fraction', type=float, default=1.0)
     parser.add_argument('--sample-size', type=int, default=10)
     parser.add_argument('--num-aggregators', type=int, default=1)
     parser.add_argument('--activity-log-interval', type=int, default=None)
