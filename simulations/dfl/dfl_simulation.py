@@ -123,6 +123,14 @@ class DFLSimulation(LearningSimulation):
     def on_simulation_finished(self) -> None:
         super().on_simulation_finished()
 
+        # Write away the model transfers between peers
+        if self.args.bypass_model_transfers:
+            with open(os.path.join(self.data_dir, "transfers.csv"), "w") as out_file:
+                out_file.write("from,to,round,time,success\n")
+                for node in self.nodes:
+                    for transfer in node.overlays[0].transfers:
+                        out_file.write("%s,%s,%d,%f,%d\n" % transfer)
+
         # Write away the view histories
         with open(os.path.join(self.data_dir, "view_histories.csv"), "w") as out_file:
             out_file.write("peer,update_time,peers\n")

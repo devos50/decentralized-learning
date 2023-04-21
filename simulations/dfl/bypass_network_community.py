@@ -1,6 +1,7 @@
+import asyncio
 import pickle
 from asyncio import ensure_future, sleep, get_event_loop
-from typing import Optional
+from typing import Optional, List, Tuple
 
 from accdfl.core.models import unserialize_model, serialize_model
 from accdfl.dfl.community import DFLCommunity
@@ -12,6 +13,7 @@ class DFLBypassNetworkCommunity(DFLCommunity):
         super().__init__(*args, **kwargs)
         self.nodes = None
         self.bandwidth: Optional[float] = None
+        self.transfers: List[Tuple[str, str, int, float, bool]] = []
 
     async def eva_send_model(self, round, model, type, population_view, peer):
         serialized_model = serialize_model(self.model_manager.model)
@@ -32,15 +34,24 @@ class DFLBypassNetworkCommunity(DFLCommunity):
                     await sleep(transfer_time)
                     self.logger.info("Model transfer took %f s.", transfer_time)
 
-                node.overlays[0].peer_manager.merge_population_views(population_view)
-                node.overlays[0].peer_manager.update_peer_activity(self.my_peer.public_key.key_to_bin(),
-                                                                   max(round, self.get_round_estimate()))
-                node.overlays[0].update_population_view_history()
+                success: bool = False
+                if node.overlays[0].is_active:
+                    success = True
+                    self.endpoint.bytes_up += len(serialized_model) + len(serialized_population_view)
+                    node.overlays[0].endpoint.bytes_down += len(serialized_model) + len(serialized_population_view)
+                    node.overlays[0].peer_manager.merge_population_views(population_view)
+                    node.overlays[0].peer_manager.update_peer_activity(self.my_peer.public_key.key_to_bin(),
+                                                                       max(round, self.get_round_estimate()))
+                    node.overlays[0].update_population_view_history()
 
-                if type == "trained_model":
-                    ensure_future(node.overlays[0].received_trained_model(self.my_peer, round, model_cpy))
-                elif type == "aggregated_model":
-                    node.overlays[0].received_aggregated_model(self.my_peer, round, model_cpy)
+                    if type == "trained_model":
+                        ensure_future(node.overlays[0].received_trained_model(self.my_peer, round, model_cpy))
+                    elif type == "aggregated_model":
+                        node.overlays[0].received_aggregated_model(self.my_peer, round, model_cpy)
+
+                peer_pk = node.overlays[0].my_peer.public_key.key_to_bin()
+                cur_time = asyncio.get_event_loop().time()
+                self.transfers.append((self.peer_manager.get_my_short_id(), self.peer_manager.get_short_id(peer_pk), round, cur_time, success))
 
                 break
 
