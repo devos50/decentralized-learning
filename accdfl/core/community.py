@@ -47,6 +47,7 @@ class LearningCommunity(Community):
 
         # Availability traces
         self.traces: Optional[Dict] = None
+        self.traces_count: int = 0
 
         self.logger.info("The %s started with peer ID: %s", self.__class__.__name__,
                          self.peer_manager.get_my_short_id())
@@ -78,8 +79,9 @@ class LearningCommunity(Community):
                          self.peer_manager.get_my_short_id(), traces["finish_time"])
 
         # Schedule the next call to set_traces
-        self.register_task("reapply-trace-%s" % self.peer_manager.get_my_short_id(), self.set_traces, self.traces,
-                           delay=self.traces["finish_time"])
+        self.register_task("reapply-trace-%s-%d" % (self.peer_manager.get_my_short_id(), self.traces_count),
+                           self.set_traces, self.traces, delay=self.traces["finish_time"])
+        self.traces_count += 1
 
     def go_online(self):
         self.is_active = True
