@@ -209,7 +209,7 @@ class LearningSimulation(TaskManager):
     async def start_simulation(self) -> None:
         active_nodes: List = []
         for ind, node in enumerate(self.nodes):
-            if node.overlays[0].traces and node.overlays[0].traces["active"][0] == 0:
+            if not node.overlays[0].traces or (node.overlays[0].traces and node.overlays[0].traces["active"][0] == 0):
                 node.overlays[0].start()
                 active_nodes.append(node)
         self.logger.info("Started %d nodes...", len(active_nodes))
