@@ -78,6 +78,7 @@ class LearningSimulation(TaskManager):
                 overlay.max_peers = -1
                 overlay.my_peer.address = instance.overlays[0].endpoint.wan_address
                 overlay.my_estimated_wan = instance.overlays[0].endpoint.wan_address
+                overlay.cancel_pending_task("_check_tasks")  # To ignore the warning for long-running tasks
 
             self.nodes.append(instance)
 
