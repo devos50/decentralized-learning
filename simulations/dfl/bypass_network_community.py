@@ -13,7 +13,7 @@ class DFLBypassNetworkCommunity(DFLCommunity):
         super().__init__(*args, **kwargs)
         self.nodes = None
         self.bandwidth: Optional[float] = None
-        self.transfers: List[Tuple[str, str, int, float, bool]] = []
+        self.transfers: List[Tuple[str, str, int, float, bool, str]] = []
 
     async def eva_send_model(self, round, model, type, population_view, peer):
         serialized_model = serialize_model(self.model_manager.model)
@@ -51,7 +51,8 @@ class DFLBypassNetworkCommunity(DFLCommunity):
 
                 peer_pk = node.overlays[0].my_peer.public_key.key_to_bin()
                 cur_time = asyncio.get_event_loop().time()
-                self.transfers.append((self.peer_manager.get_my_short_id(), self.peer_manager.get_short_id(peer_pk), round, cur_time, success))
+                type_short = type.split("_")[0]
+                self.transfers.append((self.peer_manager.get_my_short_id(), self.peer_manager.get_short_id(peer_pk), round, cur_time, success, type_short))
 
                 break
 
