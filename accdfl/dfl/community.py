@@ -420,6 +420,11 @@ class DFLCommunity(LearningCommunity):
         if index > self.aggregate_sample_estimate:
             self.logger.info("Participant %s received trained model for round %d for the first time - "
                              "starting to aggregate", self.peer_manager.get_my_short_id(), model_round)
+
+            # Set the round timeout
+            self.register_task("aggregate_%d_timeout" % model_round, self.on_aggregation_timeout, model_round, index,
+                               delay=self.settings.dfl.aggregation_timeout)
+
             self.aggregate_sample_estimate = index
             self.model_manager.reset_incoming_trained_models()
             self.aggregate_start_time = time.time()
@@ -437,44 +442,57 @@ class DFLCommunity(LearningCommunity):
             self.logger.info("Aggregator %s received sufficient trained models (%d) of round %d",
                              self.peer_manager.get_my_short_id(), len(self.model_manager.incoming_trained_models),
                              model_round)
-
-            self.aggregation_durations[model_round] = time.time() - self.aggregate_start_time
-            self.aggregate_start_time = 0
-            self.completed_aggregation = True
-
-            # 3.1. Aggregate these models
-            self.logger.info("Aggregator %s will average the models of round %d",
-                             self.peer_manager.get_my_short_id(), model_round)
-            avg_model = self.model_manager.aggregate_trained_models()
-
-            # 3.2. Remove these models from the model manager (they are not needed anymore)
-            self.model_manager.reset_incoming_trained_models()
-
-            # 3. Determine the aggregators of the next sample that are available
-            participants = await self.determine_available_peers_for_sample(self.aggregate_sample_estimate, self.settings.dfl.sample_size)
-            participants_ids = [self.peer_manager.get_short_id(peer_id) for peer_id in participants]
-            self.logger.info("Participant %s determined %d available participants for round %d: %s",
-                             self.peer_manager.get_my_short_id(), len(participants_ids), model_round, participants_ids)
-
-            # Is it still relevant what we're doing?
-            if self.aggregate_sample_estimate > index:
-                self.logger.warning("Work of participant %s for round %d not relevant anymore - stopping",
-                                    self.peer_manager.get_my_short_id(), model_round)
-                return
-
-            # 3.3. Distribute the average model to the available participants in the sample.
-            task_name = "send_aggregated_model_%s" % self.aggregate_sample_estimate
-            self.register_task(task_name, self.send_aggregated_model_to_participants, participants, avg_model, self.aggregate_sample_estimate)
-
-            # 4. Invoke the complete callback
-            self.logger.info("Aggregator %s completed aggregation in round %d",
-                             self.peer_manager.get_my_short_id(), model_round)
-            if self.aggregate_complete_callback:
-                ensure_future(self.aggregate_complete_callback(model_round, avg_model))
+            await self.aggregator_complete_round(model_round, index)
         else:
             self.logger.info("Aggregator %s has not enough trained models (%d) of round %d yet",
                              self.peer_manager.get_my_short_id(), len(self.model_manager.incoming_trained_models),
                              model_round)
+
+    async def aggregator_complete_round(self, model_round: int, index: int):
+        self.aggregation_durations[model_round] = time.time() - self.aggregate_start_time
+        self.aggregate_start_time = 0
+        self.completed_aggregation = True
+
+        timeout_task_name: str = "aggregate_%d_timeout" % model_round
+        if self.is_pending_task_active(timeout_task_name):
+            self.cancel_pending_task(timeout_task_name)
+
+        # 3.1. Aggregate these models
+        self.logger.info("Aggregator %s will average the models of round %d",
+                         self.peer_manager.get_my_short_id(), model_round)
+        avg_model = self.model_manager.aggregate_trained_models()
+
+        # 3.2. Remove these models from the model manager (they are not needed anymore)
+        self.model_manager.reset_incoming_trained_models()
+
+        # 3. Determine the participants of the next sample that are available
+        participants = await self.determine_available_peers_for_sample(self.aggregate_sample_estimate,
+                                                                       self.settings.dfl.sample_size)
+        participants_ids = [self.peer_manager.get_short_id(peer_id) for peer_id in participants]
+        self.logger.info("Participant %s determined %d available participants for round %d: %s",
+                         self.peer_manager.get_my_short_id(), len(participants_ids), model_round, participants_ids)
+
+        # Is it still relevant what we're doing?
+        if self.aggregate_sample_estimate > index:
+            self.logger.warning("Work of participant %s for round %d not relevant anymore - stopping",
+                                self.peer_manager.get_my_short_id(), model_round)
+            return
+
+        # 3.3. Distribute the average model to the available participants in the sample.
+        task_name = "send_aggregated_model_%s" % self.aggregate_sample_estimate
+        self.register_task(task_name, self.send_aggregated_model_to_participants, participants, avg_model,
+                           self.aggregate_sample_estimate)
+
+        # 4. Invoke the complete callback
+        self.logger.info("Aggregator %s completed aggregation in round %d",
+                         self.peer_manager.get_my_short_id(), model_round)
+        if self.aggregate_complete_callback:
+            ensure_future(self.aggregate_complete_callback(model_round, avg_model))
+
+    def on_aggregation_timeout(self, model_round: int, index: int):
+        self.logger.info("Aggregator %s triggered aggregation timeout in round %d - wrapping up",
+                         self.peer_manager.get_my_short_id(), model_round)
+        ensure_future(self.aggregator_complete_round(model_round, index))
 
     def received_aggregated_model(self, peer: Peer, model_round: int, model: nn.Module) -> None:
         if self.shutting_down:
