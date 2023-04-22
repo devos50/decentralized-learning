@@ -1,10 +1,6 @@
-import asyncio
-import json
-import pickle
 from asyncio import sleep, ensure_future, Future
 from typing import Optional, List, Tuple
 
-from accdfl.core.models import unserialize_model, serialize_model
 from accdfl.dfl.community import DFLCommunity
 from accdfl.util.eva.result import TransferResult
 from ipv8.types import Peer
@@ -40,6 +36,9 @@ class DFLBypassNetworkCommunity(DFLCommunity):
                     transfer_time = transfer_size_kbits / self.bandwidth
                     await sleep(transfer_time)
                     self.logger.info("Model transfer took %f s.", transfer_time)
+
+                if not node.overlays[0].is_active:  # The node might have gone offline at this point in time
+                    break
 
                 res = TransferResult(self.my_peer, serialized_response, binary_data, 0)
                 ensure_future(node.overlays[0].on_receive(res))
