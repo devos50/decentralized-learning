@@ -33,6 +33,7 @@ from simulation.simulation_endpoint import SimulationEndpoint
 
 from simulations.dl.bypass_network_community import DLBypassNetworkCommunity
 from simulations.dfl.bypass_network_community import DFLBypassNetworkCommunity
+from simulations.logger import SimulationLoggerAdapter
 
 
 class LearningSimulation(TaskManager):
@@ -79,6 +80,8 @@ class LearningSimulation(TaskManager):
                 overlay.my_peer.address = instance.overlays[0].endpoint.wan_address
                 overlay.my_estimated_wan = instance.overlays[0].endpoint.wan_address
                 overlay.cancel_pending_task("_check_tasks")  # To ignore the warning for long-running tasks
+                overlay.logger = SimulationLoggerAdapter(overlay.logger, {})
+                overlay.peer_manager.logger = SimulationLoggerAdapter(overlay.peer_manager.logger, {})
 
             self.nodes.append(instance)
 
@@ -93,6 +96,7 @@ class LearningSimulation(TaskManager):
         root.setLevel(getattr(logging, self.args.log_level))
 
         self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = SimulationLoggerAdapter(self.logger, {})
 
     def ipv8_discover_peers(self) -> None:
         for node_a in self.nodes:

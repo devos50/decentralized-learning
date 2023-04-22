@@ -9,6 +9,7 @@ from accdfl.core.session_settings import DFLSettings, LearningSettings, SessionS
 from ipv8.configuration import ConfigBuilder
 
 from simulations.learning_simulation import LearningSimulation
+from simulations.logger import SimulationLoggerAdapter
 
 
 class DFLSimulation(LearningSimulation):
@@ -83,6 +84,7 @@ class DFLSimulation(LearningSimulation):
         for ind, node in enumerate(self.nodes):
             node.overlays[0].aggregate_complete_callback = lambda round_nr, model, i=ind: self.on_aggregate_complete(i, round_nr, model)
             node.overlays[0].setup(self.session_settings)
+            node.overlays[0].model_manager.model_trainer.logger = SimulationLoggerAdapter(node.overlays[0].model_manager.model_trainer.logger, {})
 
         # If we fix the aggregator, we assume unlimited upload/download slots
         if self.args.fix_aggregator:

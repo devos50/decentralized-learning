@@ -28,12 +28,15 @@ class DFLBypassNetworkCommunity(DFLCommunity):
         found: bool = False
         for node in self.nodes:
             if node.overlays[0].my_peer == peer:
+                found = True
                 if not node.overlays[0].is_active:
                     break
-                found = True
+
+                self.endpoint.bytes_up += len(binary_data) + len(serialized_response)
+                node.overlays[0].endpoint.bytes_down += len(binary_data) + len(serialized_response)
 
                 if self.bandwidth:
-                    transfer_size_kbits = len(binary_data) / 1024 * 8
+                    transfer_size_kbits = (len(binary_data) + len(serialized_response)) / 1024 * 8
                     transfer_time = transfer_size_kbits / self.bandwidth
                     await sleep(transfer_time)
                     self.logger.info("Model transfer took %f s.", transfer_time)
