@@ -19,7 +19,10 @@ class GLSimulation(LearningSimulation):
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = super().get_ipv8_builder(peer_id)
-        builder.add_overlay("GLCommunity", "my peer", [], [], {}, [])
+        if self.args.bypass_model_transfers:
+            builder.add_overlay("GLBypassNetworkCommunity", "my peer", [], [], {}, [])
+        else:
+            builder.add_overlay("GLCommunity", "my peer", [], [], {}, [])
         return builder
 
     async def setup_simulation(self) -> None:
@@ -58,10 +61,9 @@ class GLSimulation(LearningSimulation):
 
         self.build_topology()
 
-        if self.args.bypass_model_transfers:
-            # Inject the nodes in each community
-            for node in self.nodes:
-                node.overlays[0].nodes = self.nodes
+        # Inject the nodes in each community (as substitute for the online peer sampler)
+        for node in self.nodes:
+            node.overlays[0].nodes = self.nodes
 
         if self.args.accuracy_logging_interval > 0 and self.args.accuracy_logging_interval_is_in_sec:
             interval = self.args.accuracy_logging_interval
@@ -70,10 +72,20 @@ class GLSimulation(LearningSimulation):
 
     def compute_all_accuracies(self):
         cur_time = get_event_loop().time()
-        self.logger.info("Computing accuracies for all models, current time: %f", cur_time)
+
+        tot_up, tot_down = 0, 0
+        for node in self.nodes:
+            tot_up += node.overlays[0].endpoint.bytes_up
+            tot_down += node.overlays[0].endpoint.bytes_down
+
+        self.logger.info("Computing accuracies for all models, current time: %f, bytes up: %d, bytes down: %d",
+                         cur_time, tot_up, tot_down)
 
         # Put all the models in the model manager
         for ind, node in enumerate(self.nodes):
+            if not self.nodes[ind].overlays[0].is_active:
+                continue
+
             model = self.nodes[ind].overlays[0].model_manager.model
             self.model_manager.process_incoming_trained_model(b"%d" % ind, model)
 

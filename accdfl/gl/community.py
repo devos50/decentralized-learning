@@ -20,13 +20,22 @@ class GLCommunity(LearningCommunity):
         self.round: int = 1
         self.model_age: int = 0
         self.neighbours: List[bytes] = []  # The PKs of the neighbours we will send our model to
+        self.nodes = None
 
     def start(self):
         """
         Start to participate in the training process.
         """
-        assert self.did_setup, "Process has not been setup - call setup() first"
+        super().start()
         assert self.neighbours, "We need some neighbours"
+        self.start_next_round()
+
+    def go_offline(self, graceful: bool = True):
+        super().go_offline()
+        self.cancel_all_pending_tasks()
+
+    def go_online(self):
+        super().go_online()
         self.start_next_round()
 
     def eva_send_model(self, round: int, model_age: int, model, peer):
@@ -48,12 +57,10 @@ class GLCommunity(LearningCommunity):
         # Wait
         await sleep(self.settings.gl.round_timeout)
 
-        # Select a random neighbour and send the model
-        peer_pk = random.choice(self.neighbours)
-        peer = self.get_peer_by_pk(peer_pk)
-        if not peer:
-            raise RuntimeError("Participant %s cannot find Peer object for participant %s!" % (
-                               self.peer_manager.get_my_short_id(), self.peer_manager.get_short_id(peer_pk)))
+        # Select a random neighbour and send the model.
+        online_nodes: List = [node for node in self.nodes if node.overlays[0].is_active and node.overlays[0] != self]
+        rand_online_node = random.choice(online_nodes)
+        peer = rand_online_node.overlays[0].my_peer
 
         await self.eva_send_model(self.round, self.model_age, self.model_manager.model, peer)
 

@@ -2,10 +2,15 @@ import os
 from argparse import Namespace
 from asyncio import get_event_loop
 from binascii import hexlify
+from random import Random
+from typing import List
 
 import torch
 
+from accdfl.core import NodeMembershipChange
 from accdfl.core.session_settings import DFLSettings, LearningSettings, SessionSettings
+from accdfl.core.peer_manager import PeerManager
+
 from ipv8.configuration import ConfigBuilder
 
 from simulations.learning_simulation import LearningSimulation
@@ -96,6 +101,28 @@ class DFLSimulation(LearningSimulation):
             # Inject the nodes in each community
             for node in self.nodes:
                 node.overlays[0].nodes = self.nodes
+
+    def start_nodes_training(self, active_nodes: List) -> None:
+        # Update the membership status of inactive peers in all peer managers. This assumption should be
+        # reasonable as availability at the very start of the training process can easily be synchronized using an
+        # out-of-band mechanism (e.g., published on a website).
+        active_nodes_pks = [node.overlays[0].my_peer.public_key.key_to_bin() for node in active_nodes]
+        for node in self.nodes:
+            peer_manager: PeerManager = node.overlays[0].peer_manager
+            for peer_pk in peer_manager.last_active:
+                if peer_pk not in active_nodes_pks:
+                    # Toggle the status to inactive as this peer is not active from the beginning
+                    peer_info = peer_manager.last_active[peer_pk]
+                    peer_manager.last_active[peer_pk] = (peer_info[0], (0, NodeMembershipChange.LEAVE))
+
+        # We will now start round 1. The nodes that participate in the first round are always selected from the pool of
+        # active peers. If we use our sampling function, training might not start at all if many offline nodes
+        # are selected for the first round.
+        rand_sampler = Random(42)
+        for initial_active_node in rand_sampler.sample(active_nodes, min(len(active_nodes), self.args.sample_size)):
+            overlay = initial_active_node.overlays[0]
+            self.logger.info("Activating peer %s in round 1", overlay.peer_manager.get_my_short_id())
+            overlay.received_aggregated_model(overlay.my_peer, 1, overlay.model_manager.model)
 
     async def on_aggregate_complete(self, ind: int, round_nr: int, model):
         tot_up, tot_down = 0, 0
