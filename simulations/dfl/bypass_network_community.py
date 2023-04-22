@@ -1,10 +1,12 @@
 import asyncio
+import json
 import pickle
-from asyncio import ensure_future, sleep, get_event_loop
+from asyncio import sleep, ensure_future
 from typing import Optional, List, Tuple
 
 from accdfl.core.models import unserialize_model, serialize_model
 from accdfl.dfl.community import DFLCommunity
+from accdfl.util.eva.result import TransferResult
 
 
 class DFLBypassNetworkCommunity(DFLCommunity):
@@ -19,7 +21,6 @@ class DFLBypassNetworkCommunity(DFLCommunity):
         serialized_model = serialize_model(self.model_manager.model)
         serialized_population_view = pickle.dumps(population_view)
         transfer_size_kbits = (len(serialized_model) + len(serialized_population_view)) / 1024 * 8
-        model_cpy = unserialize_model(serialized_model, self.settings.dataset, architecture=self.settings.model)
         found: bool = False
         for node in self.nodes:
             if node.overlays[0].my_peer == peer:
@@ -39,15 +40,11 @@ class DFLBypassNetworkCommunity(DFLCommunity):
                     success = True
                     self.endpoint.bytes_up += len(serialized_model) + len(serialized_population_view)
                     node.overlays[0].endpoint.bytes_down += len(serialized_model) + len(serialized_population_view)
-                    node.overlays[0].peer_manager.merge_population_views(population_view)
-                    node.overlays[0].peer_manager.update_peer_activity(self.my_peer.public_key.key_to_bin(),
-                                                                       max(round, self.get_round_estimate()))
-                    node.overlays[0].update_population_view_history()
 
-                    if type == "trained_model":
-                        ensure_future(node.overlays[0].received_trained_model(self.my_peer, round, model_cpy))
-                    elif type == "aggregated_model":
-                        node.overlays[0].received_aggregated_model(self.my_peer, round, model_cpy)
+                    info = {"round": round, "type": type, "model_data_len": len(serialized_model)}
+                    transfer = TransferResult(self.my_peer, json.dumps(info).encode(),
+                                              serialized_model + serialized_population_view, 0)
+                    ensure_future(node.overlays[0].on_receive(transfer))
 
                 peer_pk = node.overlays[0].my_peer.public_key.key_to_bin()
                 cur_time = asyncio.get_event_loop().time()
