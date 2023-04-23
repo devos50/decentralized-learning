@@ -19,7 +19,6 @@ class GLCommunity(LearningCommunity):
         super().__init__(*args, **kwargs)
         self.round: int = 1
         self.model_age: int = 0
-        self.neighbours: List[bytes] = []  # The PKs of the neighbours we will send our model to
         self.nodes = None
         self.round_task_name = None
 
@@ -28,7 +27,6 @@ class GLCommunity(LearningCommunity):
         Start to participate in the training process.
         """
         super().start()
-        assert self.neighbours, "We need some neighbours"
         self.start_next_round()
 
     def go_offline(self, graceful: bool = True):

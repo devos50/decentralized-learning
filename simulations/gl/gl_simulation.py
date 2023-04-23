@@ -1,4 +1,5 @@
 import os
+import random
 from argparse import Namespace
 from asyncio import get_event_loop
 from binascii import hexlify
@@ -113,13 +114,15 @@ class GLSimulation(LearningSimulation):
 
     def build_topology(self):
         """
-        Build a fully connected topology where all peers know each other.
+        Build a k-out topology. This is compatible with the experiment results in the GL papers.
         """
         for node in self.nodes:
-            for nb_node in self.nodes:
-                if node == nb_node:
-                    continue
-                node.overlays[0].neighbours.append(nb_node.overlays[0].my_peer.public_key.key_to_bin())
+            other_nodes = [n for n in self.nodes if n != node]
+            nb_nodes = random.sample(other_nodes, min(len(other_nodes), 20))
+            node.overlays[0].nodes = nb_nodes
+
+        for node in self.nodes:
+            assert len(node.overlays[0].nodes) == 20
 
     async def on_round_complete(self, peer_ind: int, round_nr: int):
         # Compute model accuracy
