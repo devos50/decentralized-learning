@@ -2,7 +2,7 @@ import asyncio
 import time
 from asyncio import Future, ensure_future
 from binascii import unhexlify, hexlify
-from typing import Optional, Callable, Dict
+from typing import Optional, Callable, Dict, List
 
 import torch
 
@@ -28,6 +28,8 @@ class LearningCommunity(Community):
         self.my_id = self.my_peer.public_key.key_to_bin()
         self.round_complete_callback: Optional[Callable] = None
         self.aggregate_complete_callback: Optional[Callable] = None
+
+        self.peers_list: List[Peer] = []
 
         # Settings
         self.settings: Optional[SessionSettings] = None
@@ -113,6 +115,11 @@ class LearningCommunity(Community):
             raise RuntimeError("Unsupported transmission method %s", self.settings.transmission_method)
 
         self.did_setup = True
+
+    def get_peers(self):
+        if self.peers_list:
+            return self.peers_list
+        return super().get_peers()
 
     def get_peer_by_pk(self, target_pk: bytes):
         peers = list(self.get_peers())

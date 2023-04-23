@@ -99,14 +99,9 @@ class LearningSimulation(TaskManager):
         self.logger = SimulationLoggerAdapter(self.logger, {})
 
     def ipv8_discover_peers(self) -> None:
-        for node_a in self.nodes:
-            for node_b in self.nodes:
-                if node_a == node_b:
-                    continue
-
-                node_a.network.verified_peers.add(node_b.overlays[0].my_peer)
-                node_a.network.discover_services(node_b.overlays[0].my_peer, [node_a.overlays[0].community_id, ])
-        self.logger.info("IPv8 peer discovery complete")
+        peers_list = [node.overlays[0].my_peer for node in self.nodes]
+        for node in self.nodes:
+            node.overlays[0].peers_list = peers_list
 
     def apply_traces(self):
         """
