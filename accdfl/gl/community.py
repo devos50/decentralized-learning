@@ -21,6 +21,7 @@ class GLCommunity(LearningCommunity):
         self.model_age: int = 0
         self.neighbours: List[bytes] = []  # The PKs of the neighbours we will send our model to
         self.nodes = None
+        self.round_task_name = None
 
     def start(self):
         """
@@ -32,7 +33,11 @@ class GLCommunity(LearningCommunity):
 
     def go_offline(self, graceful: bool = True):
         super().go_offline()
-        self.cancel_all_pending_tasks()
+        if self.round_task_name and self.is_pending_task_active(self.round_task_name):
+            self.logger.info("Participant %s cancelling round task %s",
+                             self.peer_manager.get_my_short_id(), self.round_task_name)
+            self.cancel_pending_task(self.round_task_name)
+            self.round_task_name = None
 
     def go_online(self):
         super().go_online()
@@ -46,7 +51,8 @@ class GLCommunity(LearningCommunity):
         return self.schedule_eva_send_model(peer, serialized_response, serialized_model, start_time)
 
     def start_next_round(self):
-        self.register_task("round_%d" % self.round, self.do_round)
+        self.round_task_name = "round_%d" % self.round
+        self.register_task(self.round_task_name, self.do_round)
 
     async def do_round(self):
         """
@@ -68,7 +74,12 @@ class GLCommunity(LearningCommunity):
             ensure_future(self.round_complete_callback(self.round))
         self.logger.info("Peer %s completed round %d", self.peer_manager.get_my_short_id(), self.round)
         self.round += 1
-        self.register_task("round_%d" % self.round, self.do_round)
+
+        self.round_task_name = None
+
+        if self.is_active:
+            self.round_task_name = "round_%d" % self.round
+            self.register_task(self.round_task_name, self.do_round)
 
     async def on_receive(self, result: TransferResult):
         """
