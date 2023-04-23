@@ -124,7 +124,7 @@ class GLSimulation(LearningSimulation):
 
     async def on_round_complete(self, peer_ind: int, round_nr: int):
         # Compute model accuracy
-        if not self.args.accuracy_logging_interval_is_in_sec and \
+        if self.args.accuracy_logging_interval > 0 and not self.args.accuracy_logging_interval_is_in_sec and \
                 round_nr % self.args.accuracy_logging_interval == 0:
             print("Will compute accuracy of peer %d for round %d!" % (peer_ind, round_nr))
             try:

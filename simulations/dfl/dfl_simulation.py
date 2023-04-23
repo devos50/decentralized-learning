@@ -134,7 +134,8 @@ class DFLSimulation(LearningSimulation):
 
         print("Round %d completed - bytes up: %d, bytes down: %d" % (round_nr, tot_up, tot_down))
 
-        if round_nr % self.args.accuracy_logging_interval == 0 and round_nr > self.latest_accuracy_check_round:
+        if self.args.accuracy_logging_interval > 0 and round_nr % self.args.accuracy_logging_interval == 0 and \
+                round_nr > self.latest_accuracy_check_round:
             print("Will compute accuracy for round %d!" % round_nr)
             accuracy, loss = self.evaluator.evaluate_accuracy(model, device_name=self.args.accuracy_device_name)
             with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
