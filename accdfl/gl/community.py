@@ -62,11 +62,15 @@ class GLCommunity(LearningCommunity):
         await sleep(self.settings.gl.round_timeout)
 
         # Select a random neighbour and send the model.
-        online_nodes: List = [node for node in self.nodes if node.overlays[0].is_active and node.overlays[0] != self]
-        rand_online_node = random.choice(online_nodes)
-        peer = rand_online_node.overlays[0].my_peer
+        online_nodes: List = [node for node in self.nodes if node.overlays[0].is_active]
+        if online_nodes:
+            rand_online_node = random.choice(online_nodes)
+            peer = rand_online_node.overlays[0].my_peer
 
-        await self.eva_send_model(self.round, self.model_age, self.model_manager.model, peer)
+            await self.eva_send_model(self.round, self.model_age, self.model_manager.model, peer)
+        else:
+            self.logger.warning("Peer %s has no neighbouring online peer, skipping model transfer!",
+                                self.peer_manager.get_my_short_id())
 
         if self.round_complete_callback:
             ensure_future(self.round_complete_callback(self.round))
