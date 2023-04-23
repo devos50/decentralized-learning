@@ -65,25 +65,27 @@ class ModelTrainer:
                 data, target = next(train_set_it)
                 model.train()
                 data, target = Variable(data.to(device)), Variable(target.to(device))
-                optimizer.optimizer.zero_grad()
-                self.logger.debug('d-sgd.next node forward propagation (step %d/%d)', local_step, local_steps)
-                output = model.forward(data)
                 samples_trained_on += len(data)
 
-                if self.settings.dataset == "movielens":
-                    lossf = MSELoss()
-                elif self.settings.dataset == "cifar10":
-                    if self.settings.model == "resnet8":
-                        lossf = CrossEntropyLoss()
-                    else:
-                        lossf = NLLLoss()
-                else:
-                    lossf = CrossEntropyLoss()
+                if not self.settings.bypass_training:
+                    optimizer.optimizer.zero_grad()
+                    self.logger.debug('d-sgd.next node forward propagation (step %d/%d)', local_step, local_steps)
+                    output = model.forward(data)
 
-                loss = lossf(output, target)
-                self.logger.debug('d-sgd.next node backward propagation (step %d/%d)', local_step, local_steps)
-                loss.backward()
-                optimizer.optimizer.step()
+                    if self.settings.dataset == "movielens":
+                        lossf = MSELoss()
+                    elif self.settings.dataset == "cifar10":
+                        if self.settings.model == "resnet8":
+                            lossf = CrossEntropyLoss()
+                        else:
+                            lossf = NLLLoss()
+                    else:
+                        lossf = CrossEntropyLoss()
+
+                    loss = lossf(output, target)
+                    self.logger.debug('d-sgd.next node backward propagation (step %d/%d)', local_step, local_steps)
+                    loss.backward()
+                    optimizer.optimizer.step()
             except StopIteration:
                 pass
 

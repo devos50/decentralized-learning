@@ -70,6 +70,7 @@ class DLSimulation(LearningSimulation):
             eva_block_size=1000,
             is_simulation=True,
             train_device_name=self.args.train_device_name,
+            bypass_training=self.args.bypass_training,
         )
 
         self.model_manager = ModelManager(None, self.session_settings, 0)

@@ -37,6 +37,7 @@ def get_args(dataset: str, default_lr: float, default_momentum: float = 0):
     parser.add_argument('--train-device-name', type=str, default="cpu")
     parser.add_argument('--accuracy-device-name', type=str, default="cpu")
     parser.add_argument('--bypass-model-transfers', action=argparse.BooleanOptionalAction)
+    parser.add_argument('--bypass-training', action=argparse.BooleanOptionalAction)
     parser.add_argument('--store-best-models', action=argparse.BooleanOptionalAction)
     parser.add_argument('--profile', action=argparse.BooleanOptionalAction)
     parser.add_argument('--topology', type=str, default="exp-one-peer")

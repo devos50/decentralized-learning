@@ -77,6 +77,7 @@ class SessionSettings:
     eva_max_simultaneous_transfers: int = 30  # Corresponds to a peak usage of ~3.4 MB/s for an aggregator
     is_simulation: bool = False
     train_device_name: str = "cpu"
+    bypass_training: bool = False  # Whether to bypass model training, can be useful to observe network dynamics
 
 
 def dump_settings(settings: SessionSettings):
