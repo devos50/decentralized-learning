@@ -62,10 +62,6 @@ class GLSimulation(LearningSimulation):
 
         self.build_topology()
 
-        # Inject the nodes in each community (as substitute for the online peer sampler)
-        for node in self.nodes:
-            node.overlays[0].nodes = self.nodes
-
         if self.args.accuracy_logging_interval > 0 and self.args.accuracy_logging_interval_is_in_sec:
             interval = self.args.accuracy_logging_interval
             self.logger.info("Registering logging interval task that triggers every %d seconds", interval)
