@@ -390,11 +390,16 @@ export PYTHONPATH=%s
                     transfer_times_file.write("%f\n" % transfer_time)
 
         # Write away the model training times
+        total_training_time: float = 0
         with open(os.path.join(self.data_dir, "training_times.csv"), "w") as training_times_file:
             training_times_file.write("peer,duration\n")
             for ind, node in enumerate(self.nodes):
                 for training_time in node.overlays[0].model_manager.training_times:
+                    total_training_time += training_time
                     training_times_file.write("%d,%f\n" % (ind + 1, training_time))
+
+        with open(os.path.join(self.data_dir, "total_training_time.txt"), "w") as total_training_time_file:
+            total_training_time_file.write("%f" % total_training_time)
 
         # Write away the individual, generic bandwidth statistics
         tot_up, tot_down = 0, 0
