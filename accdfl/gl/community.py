@@ -50,7 +50,11 @@ class GLCommunity(LearningCommunity):
 
     def start_next_round(self):
         self.round_task_name = "round_%d" % self.round
-        self.register_task(self.round_task_name, self.do_round)
+        if not self.is_pending_task_active(self.round_task_name):
+            self.register_task(self.round_task_name, self.do_round)
+        else:
+            self.logger.warning("Task %s of participant %s already seems to be active!",
+                                self.round_task_name, self.peer_manager.get_my_short_id())
 
     async def do_round(self):
         """
