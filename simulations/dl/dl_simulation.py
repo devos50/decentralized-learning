@@ -62,6 +62,7 @@ class DLSimulation(LearningSimulation):
             all_participants=[hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in
                               self.nodes],
             target_participants=len(self.nodes),
+            dataset_base_path=self.args.dataset_base_path,
             dl=dl_settings,
             model=self.args.model,
             alpha=self.args.alpha,

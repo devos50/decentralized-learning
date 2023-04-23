@@ -61,6 +61,7 @@ class SessionSettings:
     participants: List[str]
     all_participants: List[str]
     target_participants: int
+    dataset_base_path: str = None
     dfl: Optional[DFLSettings] = None
     dl: Optional[DLSettings] = None
     gl: Optional[GLSettings] = None

@@ -78,6 +78,7 @@ class DFLSimulation(LearningSimulation):
             participants=participants_pks,
             all_participants=[hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
             target_participants=len(self.nodes),
+            dataset_base_path=self.args.dataset_base_path,
             dfl=dfl_settings,
             model=self.args.model,
             alpha=self.args.alpha,

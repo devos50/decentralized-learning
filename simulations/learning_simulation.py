@@ -220,11 +220,12 @@ class LearningSimulation(TaskManager):
 
         self.start_nodes_training(active_nodes)
 
+        dataset_base_path: str = self.args.dataset_base_path or os.environ["HOME"]
         if self.args.dataset in ["cifar10", "mnist"]:
-            data_dir = os.path.join(os.environ["HOME"], "dfl-data")
+            data_dir = os.path.join(dataset_base_path, "dfl-data")
         else:
             # The LEAF dataset
-            data_dir = os.path.join(os.environ["HOME"], "leaf", self.args.dataset)
+            data_dir = os.path.join(dataset_base_path, "leaf", self.args.dataset)
 
         self.evaluator = ModelEvaluator(data_dir, self.session_settings)
 
