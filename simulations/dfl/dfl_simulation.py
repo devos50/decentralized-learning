@@ -23,6 +23,8 @@ class DFLSimulation(LearningSimulation):
         super().__init__(args)
         self.latest_accuracy_check_round: int = 0
         self.best_accuracy: float = 0.0
+        self.data_dir = os.path.join("data", "n_%d_%s_s%d_a%d_dfl" % (self.args.peers, self.args.dataset,
+                                                                      self.args.sample_size, self.args.num_aggregators))
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = super().get_ipv8_builder(peer_id)

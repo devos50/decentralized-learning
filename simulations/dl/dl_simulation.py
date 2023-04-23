@@ -21,6 +21,7 @@ class DLSimulation(LearningSimulation):
         self.num_round_completed = 0
         self.participants_ids: List[int] = []
         self.best_accuracy: float = 0.0
+        self.data_dir = os.path.join("data", "n_%d_%s_dl" % (self.args.peers, self.args.dataset))
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = super().get_ipv8_builder(peer_id)

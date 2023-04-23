@@ -17,6 +17,7 @@ class GLSimulation(LearningSimulation):
     def __init__(self, args: Namespace) -> None:
         super().__init__(args)
         self.task_manager = TaskManager()
+        self.data_dir = os.path.join("data", "n_%d_%s_gl" % (self.args.peers, self.args.dataset))
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = super().get_ipv8_builder(peer_id)
