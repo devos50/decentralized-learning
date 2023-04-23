@@ -17,6 +17,7 @@ class LearningSettings:
     momentum: float
     weight_decay: float
     batch_size: int
+    local_steps: int
 
 
 @dataclass

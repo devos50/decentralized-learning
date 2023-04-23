@@ -50,6 +50,7 @@ class DLSimulation(LearningSimulation):
             momentum=self.args.momentum,
             batch_size=self.args.batch_size,
             weight_decay=self.args.weight_decay,
+            local_steps=self.args.local_steps,
         )
 
         dl_settings = DLSettings(topology=self.args.topology or "ring")

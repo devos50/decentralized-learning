@@ -35,6 +35,7 @@ class GLSimulation(LearningSimulation):
             momentum=self.args.momentum,
             batch_size=self.args.batch_size,
             weight_decay=self.args.weight_decay,
+            local_steps=self.args.local_steps,
         )
 
         gl_settings = GLSettings(self.args.gl_round_timeout)

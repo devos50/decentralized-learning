@@ -43,51 +43,45 @@ class ModelTrainer:
         if not self.dataset:
             self.dataset = create_dataset(self.settings, participant_index=self.participant_index, train_dir=self.train_dir)
 
+        local_steps: int = self.settings.learning.local_steps
         device = torch.device(device_name)
         model.to(device)
         optimizer = SGDOptimizer(model, self.settings.learning.learning_rate, self.settings.learning.momentum, self.settings.learning.weight_decay)
-        train_set = self.dataset.get_trainset(batch_size=self.settings.learning.batch_size, shuffle=True)
-        train_set_it = iter(train_set)
-        local_steps = len(train_set.dataset) // self.settings.learning.batch_size
-        if len(train_set.dataset) % self.settings.learning.batch_size != 0:
-            local_steps += 1
 
-        self.logger.info("Will perform %d local steps of training on device %s (batch size: %d, lr: %f, wd: %f, "
-                         "data points: %d)",
+        self.logger.info("Will perform %d local steps of training on device %s (batch size: %d, lr: %f, wd: %f)",
                          local_steps, device_name, self.settings.learning.batch_size,
-                         self.settings.learning.learning_rate, self.settings.learning.weight_decay,
-                         len(train_set.dataset))
+                         self.settings.learning.learning_rate, self.settings.learning.weight_decay)
 
         start_time = time.time()
         samples_trained_on = 0
         for local_step in range(local_steps):
-            try:
-                data, target = next(train_set_it)
-                model.train()
-                data, target = Variable(data.to(device)), Variable(target.to(device))
-                samples_trained_on += len(data)
+            train_set = self.dataset.get_trainset(batch_size=self.settings.learning.batch_size, shuffle=True)
+            train_set_it = iter(train_set)
 
-                if not self.settings.bypass_training:
-                    optimizer.optimizer.zero_grad()
-                    self.logger.debug('d-sgd.next node forward propagation (step %d/%d)', local_step, local_steps)
-                    output = model.forward(data)
+            data, target = next(train_set_it)
+            model.train()
+            data, target = Variable(data.to(device)), Variable(target.to(device))
+            samples_trained_on += len(data)
 
-                    if self.settings.dataset == "movielens":
-                        lossf = MSELoss()
-                    elif self.settings.dataset == "cifar10":
-                        if self.settings.model == "resnet8":
-                            lossf = CrossEntropyLoss()
-                        else:
-                            lossf = NLLLoss()
-                    else:
+            if not self.settings.bypass_training:
+                optimizer.optimizer.zero_grad()
+                self.logger.debug('d-sgd.next node forward propagation (step %d/%d)', local_step, local_steps)
+                output = model.forward(data)
+
+                if self.settings.dataset == "movielens":
+                    lossf = MSELoss()
+                elif self.settings.dataset == "cifar10":
+                    if self.settings.model == "resnet8":
                         lossf = CrossEntropyLoss()
+                    else:
+                        lossf = NLLLoss()
+                else:
+                    lossf = CrossEntropyLoss()
 
-                    loss = lossf(output, target)
-                    self.logger.debug('d-sgd.next node backward propagation (step %d/%d)', local_step, local_steps)
-                    loss.backward()
-                    optimizer.optimizer.step()
-            except StopIteration:
-                pass
+                loss = lossf(output, target)
+                self.logger.debug('d-sgd.next node backward propagation (step %d/%d)', local_step, local_steps)
+                loss.backward()
+                optimizer.optimizer.step()
 
         if self.settings.is_simulation:
             # If we're running a simulation, we should advance the time of the DiscreteLoop with either the simulated

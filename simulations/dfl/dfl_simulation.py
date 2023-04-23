@@ -59,6 +59,7 @@ class DFLSimulation(LearningSimulation):
             momentum=self.args.momentum,
             batch_size=self.args.batch_size,
             weight_decay=self.args.weight_decay,
+            local_steps=self.args.local_steps,
         )
 
         dfl_settings = DFLSettings(
