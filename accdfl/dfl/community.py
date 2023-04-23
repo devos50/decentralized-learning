@@ -457,6 +457,11 @@ class DFLCommunity(LearningCommunity):
         if self.is_pending_task_active(timeout_task_name):
             self.cancel_pending_task(timeout_task_name)
 
+        if not self.model_manager.incoming_trained_models:
+            self.logger.warning("Aggregator %s will complete round but has no models! Ignoring...",
+                                self.peer_manager.get_my_short_id())
+            return
+
         # 3.1. Aggregate these models
         self.logger.info("Aggregator %s will average the models of round %d",
                          self.peer_manager.get_my_short_id(), model_round)
