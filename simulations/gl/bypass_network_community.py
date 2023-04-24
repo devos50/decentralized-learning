@@ -1,3 +1,4 @@
+import asyncio
 from asyncio import sleep, ensure_future, Future
 from typing import Optional, List, Tuple
 
@@ -11,7 +12,11 @@ class GLBypassNetworkCommunity(GLCommunity):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.bandwidth: Optional[float] = None
+        self.available_for_send: float = 0
+        self.available_for_receive: float = 0
         self.transfers: List[Tuple[str, str, int, float, bool, str]] = []
+        self.total_time_sending: float = 0
+        self.total_time_receiving: float = 0
 
     def schedule_eva_send_model(self, peer: Peer, serialized_response: bytes, binary_data: bytes, start_time: float) -> Future:
         # Schedule the transfer
@@ -32,9 +37,26 @@ class GLBypassNetworkCommunity(GLCommunity):
 
                 if self.bandwidth:
                     transfer_size_kbits = (len(binary_data) + len(serialized_response)) / 1024 * 8
-                    transfer_time = transfer_size_kbits / self.bandwidth
-                    await sleep(transfer_time)
-                    self.logger.info("Model transfer took %f s.", transfer_time)
+                    transfer_time = transfer_size_kbits / min(self.bandwidth, node.overlays[0].bandwidth)
+
+                    # Schedule the transfer between the two nodes.
+                    # Simply schedule it at the max. end time in the transfer queue of both the sender and receiver.
+                    cur_time = asyncio.get_event_loop().time()
+                    earliest_start_time_sender = cur_time if self.available_for_send <= cur_time else self.available_for_send
+                    earliest_start_time_receiver = cur_time if node.overlays[0].available_for_receive <= cur_time else node.overlays[0].available_for_receive
+                    transfer_start_time = max(earliest_start_time_sender, earliest_start_time_receiver)
+
+                    # Update the earliest available time of both nodes
+                    self.available_for_send = transfer_start_time + transfer_time
+                    node.overlays[0].available_for_receive = transfer_start_time + transfer_time
+
+                    await sleep((transfer_start_time - cur_time) + transfer_time)
+                    self.logger.info("Model transfer %s => %s started at t=%f and took %f s. (waiting time: %f s.)",
+                                     self.peer_manager.get_my_short_id(),
+                                     node.overlays[0].peer_manager.get_my_short_id(),
+                                     transfer_start_time, transfer_time, transfer_start_time - cur_time)
+                    self.total_time_sending += transfer_time
+                    self.total_time_receiving += transfer_time
 
                 if not node.overlays[0].is_active:  # The node might have gone offline at this point in time
                     break
