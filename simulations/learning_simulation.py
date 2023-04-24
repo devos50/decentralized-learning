@@ -191,6 +191,9 @@ class LearningSimulation(TaskManager):
                 out_file.write("time,online,offline\n")
             self.register_task("check_activity", self.check_activity, interval=self.args.activity_log_interval)
 
+        if self.args.flush_statistics_interval:
+            self.register_task("flush_statistics", self.flush_statistics, interval=self.args.flush_statistics_interval)
+
         if self.args.bypass_model_transfers:
             with open(os.path.join(self.data_dir, "transfers.csv"), "w") as out_file:
                 out_file.write("from,to,round,wait_time,duration,type,success\n")

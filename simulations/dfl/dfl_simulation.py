@@ -146,7 +146,6 @@ class DFLSimulation(LearningSimulation):
 
         if self.args.accuracy_logging_interval > 0 and round_nr % self.args.accuracy_logging_interval == 0 and \
                 round_nr > self.latest_accuracy_check_round:
-            self.flush_statistics()
 
             if not self.args.bypass_training:
                 print("Will compute accuracy for round %d!" % round_nr)
@@ -207,8 +206,9 @@ class DFLSimulation(LearningSimulation):
         with open(os.path.join(self.data_dir, "view_histories.csv"), "a") as out_file:
             for peer_id, node in enumerate(self.nodes):
                 for update_time, active_peers in node.overlays[0].active_peers_history:
-                    active_peers_str = "-".join(active_peers)
-                    out_file.write("%d,%f,%s\n" % (peer_id + 1, update_time, active_peers_str))
+                    if self.args.write_view_histories:
+                        active_peers_str = "-".join(active_peers)
+                        out_file.write("%d,%f,%s\n" % (peer_id + 1, update_time, active_peers_str))
                 node.overlays[0].active_peers_history = []
 
         # Write the determine sample durations
