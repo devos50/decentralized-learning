@@ -25,7 +25,6 @@ class ModelManager:
         self.settings: SessionSettings = settings
         self.participant_index: int = participant_index
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.training_times: List[float] = []
 
         dataset_base_path: str = self.settings.dataset_base_path or os.environ["HOME"]
         if self.settings.dataset in ["cifar10", "mnist"]:
@@ -79,8 +78,6 @@ class ModelManager:
             stdout, stderr = await proc.communicate()
             self.logger.info(f'Training exited with {proc.returncode}]')
 
-            self.training_times.append(time.time() - train_start_time)
-
             if proc.returncode != 0:
                 if stdout:
                     self.logger.error(f'[stdout]\n{stdout.decode()}')
@@ -93,10 +90,7 @@ class ModelManager:
             self.model.load_state_dict(torch.load(model_path))
             os.unlink(model_path)
         else:
-            train_start_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
             samples_trained_on = await self.model_trainer.train(self.model, device_name=self.settings.train_device_name)
-            train_end_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
-            self.training_times.append(train_end_time - train_start_time)
             return samples_trained_on
 
     async def compute_accuracy(self, model: nn.Module):

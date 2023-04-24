@@ -11,7 +11,7 @@ from typing import Dict, Optional, List
 import torch
 from torch import nn
 
-from ipv8.lazy_community import lazy_wrapper
+from ipv8.lazy_community import lazy_wrapper_wd
 from ipv8.messaging.payload_headers import BinMemberAuthenticationPayload, GlobalTimeDistributionPayload
 from ipv8.types import Peer
 from ipv8.util import succeed
@@ -34,12 +34,39 @@ class DFLCommunity(LearningCommunity):
 
         # Statistics
         self.active_peers_history = []
-        self.aggregation_durations: Dict[int, float] = {}
-        self.bandwidth_statistics: Dict[str, int] = {
-            "lm_model_bytes": 0,
-            "lm_midas_bytes": 0,
-            "ping_bytes": 0,
-            "pong_bytes": 0
+
+        self.bw_in_stats: Dict[str, Dict[str, int]] = {
+            "bytes": {
+                "model": 0,
+                "view": 0,
+                "ping": 0,
+                "pong": 0,
+                "membership": 0,
+            },
+            "num": {
+                "model": 0,
+                "view": 0,
+                "ping": 0,
+                "pong": 0,
+                "membership": 0,
+            }
+        }
+
+        self.bw_out_stats: Dict[str, Dict[str, int]] = {
+            "bytes": {
+                "model": 0,
+                "view": 0,
+                "ping": 0,
+                "pong": 0,
+                "membership": 0,
+            },
+            "num": {
+                "model": 0,
+                "view": 0,
+                "ping": 0,
+                "pong": 0,
+                "membership": 0,
+            }
         }
         self.determine_sample_durations = []
 
@@ -123,6 +150,8 @@ class DFLCommunity(LearningCommunity):
             payload = AdvertiseMembership(self.get_round_estimate(), self.advertise_index, change.value)
             dist = GlobalTimeDistributionPayload(global_time)
             packet = self._ez_pack(self._prefix, AdvertiseMembership.msg_id, [auth, dist, payload])
+            self.bw_out_stats["bytes"]["membership"] += len(packet)
+            self.bw_out_stats["num"]["membership"] += 1
             self.endpoint.send(peer.address, packet)
 
         # Update your own population view
@@ -130,13 +159,16 @@ class DFLCommunity(LearningCommunity):
         self.peer_manager.last_active[self.my_id] = (info[0], (self.advertise_index, change))
         self.advertise_index += 1
 
-    @lazy_wrapper(GlobalTimeDistributionPayload, AdvertiseMembership)
-    def on_membership_advertisement(self, peer, dist, payload):
+    @lazy_wrapper_wd(GlobalTimeDistributionPayload, AdvertiseMembership)
+    def on_membership_advertisement(self, peer, dist, payload, raw_data: bytes):
         """
         We received a membership advertisement from a new peer.
         """
         if not self.is_active:
             return
+
+        self.bw_in_stats["bytes"]["membership"] += len(raw_data)
+        self.bw_in_stats["num"]["membership"] += 1
 
         peer_pk = peer.public_key.key_to_bin()
         peer_id = self.peer_manager.get_short_id(peer_pk)
@@ -190,11 +222,12 @@ class DFLCommunity(LearningCommunity):
         payload = PingPayload(self.get_round_estimate(), identifier)
 
         packet = self._ez_pack(self._prefix, PingPayload.msg_id, [auth, payload])
-        self.bandwidth_statistics["ping_bytes"] += len(packet)
+        self.bw_out_stats["bytes"]["ping"] += len(packet)
+        self.bw_out_stats["num"]["ping"] += 1
         self.endpoint.send(peer.address, packet)
 
-    @lazy_wrapper(PingPayload)
-    def on_ping(self, peer: Peer, payload: PingPayload) -> None:
+    @lazy_wrapper_wd(PingPayload)
+    def on_ping(self, peer: Peer, payload: PingPayload, raw_data: bytes) -> None:
         peer_pk = peer.public_key.key_to_bin()
         peer_id = self.peer_manager.get_short_id(peer_pk)
         my_peer_id = self.peer_manager.get_my_short_id()
@@ -203,7 +236,9 @@ class DFLCommunity(LearningCommunity):
             self.logger.warning("Participant %s ignoring ping message from %s due to inactivity", my_peer_id, peer_id)
             return
 
-        peer_pk = peer.public_key.key_to_bin()
+        self.bw_in_stats["bytes"]["ping"] += len(raw_data)
+        self.bw_in_stats["num"]["ping"] += 1
+
         if peer_pk in self.peer_manager.last_active:
             self.peer_manager.update_peer_activity(peer_pk, max(self.get_round_estimate(), payload.round))
 
@@ -217,11 +252,12 @@ class DFLCommunity(LearningCommunity):
         payload = PongPayload(self.get_round_estimate(), identifier)
 
         packet = self._ez_pack(self._prefix, PongPayload.msg_id, [auth, payload])
-        self.bandwidth_statistics["pong_bytes"] += len(packet)
+        self.bw_out_stats["bytes"]["pong"] += len(packet)
+        self.bw_out_stats["num"]["pong"] += 1
         self.endpoint.send(peer.address, packet)
 
-    @lazy_wrapper(PongPayload)
-    def on_pong(self, peer: Peer, payload: PongPayload) -> None:
+    @lazy_wrapper_wd(PongPayload)
+    def on_pong(self, peer: Peer, payload: PongPayload, raw_data: bytes) -> None:
         my_peer_id = self.peer_manager.get_my_short_id()
         peer_short_id = self.peer_manager.get_short_id(peer.public_key.key_to_bin())
 
@@ -231,6 +267,9 @@ class DFLCommunity(LearningCommunity):
             return
 
         self.logger.debug("Participant %s receiving pong message from participant %s", my_peer_id, peer_short_id)
+
+        self.bw_in_stats["bytes"]["pong"] += len(raw_data)
+        self.bw_in_stats["num"]["pong"] += 1
 
         if not self.request_cache.has("ping-%s" % peer_short_id, payload.identifier):
             self.logger.warning("ping cache with id %s not found", payload.identifier)
@@ -361,8 +400,10 @@ class DFLCommunity(LearningCommunity):
         start_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
         serialized_model = serialize_model(model)
         serialized_population_view = pickle.dumps(population_view)
-        self.bandwidth_statistics["lm_model_bytes"] += len(serialized_model)
-        self.bandwidth_statistics["lm_midas_bytes"] += len(serialized_population_view)
+        self.bw_out_stats["bytes"]["model"] += len(serialized_model)
+        self.bw_out_stats["bytes"]["view"] += len(serialized_population_view)
+        self.bw_out_stats["num"]["model"] += 1
+        self.bw_out_stats["num"]["view"] += 1
         binary_data = serialized_model + serialized_population_view
         response = {"round": round, "type": type, "model_data_len": len(serialized_model)}
         serialized_response = json.dumps(response).encode()
@@ -389,6 +430,10 @@ class DFLCommunity(LearningCommunity):
         serialized_model = result.data[:json_data["model_data_len"]]
         serialized_population_view = result.data[json_data["model_data_len"]:]
         received_population_view = pickle.loads(serialized_population_view)
+        self.bw_in_stats["bytes"]["model"] += len(serialized_model)
+        self.bw_in_stats["bytes"]["view"] += len(serialized_population_view)
+        self.bw_in_stats["num"]["model"] += 1
+        self.bw_in_stats["num"]["view"] += 1
         self.peer_manager.merge_population_views(received_population_view)
         self.peer_manager.update_peer_activity(result.peer.public_key.key_to_bin(),
                                                max(json_data["round"], self.get_round_estimate()))
@@ -449,7 +494,6 @@ class DFLCommunity(LearningCommunity):
                              model_round)
 
     async def aggregator_complete_round(self, model_round: int, index: int):
-        self.aggregation_durations[model_round] = time.time() - self.aggregate_start_time
         self.aggregate_start_time = 0
         self.completed_aggregation = True
 

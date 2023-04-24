@@ -45,7 +45,6 @@ class LearningCommunity(Community):
 
         # Model exchange parameters
         self.eva = EVAProtocol(self, self.on_receive, self.on_send_complete, self.on_error)
-        self.transfer_times = []
 
         # Availability traces
         self.traces: Optional[Dict] = None
@@ -142,7 +141,6 @@ class LearningCommunity(Community):
         else:
             # The transfer seems to be completed - record the transfer time
             end_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
-            self.transfer_times.append(end_time - start_time)
 
     def schedule_eva_send_model(self, peer: Peer, serialized_response: bytes, binary_data: bytes, start_time: float) -> Future:
         # Schedule the transfer

@@ -3,7 +3,7 @@ from argparse import Namespace
 from asyncio import get_event_loop
 from binascii import hexlify
 from random import Random
-from typing import List
+from typing import List, Dict
 
 import torch
 
@@ -107,6 +107,13 @@ class DFLSimulation(LearningSimulation):
             for node in self.nodes:
                 node.overlays[0].nodes = self.nodes
 
+        # Generated the statistics files
+        with open(os.path.join(self.data_dir, "view_histories.csv"), "w") as out_file:
+            out_file.write("peer,update_time,peers\n")
+
+        with open(os.path.join(self.data_dir, "determine_sample_durations.csv"), "w") as out_file:
+            out_file.write("peer,start_time,end_time\n")
+
     def start_nodes_training(self, active_nodes: List) -> None:
         # Update the membership status of inactive peers in all peer managers. This assumption should be
         # reasonable as availability at the very start of the training process can easily be synchronized using an
@@ -139,16 +146,19 @@ class DFLSimulation(LearningSimulation):
 
         if self.args.accuracy_logging_interval > 0 and round_nr % self.args.accuracy_logging_interval == 0 and \
                 round_nr > self.latest_accuracy_check_round:
-            print("Will compute accuracy for round %d!" % round_nr)
-            accuracy, loss = self.evaluator.evaluate_accuracy(model, device_name=self.args.accuracy_device_name)
-            with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
-                group = "\"s=%d, a=%d\"" % (self.args.sample_size, self.args.num_aggregators)
-                out_file.write("%s,%s,%f,%d,%d,%f,%f\n" % (self.args.dataset, group, get_event_loop().time(),
-                                                           ind, round_nr, accuracy, loss))
+            self.flush_statistics()
 
-                if self.args.store_best_models and accuracy > self.best_accuracy:
-                    self.best_accuracy = accuracy
-                    torch.save(model.state_dict(), os.path.join(self.data_dir, "best.model"))
+            if not self.args.bypass_training:
+                print("Will compute accuracy for round %d!" % round_nr)
+                accuracy, loss = self.evaluator.evaluate_accuracy(model, device_name=self.args.accuracy_device_name)
+                with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
+                    group = "\"s=%d, a=%d\"" % (self.args.sample_size, self.args.num_aggregators)
+                    out_file.write("%s,%s,%f,%d,%d,%f,%f\n" % (self.args.dataset, group, get_event_loop().time(),
+                                                               ind, round_nr, accuracy, loss))
+
+                    if self.args.store_best_models and accuracy > self.best_accuracy:
+                        self.best_accuracy = accuracy
+                        torch.save(model.state_dict(), os.path.join(self.data_dir, "best.model"))
 
             self.latest_accuracy_check_round = round_nr
 
@@ -156,38 +166,54 @@ class DFLSimulation(LearningSimulation):
             self.on_simulation_finished()
             self.loop.stop()
 
-    def on_simulation_finished(self) -> None:
-        super().on_simulation_finished()
+    def get_statistics(self) -> Dict:
+        statistics = super().get_statistics()
 
-        # Write away the model transfers between peers
-        if self.args.bypass_model_transfers:
-            with open(os.path.join(self.data_dir, "transfers.csv"), "w") as out_file:
-                out_file.write("from,to,round,time,success,type\n")
-                for node in self.nodes:
-                    for transfer in node.overlays[0].transfers:
-                        out_file.write("%s,%s,%d,%f,%d,%s\n" % transfer)
+        # Add the BW statistics of individual nodes
+        def merge_dicts_sum(dict1, dict2):
+            for key, value in dict2.items():
+                if key in dict1:
+                    if isinstance(value, dict):
+                        merge_dicts_sum(dict1[key], value)
+                    else:
+                        dict1[key] += value
+                else:
+                    if isinstance(value, dict):
+                        dict1[key] = value.copy()
+                        merge_dicts_sum(dict1[key], value)
+                    else:
+                        dict1[key] = value
+
+        agg_bw_in_dict = {}
+        agg_bw_out_dict = {}
+        for ind, node in enumerate(self.nodes):
+            merge_dicts_sum(agg_bw_in_dict, node.overlays[0].bw_in_stats)
+            merge_dicts_sum(agg_bw_out_dict, node.overlays[0].bw_out_stats)
+            statistics["individual"][ind]["bw_in"] = node.overlays[0].bw_in_stats
+            statistics["individual"][ind]["bw_out"] = node.overlays[0].bw_out_stats
+
+        statistics["global"]["bw_in"] = agg_bw_in_dict
+        statistics["global"]["bw_out"] = agg_bw_out_dict
+
+        return statistics
+
+    def flush_statistics(self):
+        """
+        Flush all the statistics generated by nodes.
+        """
+        super().flush_statistics()
 
         # Write away the view histories
-        with open(os.path.join(self.data_dir, "view_histories.csv"), "w") as out_file:
-            out_file.write("peer,update_time,peers\n")
+        with open(os.path.join(self.data_dir, "view_histories.csv"), "a") as out_file:
             for peer_id, node in enumerate(self.nodes):
                 for update_time, active_peers in node.overlays[0].active_peers_history:
                     active_peers_str = "-".join(active_peers)
                     out_file.write("%d,%f,%s\n" % (peer_id + 1, update_time, active_peers_str))
+                node.overlays[0].active_peers_history = []
 
         # Write the determine sample durations
-        with open(os.path.join(self.data_dir, "determine_sample_durations.csv"), "w") as out_file:
-            out_file.write("peer,start_time,end_time\n")
+        with open(os.path.join(self.data_dir, "determine_sample_durations.csv"), "a") as out_file:
             for peer_id, node in enumerate(self.nodes):
                 for start_time, end_time in node.overlays[0].determine_sample_durations:
                     out_file.write("%d,%f,%f\n" % (peer_id + 1, start_time, end_time))
-
-        # Write away the outgoing bytes statistics
-        with open(os.path.join(self.data_dir, "outgoing_bytes_statistics.csv"), "w") as bw_file:
-            bw_file.write("peer,lm_model_bytes,lm_midas_bytes,ping_bytes,pong_bytes\n")
-            for ind, node in enumerate(self.nodes):
-                bw_file.write("%d,%d,%d,%d,%d\n" % (ind + 1,
-                                                    node.overlays[0].bandwidth_statistics["lm_model_bytes"],
-                                                    node.overlays[0].bandwidth_statistics["lm_midas_bytes"],
-                                                    node.overlays[0].bandwidth_statistics["ping_bytes"],
-                                                    node.overlays[0].bandwidth_statistics["pong_bytes"]))
+                node.overlays[0].determine_sample_durations = []

@@ -1,4 +1,5 @@
 import asyncio
+import json
 from asyncio import sleep, ensure_future, Future
 from typing import Optional, List, Tuple
 
@@ -14,7 +15,7 @@ class GLBypassNetworkCommunity(GLCommunity):
         self.bandwidth: Optional[float] = None
         self.available_for_send: float = 0
         self.available_for_receive: float = 0
-        self.transfers: List[Tuple[str, str, int, float, bool, str]] = []
+        self.transfers: List[Tuple[str, str, int, float, float, str, bool]] = []
         self.total_time_sending: float = 0
         self.total_time_receiving: float = 0
 
@@ -26,6 +27,9 @@ class GLBypassNetworkCommunity(GLCommunity):
 
     async def bypass_send(self, peer: Peer, serialized_response: bytes, binary_data: bytes):
         found: bool = False
+        transfer_success: bool = True
+        transfer_time: float = 0
+        transfer_wait_time: float = 0
         for node in self.nodes:
             if node.overlays[0].my_peer == peer:
                 found = True
@@ -45,24 +49,31 @@ class GLBypassNetworkCommunity(GLCommunity):
                     earliest_start_time_sender = cur_time if self.available_for_send <= cur_time else self.available_for_send
                     earliest_start_time_receiver = cur_time if node.overlays[0].available_for_receive <= cur_time else node.overlays[0].available_for_receive
                     transfer_start_time = max(earliest_start_time_sender, earliest_start_time_receiver)
+                    transfer_wait_time = transfer_start_time - cur_time
 
                     # Update the earliest available time of both nodes
                     self.available_for_send = transfer_start_time + transfer_time
                     node.overlays[0].available_for_receive = transfer_start_time + transfer_time
 
-                    await sleep((transfer_start_time - cur_time) + transfer_time)
+                    await sleep(transfer_wait_time + transfer_time)
                     self.logger.info("Model transfer %s => %s started at t=%f and took %f s. (waiting time: %f s.)",
                                      self.peer_manager.get_my_short_id(),
                                      node.overlays[0].peer_manager.get_my_short_id(),
-                                     transfer_start_time, transfer_time, transfer_start_time - cur_time)
+                                     transfer_start_time, transfer_time, transfer_wait_time)
                     self.total_time_sending += transfer_time
                     self.total_time_receiving += transfer_time
 
-                if not node.overlays[0].is_active:  # The node might have gone offline at this point in time
-                    break
+                    # The transfer only succeeds if both nodes are online when the transfer is done
+                    transfer_success = node.overlays[0].is_active and self.is_active
 
-                res = TransferResult(self.my_peer, serialized_response, binary_data, 0)
-                ensure_future(node.overlays[0].on_receive(res))
+                json_data = json.loads(serialized_response.decode())
+                self.transfers.append((self.peer_manager.get_my_short_id(),
+                                       node.overlays[0].peer_manager.get_my_short_id(), json_data["round"],
+                                       transfer_wait_time, transfer_time, json_data["type"], transfer_success))
+
+                if transfer_success:
+                    res = TransferResult(self.my_peer, serialized_response, binary_data, 0)
+                    ensure_future(node.overlays[0].on_receive(res))
                 break
 
         if not found:
