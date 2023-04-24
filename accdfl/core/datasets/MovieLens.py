@@ -86,11 +86,11 @@ class MovieLens(Dataset):
         # SPLITTING BY USERS: group by users and split the data accordingly
         mod = self.n_users % world_size
         users_count = self.n_users // world_size
-        if self.rank < mod:
+        if self.uid < mod:
             users_count += 1
-            offset = users_count * self.rank
+            offset = users_count * self.uid
         else:
-            offset = users_count * self.rank + mod
+            offset = users_count * self.uid + mod
 
         my_train_data = pd.DataFrame()
         my_test_data = pd.DataFrame()
