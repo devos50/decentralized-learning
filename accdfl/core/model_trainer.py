@@ -40,7 +40,7 @@ class ModelTrainer:
         """
         Train the model on a batch. Return an integer that indicates how many local steps we have done.
         """
-        if not self.dataset:
+        if not self.dataset and not self.settings.bypass_training:
             self.dataset = create_dataset(self.settings, participant_index=self.participant_index, train_dir=self.train_dir)
 
         local_steps: int = self.settings.learning.local_steps
@@ -55,15 +55,15 @@ class ModelTrainer:
         start_time = time.time()
         samples_trained_on = 0
         for local_step in range(local_steps):
-            train_set = self.dataset.get_trainset(batch_size=self.settings.learning.batch_size, shuffle=True)
-            train_set_it = iter(train_set)
-
-            data, target = next(train_set_it)
-            model.train()
-            data, target = Variable(data.to(device)), Variable(target.to(device))
-            samples_trained_on += len(data)
-
             if not self.settings.bypass_training:
+                train_set = self.dataset.get_trainset(batch_size=self.settings.learning.batch_size, shuffle=True)
+                train_set_it = iter(train_set)
+
+                data, target = next(train_set_it)
+                model.train()
+                data, target = Variable(data.to(device)), Variable(target.to(device))
+                samples_trained_on += len(data)
+
                 optimizer.optimizer.zero_grad()
                 self.logger.debug('d-sgd.next node forward propagation (step %d/%d)', local_step, local_steps)
                 output = model.forward(data)
