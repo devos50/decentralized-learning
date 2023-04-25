@@ -6,6 +6,7 @@ import random
 import time
 from asyncio import Future, ensure_future
 from binascii import unhexlify, hexlify
+from math import floor
 from typing import Dict, Optional, List, Tuple
 
 import torch
@@ -457,7 +458,7 @@ class DFLCommunity(LearningCommunity):
 
     def has_enough_trained_models(self) -> bool:
         return len(self.model_manager.incoming_trained_models) >= \
-               (self.settings.dfl.sample_size * self.settings.dfl.success_fraction)
+               floor(self.settings.dfl.sample_size * self.settings.dfl.success_fraction)
 
     async def received_trained_model(self, peer: Peer, index: int, model: nn.Module) -> None:
         model_round = index - 1  # The round associated with this model is one smaller than the sample index
