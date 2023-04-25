@@ -1,7 +1,8 @@
 import asyncio
 import json
+import random
 from asyncio import sleep, ensure_future, Future
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Set
 
 from accdfl.dfl.community import DFLCommunity
 from accdfl.util.eva.result import TransferResult
@@ -20,6 +21,8 @@ class DFLBypassNetworkCommunity(DFLCommunity):
         self.total_time_sending: float = 0
         self.total_time_receiving: float = 0
 
+        self.ongoing_outgoing_transfers: Set[int] = set()
+
     def schedule_eva_send_model(self, peer: Peer, serialized_response: bytes, binary_data: bytes, start_time: float) -> Future:
         # Schedule the transfer
         future = ensure_future(self.bypass_send(peer, serialized_response, binary_data))
@@ -31,6 +34,7 @@ class DFLBypassNetworkCommunity(DFLCommunity):
         transfer_success: bool = True
         transfer_time: float = 0
         transfer_wait_time: float = 0
+        transfer_id = random.randint(0, 10000000)
         for node in self.nodes:
             if node.overlays[0].my_peer == peer:
                 found = True
@@ -39,6 +43,7 @@ class DFLBypassNetworkCommunity(DFLCommunity):
 
                 self.endpoint.bytes_up += len(binary_data) + len(serialized_response)
                 node.overlays[0].endpoint.bytes_down += len(binary_data) + len(serialized_response)
+                self.ongoing_outgoing_transfers.add(transfer_id)
 
                 if self.bandwidth:
                     transfer_size_kbits = (len(binary_data) + len(serialized_response)) / 1024 * 8
@@ -75,6 +80,7 @@ class DFLBypassNetworkCommunity(DFLCommunity):
                 if transfer_success:
                     res = TransferResult(self.my_peer, serialized_response, binary_data, 0)
                     ensure_future(node.overlays[0].on_receive(res))
+                self.ongoing_outgoing_transfers.remove(transfer_id)
                 break
 
         if not found:

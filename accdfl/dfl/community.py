@@ -77,6 +77,7 @@ class DFLCommunity(LearningCommunity):
         self.aggregate_sample_estimate: int = 0
         self.advertise_index: int = 1
         self.aggregate_start_time = 0
+        self.is_aggregating: bool = False
         self.completed_aggregation = False
         self.completed_training = False
 
@@ -118,6 +119,10 @@ class DFLCommunity(LearningCommunity):
     def go_offline(self, graceful: bool = True) -> None:
         super().go_offline()
 
+        if self.is_aggregating:
+            self.logger.warning("Aggregator %s went offline - this might impact liveness",
+                                self.peer_manager.get_my_short_id())
+
         if graceful:
             self.advertise_membership(NodeMembershipChange.LEAVE)
         else:
@@ -134,6 +139,9 @@ class DFLCommunity(LearningCommunity):
         """
         Advertise your (new) membership to random peers.
         """
+        self.logger.debug("Participant %s advertising its membership change to active participants",
+                          self.peer_manager.get_my_short_id())
+
         active_peer_pks = self.peer_manager.get_active_peers()
         if self.my_id in active_peer_pks:
             active_peer_pks.remove(self.my_id)
@@ -144,7 +152,7 @@ class DFLCommunity(LearningCommunity):
             if not peer:
                 self.logger.warning("Cannot find Peer object for participant %s!",
                                     self.peer_manager.get_short_id(peer_pk))
-            self.logger.info("Participant %s advertising its membership change to participant %s",
+            self.logger.debug("Participant %s advertising its membership change to participant %s",
                               self.peer_manager.get_my_short_id(), self.peer_manager.get_short_id(peer_pk))
             global_time = self.claim_global_time()
             auth = BinMemberAuthenticationPayload(self.my_peer.public_key.key_to_bin())
@@ -173,8 +181,8 @@ class DFLCommunity(LearningCommunity):
 
         peer_pk = peer.public_key.key_to_bin()
         peer_id = self.peer_manager.get_short_id(peer_pk)
-        self.logger.info("Participant %s updating membership of participant %s",
-                         self.peer_manager.get_my_short_id(), peer_id)
+        self.logger.debug("Participant %s updating membership of participant %s",
+                          self.peer_manager.get_my_short_id(), peer_id)
 
         change: NodeMembershipChange = NodeMembershipChange(payload.change)
         latest_round = self.get_round_estimate()
@@ -473,6 +481,7 @@ class DFLCommunity(LearningCommunity):
                                delay=self.settings.dfl.aggregation_timeout)
 
             self.aggregate_sample_estimate = index
+            self.is_aggregating = True
             self.model_manager.reset_incoming_trained_models()
             self.aggregate_start_time = time.time()
             self.completed_aggregation = False
@@ -528,6 +537,7 @@ class DFLCommunity(LearningCommunity):
         if self.aggregate_sample_estimate > index:
             self.logger.warning("Work of participant %s for round %d not relevant anymore - stopping",
                                 self.peer_manager.get_my_short_id(), model_round)
+            self.is_aggregating = False
             return
 
         # 3.3. Distribute the average model to the available participants in the sample.
@@ -540,6 +550,8 @@ class DFLCommunity(LearningCommunity):
                          self.peer_manager.get_my_short_id(), model_round)
         if self.aggregate_complete_callback:
             ensure_future(self.aggregate_complete_callback(model_round, avg_model))
+
+        self.is_aggregating = False
 
     def on_aggregation_timeout(self, model_round: int, index: int):
         self.logger.info("Aggregator %s triggered aggregation timeout in round %d - wrapping up",

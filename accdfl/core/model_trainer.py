@@ -30,6 +30,7 @@ class ModelTrainer:
         self.participant_index: int = participant_index
         self.simulated_speed: Optional[float] = None
         self.total_training_time: float = 0
+        self.is_training: bool = False
 
         if settings.dataset in ["cifar10", "mnist", "movielens", "spambase"]:
             self.train_dir = data_dir
@@ -41,6 +42,8 @@ class ModelTrainer:
         """
         Train the model on a batch. Return an integer that indicates how many local steps we have done.
         """
+        self.is_training = True
+
         if not self.dataset and not self.settings.bypass_training:
             self.dataset = create_dataset(self.settings, participant_index=self.participant_index, train_dir=self.train_dir)
 
@@ -96,5 +99,7 @@ class ModelTrainer:
             self.logger.info("Model training took %f s.", elapsed_time)
             await sleep(elapsed_time)
             self.total_training_time += elapsed_time
+
+        self.is_training = False
 
         return samples_trained_on

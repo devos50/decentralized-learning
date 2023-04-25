@@ -117,6 +117,33 @@ class DFLSimulation(LearningSimulation):
         with open(os.path.join(self.data_dir, "derived_samples.csv"), "w") as out_file:
             out_file.write("peer,sample_id,sample\n")
 
+        # Start the liveness check (every 5 minutes)
+        self.register_task("check_liveness", self.check_liveness, interval=300)
+
+    def check_liveness(self):
+        # Condition 1: At least one online node is training their model
+        one_node_training: bool = False
+        for node in self.nodes:
+            if node.overlays[0].is_active and node.overlays[0].model_manager.model_trainer.is_training:
+                one_node_training = True
+                break
+
+        # Condition 2: There is an ongoing model transfer
+        one_node_sending: bool = False
+        for node in self.nodes:
+            if node.overlays[0].is_active and node.overlays[0].ongoing_outgoing_transfers:
+                one_node_sending = True
+                break
+
+        one_node_aggregating: bool = False
+        for node in self.nodes:
+            if node.overlays[0].is_active and node.overlays[0].is_aggregating:
+                one_node_aggregating = True
+                break
+
+        if not one_node_training and not one_node_sending and not one_node_aggregating:
+            raise RuntimeError("Liveness violated - MoDeST not making progress anymore")
+
     def start_nodes_training(self, active_nodes: List) -> None:
         # Update the membership status of inactive peers in all peer managers. This assumption should be
         # reasonable as availability at the very start of the training process can easily be synchronized using an
