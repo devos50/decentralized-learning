@@ -508,6 +508,12 @@ class DFLCommunity(LearningCommunity):
         self.aggregate_start_time = 0
         self.completed_aggregation = True
 
+        if not self.is_active:
+            self.logger.warning("Aggregator %s completed aggregation but is offline!",
+                                self.peer_manager.get_my_short_id())
+            self.is_aggregating = False
+            return
+
         timeout_task_name: str = "aggregate_%d_timeout" % model_round
         if self.is_pending_task_active(timeout_task_name):
             self.cancel_pending_task(timeout_task_name)
@@ -515,6 +521,7 @@ class DFLCommunity(LearningCommunity):
         if not self.model_manager.incoming_trained_models:
             self.logger.warning("Aggregator %s will complete round but has no models! Ignoring...",
                                 self.peer_manager.get_my_short_id())
+            self.is_aggregating = False
             return
 
         # 3.1. Aggregate these models
