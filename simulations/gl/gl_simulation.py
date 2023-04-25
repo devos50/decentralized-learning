@@ -1,5 +1,4 @@
 import os
-import random
 from argparse import Namespace
 from asyncio import get_event_loop
 from binascii import hexlify
@@ -118,8 +117,7 @@ class GLSimulation(LearningSimulation):
         """
         for node in self.nodes:
             other_nodes = [n for n in self.nodes if n != node]
-            nb_nodes = random.sample(other_nodes, min(len(other_nodes), 20))
-            node.overlays[0].nodes = nb_nodes
+            node.overlays[0].nodes = other_nodes
 
         for node in self.nodes:
             assert len(node.overlays[0].nodes) == 20
