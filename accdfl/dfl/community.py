@@ -6,7 +6,7 @@ import random
 import time
 from asyncio import Future, ensure_future
 from binascii import unhexlify, hexlify
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Tuple
 
 import torch
 from torch import nn
@@ -69,6 +69,7 @@ class DFLCommunity(LearningCommunity):
             }
         }
         self.determine_sample_durations = []
+        self.derived_samples: List[Tuple[int, List[str]]] = []
 
         # State
         self.ongoing_training_task_name: Optional[str] = None
@@ -318,7 +319,8 @@ class DFLCommunity(LearningCommunity):
         # 2. Determine the aggregators of the next sample that are available
         aggregators = await self.determine_available_peers_for_sample(round + 1, self.settings.dfl.num_aggregators,
                                                                       getting_aggregators=True)
-        aggregator_ids = [self.peer_manager.get_short_id(peer_id) for peer_id in aggregators]
+        aggregator_ids: List[str] = [self.peer_manager.get_short_id(peer_id) for peer_id in aggregators]
+        self.derived_samples.append((round + 1, aggregator_ids))
         self.logger.info("Participant %s determined %d available aggregators in sample %d: %s",
                          self.peer_manager.get_my_short_id(), len(aggregator_ids), round + 1, aggregator_ids)
 
@@ -517,7 +519,8 @@ class DFLCommunity(LearningCommunity):
         # 3. Determine the participants of the next sample that are available
         participants = await self.determine_available_peers_for_sample(self.aggregate_sample_estimate,
                                                                        self.settings.dfl.sample_size)
-        participants_ids = [self.peer_manager.get_short_id(peer_id) for peer_id in participants]
+        participants_ids: List[str] = [self.peer_manager.get_short_id(peer_id) for peer_id in participants]
+        self.derived_samples.append((self.aggregate_sample_estimate, participants_ids))
         self.logger.info("Participant %s determined %d available participants for round %d: %s",
                          self.peer_manager.get_my_short_id(), len(participants_ids), model_round, participants_ids)
 

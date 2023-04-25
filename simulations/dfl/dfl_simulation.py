@@ -114,6 +114,9 @@ class DFLSimulation(LearningSimulation):
         with open(os.path.join(self.data_dir, "determine_sample_durations.csv"), "w") as out_file:
             out_file.write("peer,start_time,end_time\n")
 
+        with open(os.path.join(self.data_dir, "derived_samples.csv"), "w") as out_file:
+            out_file.write("peer,sample_id,sample\n")
+
     def start_nodes_training(self, active_nodes: List) -> None:
         # Update the membership status of inactive peers in all peer managers. This assumption should be
         # reasonable as availability at the very start of the training process can easily be synchronized using an
@@ -217,3 +220,11 @@ class DFLSimulation(LearningSimulation):
                 for start_time, end_time in node.overlays[0].determine_sample_durations:
                     out_file.write("%d,%f,%f\n" % (peer_id + 1, start_time, end_time))
                 node.overlays[0].determine_sample_durations = []
+
+        # Write away the derived samples
+        with open(os.path.join(self.data_dir, "derived_samples.csv"), "a") as out_file:
+            for peer_id, node in enumerate(self.nodes):
+                for sample_id, sample in node.overlays[0].derived_samples:
+                    sample_str = "-".join(sorted(sample))
+                    out_file.write("%d,%d,%s\n" % (peer_id + 1, sample_id, sample_str))
+                node.overlays[0].derived_samples = []
