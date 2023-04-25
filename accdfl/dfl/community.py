@@ -234,7 +234,7 @@ class DFLCommunity(LearningCommunity):
         my_peer_id = self.peer_manager.get_my_short_id()
 
         if not self.is_active:
-            self.logger.warning("Participant %s ignoring ping message from %s due to inactivity", my_peer_id, peer_id)
+            self.logger.debug("Participant %s ignoring ping message from %s due to inactivity", my_peer_id, peer_id)
             return
 
         self.bw_in_stats["bytes"]["ping"] += len(raw_data)
@@ -263,8 +263,8 @@ class DFLCommunity(LearningCommunity):
         peer_short_id = self.peer_manager.get_short_id(peer.public_key.key_to_bin())
 
         if not self.is_active:
-            self.logger.warning("Participant %s ignoring ping message from %s due to inactivity",
-                                my_peer_id, peer_short_id)
+            self.logger.debug("Participant %s ignoring ping message from %s due to inactivity",
+                              my_peer_id, peer_short_id)
             return
 
         self.logger.debug("Participant %s receiving pong message from participant %s", my_peer_id, peer_short_id)
@@ -424,7 +424,7 @@ class DFLCommunity(LearningCommunity):
         my_peer_id = self.peer_manager.get_my_short_id()
 
         if not self.is_active:
-            self.logger.warning("Participant %s ignoring message from %s due to inactivity", my_peer_id, peer_id)
+            self.logger.debug("Participant %s ignoring message from %s due to inactivity", my_peer_id, peer_id)
             return
 
         self.logger.info(f'Participant {my_peer_id} received data from participant {peer_id}: {result.info.decode()}')

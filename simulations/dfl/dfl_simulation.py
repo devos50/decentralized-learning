@@ -145,7 +145,8 @@ class DFLSimulation(LearningSimulation):
             tot_up += node.overlays[0].endpoint.bytes_up
             tot_down += node.overlays[0].endpoint.bytes_down
 
-        print("Round %d completed - bytes up: %d, bytes down: %d" % (round_nr, tot_up, tot_down))
+        cur_time = get_event_loop().time()
+        print("Round %d completed @ t=%f - bytes up: %d, bytes down: %d" % (round_nr, cur_time, tot_up, tot_down))
 
         if self.args.accuracy_logging_interval > 0 and round_nr % self.args.accuracy_logging_interval == 0 and \
                 round_nr > self.latest_accuracy_check_round:

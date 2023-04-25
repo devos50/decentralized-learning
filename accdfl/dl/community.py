@@ -117,7 +117,7 @@ class DLCommunity(LearningCommunity):
         my_peer_id = self.peer_manager.get_my_short_id()
 
         if not self.is_active:
-            self.logger.warning("Participant %s ignoring message from %s due to inactivity", my_peer_id, peer_id)
+            self.logger.debug("Participant %s ignoring message from %s due to inactivity", my_peer_id, peer_id)
             return
 
         self.logger.info(f'Participant {my_peer_id} received data from participant {peer_id}: {result.info.decode()}')
