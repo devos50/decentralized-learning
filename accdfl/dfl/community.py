@@ -477,8 +477,9 @@ class DFLCommunity(LearningCommunity):
                              "starting to aggregate", self.peer_manager.get_my_short_id(), model_round)
 
             # Set the round timeout
-            self.register_task("aggregate_%d_timeout" % model_round, self.on_aggregation_timeout, model_round, index,
-                               delay=self.settings.dfl.aggregation_timeout)
+            if self.settings.dfl.aggregation_timeout > 0:
+                self.register_task("aggregate_%d_timeout" % model_round, self.on_aggregation_timeout, model_round,
+                                   index, delay=self.settings.dfl.aggregation_timeout)
 
             self.aggregate_sample_estimate = index
             self.is_aggregating = True
