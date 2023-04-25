@@ -128,7 +128,7 @@ class LearningSimulation(TaskManager):
                 node.overlays[0].model_manager.model_trainer.simulated_speed = data[device_ids[ind]]["computation"]
                 if self.args.bypass_model_transfers:
                     # Also apply the network latencies
-                    node.overlays[0].bandwidth = data[ind + 1]["communication"]
+                    node.overlays[0].bw_scheduler.bw_limit = int(data[ind + 1]["communication"])
 
         self.logger.info("Traces applied!")
 
@@ -196,7 +196,7 @@ class LearningSimulation(TaskManager):
 
         if self.args.bypass_model_transfers:
             with open(os.path.join(self.data_dir, "transfers.csv"), "w") as out_file:
-                out_file.write("from,to,round,wait_time,duration,type,success\n")
+                out_file.write("from,to,round,duration,type,success\n")
 
     def check_activity(self):
         """
@@ -230,7 +230,8 @@ class LearningSimulation(TaskManager):
             # The LEAF dataset
             data_dir = os.path.join(dataset_base_path, "leaf", self.args.dataset)
 
-        self.evaluator = ModelEvaluator(data_dir, self.session_settings)
+        if not self.args.bypass_training:
+            self.evaluator = ModelEvaluator(data_dir, self.session_settings)
 
         if self.args.profile:
             yappi.start(builtins=True)
@@ -391,8 +392,7 @@ export PYTHONPATH=%s
             bytes_up = node.overlays[0].endpoint.bytes_up
             bytes_down = node.overlays[0].endpoint.bytes_down
             train_time = node.overlays[0].model_manager.model_trainer.total_training_time
-            # TODO maybe we want to account the time on control messages too?
-            network_time = node.overlays[0].total_time_sending + node.overlays[0].total_time_receiving
+            network_time = node.overlays[0].bw_scheduler.total_time_transmitting
             individual_stats[ind] = {
                 "bytes_up": bytes_up,
                 "bytes_down": bytes_down,
@@ -428,7 +428,7 @@ export PYTHONPATH=%s
             with open(os.path.join(self.data_dir, "transfers.csv"), "a") as out_file:
                 for node in self.nodes:
                     for transfer in node.overlays[0].transfers:
-                        out_file.write("%s,%s,%d,%f,%f,%s,%d\n" % transfer)
+                        out_file.write("%s,%s,%d,%f,%s,%d\n" % transfer)
                     node.overlays[0].transfers = []
 
         with open(os.path.join(self.data_dir, "statistics.json"), "a") as out_file:

@@ -118,7 +118,7 @@ class DFLSimulation(LearningSimulation):
             out_file.write("peer,sample_id,sample\n")
 
         # Start the liveness check (every 5 minutes)
-        self.register_task("check_liveness", self.check_liveness, interval=300)
+        self.register_task("check_liveness", self.check_liveness, interval=600)
 
     def check_liveness(self):
         # Condition 1: At least one online node is training their model
@@ -131,7 +131,7 @@ class DFLSimulation(LearningSimulation):
         # Condition 2: There is an ongoing model transfer
         one_node_sending: bool = False
         for node in self.nodes:
-            if node.overlays[0].is_active and node.overlays[0].ongoing_outgoing_transfers:
+            if node.overlays[0].is_active and node.overlays[0].bw_scheduler.outgoing_transfers:
                 one_node_sending = True
                 break
 
