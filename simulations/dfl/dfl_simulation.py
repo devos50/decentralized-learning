@@ -174,17 +174,20 @@ class DFLSimulation(LearningSimulation):
         if self.args.accuracy_logging_interval > 0 and round_nr % self.args.accuracy_logging_interval == 0 and \
                 round_nr > self.latest_accuracy_check_round:
 
+            print("Will compute accuracy for round %d!" % round_nr)
             if not self.args.bypass_training:
-                print("Will compute accuracy for round %d!" % round_nr)
                 accuracy, loss = self.evaluator.evaluate_accuracy(model, device_name=self.args.accuracy_device_name)
-                with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
-                    group = "\"s=%d, a=%d\"" % (self.args.sample_size, self.args.num_aggregators)
-                    out_file.write("%s,%s,%f,%d,%d,%f,%f\n" % (self.args.dataset, group, get_event_loop().time(),
-                                                               ind, round_nr, accuracy, loss))
+            else:
+                accuracy, loss = 0, 0
 
-                    if self.args.store_best_models and accuracy > self.best_accuracy:
-                        self.best_accuracy = accuracy
-                        torch.save(model.state_dict(), os.path.join(self.data_dir, "best.model"))
+            with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
+                group = "\"s=%d, a=%d\"" % (self.args.sample_size, self.args.num_aggregators)
+                out_file.write("%s,%s,%f,%d,%d,%f,%f\n" % (self.args.dataset, group, get_event_loop().time(),
+                                                           ind, round_nr, accuracy, loss))
+
+                if not self.args.bypass_training and self.args.store_best_models and accuracy > self.best_accuracy:
+                    self.best_accuracy = accuracy
+                    torch.save(model.state_dict(), os.path.join(self.data_dir, "best.model"))
 
             self.latest_accuracy_check_round = round_nr
 
