@@ -136,10 +136,14 @@ class DFLSimulation(LearningSimulation):
                 one_node_sending = True
                 break
 
-        if not one_node_training and not one_node_sending:
+        one_node_aggregating: bool = False
+        for node in self.nodes:
+            if node.overlays[0].is_active and node.overlays[0].is_aggregating:
+                one_node_aggregating = True
+                break
+
+        if not one_node_training and not one_node_sending and not one_node_aggregating:
             raise RuntimeError("Liveness violated - MoDeST not making progress anymore")
-        else:
-            self.logger.info("Liveness check succeeded - c1: %d, c2: %d" % (one_node_training, one_node_sending))
 
     def start_nodes_training(self, active_nodes: List) -> None:
         # Update the membership status of inactive peers in all peer managers. This assumption should be
