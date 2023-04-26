@@ -143,6 +143,7 @@ class DFLSimulation(LearningSimulation):
                 break
 
         if not one_node_training and not one_node_sending and not one_node_aggregating:
+            self.flush_statistics()
             raise RuntimeError("Liveness violated - MoDeST not making progress anymore")
 
     def start_nodes_training(self, active_nodes: List) -> None:
