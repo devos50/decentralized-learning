@@ -203,9 +203,13 @@ class BWScheduler(TaskManager):
         self.cancel_all_pending_tasks()
         for transfer in self.outgoing_transfers:
             transfer.receiver_scheduler.on_incoming_transfer_complete(transfer)
+            self.logger.debug("Failing outgoing transfer %d: %s => %s", transfer.transfer_id, self.my_id,
+                              transfer.receiver_scheduler.my_id)
             transfer.fail()
         for transfer in self.incoming_transfers:
             transfer.sender_scheduler.on_outgoing_transfer_failed(transfer)
+            self.logger.debug("Failing incoming transfer %d: %s => %s", transfer.transfer_id, self.my_id,
+                              transfer.receiver_scheduler.my_id)
             transfer.fail()
 
         # Clean up all the pending requests
