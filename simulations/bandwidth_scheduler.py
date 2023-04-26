@@ -51,9 +51,11 @@ class BWScheduler(TaskManager):
 
     def unregister_transfer(self, transfer, is_outgoing=False):
         if is_outgoing:
-            self.outgoing_transfers.remove(transfer)
+            if transfer in self.outgoing_transfers:
+                self.outgoing_transfers.remove(transfer)
         else:
-            self.incoming_transfers.remove(transfer)
+            if transfer in self.incoming_transfers:
+                self.incoming_transfers.remove(transfer)
 
         if not self.incoming_transfers and not self.outgoing_transfers:
             self.is_active = False
