@@ -236,12 +236,6 @@ class LearningSimulation(TaskManager):
         if self.args.profile:
             yappi.start(builtins=True)
 
-        if self.args.profile:
-            yappi.stop()
-            yappi_stats = yappi.get_func_stats()
-            yappi_stats.sort("tsub")
-            yappi_stats.save(os.path.join(self.data_dir, "yappi.stats"), type='callgrind')
-
         start_time = time.time()
         if self.args.duration > 0:
             await asyncio.sleep(self.args.duration)
@@ -249,6 +243,12 @@ class LearningSimulation(TaskManager):
             self.loop.stop()
         else:
             self.logger.info("Running simulation for undefined time")
+
+        if self.args.profile:
+            yappi.stop()
+            yappi_stats = yappi.get_func_stats()
+            yappi_stats.sort("tsub")
+            yappi_stats.save(os.path.join(self.data_dir, "yappi.stats"), type='callgrind')
 
     def start_nodes_training(self, active_nodes: List) -> None:
         pass
