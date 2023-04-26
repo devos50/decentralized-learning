@@ -4,7 +4,7 @@ sending and receiving party.
 """
 import logging
 import random
-from asyncio import Future, get_event_loop
+from asyncio import Future, get_event_loop, InvalidStateError
 from typing import List
 
 from ipv8.taskmanager import TaskManager
@@ -244,11 +244,19 @@ class Transfer:
         self.reschedules: int = 0
 
     def finish(self):
-        self.complete_future.set_result(None)
+        try:
+            self.complete_future.set_result(None)
+        except InvalidStateError:
+            self.sender_scheduler.logger.error("Finish of transfer %s resulted in an InvalidStateError - "
+                                               "ignoring for now", self.transfer_id)
 
     def fail(self):
         self.update()
-        self.complete_future.set_exception(RuntimeError("Transfer interrupted"))
+        try:
+            self.complete_future.set_exception(RuntimeError("Transfer interrupted"))
+        except InvalidStateError:
+            self.sender_scheduler.logger.error("Failure of transfer %s resulted in an InvalidStateError - "
+                                               "ignoring for now", self.transfer_id)
 
     def update(self):
         transferred: float = (get_event_loop().time() - self.last_time_updated) * self.allocated_bw
