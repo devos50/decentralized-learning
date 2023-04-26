@@ -216,9 +216,9 @@ class BWScheduler(TaskManager):
         for request in self.outgoing_requests:
             if request in request.receiver_scheduler.incoming_requests:
                 request.receiver_scheduler.incoming_requests.remove(request)
-        for request in self.incoming_transfers:
-            if request in request.receiver_scheduler.incoming_requests:
-                request.receiver_scheduler.incoming_requests.remove(request)
+        for request in self.incoming_requests:
+            if request in request.sender_scheduler.outgoing_requests:
+                request.sender_scheduler.outgoing_requests.remove(request)
 
         self.incoming_transfers = []
         self.outgoing_transfers = []
