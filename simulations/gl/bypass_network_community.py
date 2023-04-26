@@ -1,6 +1,6 @@
 import asyncio
 import json
-from asyncio import sleep, ensure_future, Future
+from asyncio import ensure_future, Future
 from typing import Optional, List, Tuple
 
 from accdfl.gl.community import GLCommunity
@@ -28,8 +28,14 @@ class GLBypassNetworkCommunity(GLCommunity):
         return future
 
     def go_offline(self, graceful: bool = True) -> None:
-        super().go_offline(graceful=graceful)
+        super(GLCommunity, self).go_offline(graceful=graceful)
         self.bw_scheduler.kill_all_transfers()
+
+        if self.round_task_name and self.is_pending_task_active(self.round_task_name):
+            self.logger.info("Participant %s cancelling round task %s",
+                             self.peer_manager.get_my_short_id(), self.round_task_name)
+            self.cancel_pending_task(self.round_task_name)
+            self.round_task_name = None
 
     async def bypass_send(self, peer: Peer, serialized_response: bytes, binary_data: bytes):
         found: bool = False
