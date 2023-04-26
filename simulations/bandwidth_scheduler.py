@@ -66,8 +66,8 @@ class BWScheduler(TaskManager):
         """
         transfer: Transfer = Transfer(self, receiver_scheduler, transfer_size)
         self.outgoing_requests.append(transfer)
-        self.logger.info("Adding transfer request %d: %s => %s to the queue", transfer.transfer_id, self.my_id,
-                         transfer.receiver_scheduler.my_id)
+        self.logger.debug("Adding transfer request %d: %s => %s to the queue", transfer.transfer_id, self.my_id,
+                          transfer.receiver_scheduler.my_id)
         self.schedule()
 
         return transfer
@@ -95,7 +95,8 @@ class BWScheduler(TaskManager):
             else:
                 # Add this transfer as pending request in the queue of the receiver, try again later.
                 if request not in request.receiver_scheduler.incoming_requests:
-                    self.logger.info("Sender %s adding transfer %d as pending incoming request in the scheduler of receiver %s", self.my_id, request.transfer_id, request.receiver_scheduler.my_id)
+                    self.logger.debug("Sender %s adding transfer %d as pending incoming request in the scheduler of "
+                                      "receiver %s", self.my_id, request.transfer_id, request.receiver_scheduler.my_id)
                     request.receiver_scheduler.incoming_requests.append(request)
 
         for request in requests_scheduled:
@@ -105,8 +106,8 @@ class BWScheduler(TaskManager):
         """
         Schedule a particular request - we know for sure that there is bandwidth available for this transfer.
         """
-        self.logger.info("Starting transfer %d: %s => %s (allocated %d bw to this transfer, s %d/%d, r %d/%d)", request.transfer_id, self.my_id,
-                         request.receiver_scheduler.my_id, bw_to_allocate, self.get_allocated_outgoing_bw(), self.bw_limit, request.receiver_scheduler.get_allocated_incoming_bw(), request.receiver_scheduler.bw_limit)
+        self.logger.debug("Starting transfer %d: %s => %s (allocated %d bw to this transfer, s %d/%d, r %d/%d)", request.transfer_id, self.my_id,
+                          request.receiver_scheduler.my_id, bw_to_allocate, self.get_allocated_outgoing_bw(), self.bw_limit, request.receiver_scheduler.get_allocated_incoming_bw(), request.receiver_scheduler.bw_limit)
         request.allocated_bw = bw_to_allocate
         estimated_finish_time = request.transfer_size / request.allocated_bw
         request.start_time = get_event_loop().time()
@@ -118,14 +119,12 @@ class BWScheduler(TaskManager):
         if request in request.receiver_scheduler.incoming_requests:
             request.receiver_scheduler.incoming_requests.remove(request)
 
-        self.logger.info("Sender %s bw: %d/%d, receiver %s bw: %d/%d", self.my_id, self.get_allocated_outgoing_bw(), self.bw_limit, request.receiver_scheduler.my_id, request.receiver_scheduler.get_allocated_incoming_bw(), request.receiver_scheduler.bw_limit)
-
     def on_outgoing_transfer_complete(self, transfer):
         """
         An outgoing transfer has completed.
         """
-        self.logger.info("Transfer %d: %s => %s has completed", transfer.transfer_id, self.my_id,
-                         transfer.receiver_scheduler.my_id)
+        self.logger.debug("Transfer %d: %s => %s has completed", transfer.transfer_id, self.my_id,
+                          transfer.receiver_scheduler.my_id)
         transfer.finish()
 
         # Inform the other side
@@ -150,7 +149,8 @@ class BWScheduler(TaskManager):
 
         # Prioritize allocating bandwidth to ongoing transfers
         for transfer in self.incoming_transfers + self.incoming_requests:
-            self.logger.info("Informing sender %s about available bandwidth for transfer %d", transfer.sender_scheduler.my_id, transfer.transfer_id)
+            self.logger.debug("Informing sender %s about available bandwidth for transfer %d",
+                              transfer.sender_scheduler.my_id, transfer.transfer_id)
             transfer.sender_scheduler.on_receiver_inform_about_free_bandwidth(transfer)
 
             incoming_bw_left: int = self.bw_limit - self.get_allocated_incoming_bw()
@@ -167,13 +167,14 @@ class BWScheduler(TaskManager):
 
         # This is either an ongoing request or a pending request
         if transfer in self.outgoing_transfers:
-            self.logger.info("Sender %s got available bw notification from receiver %s for ongoing transfer %s", self.my_id, transfer.receiver_scheduler.my_id, transfer.transfer_id)
+            self.logger.debug("Sender %s got available bw notification from receiver %s for ongoing transfer %s",
+                              self.my_id, transfer.receiver_scheduler.my_id, transfer.transfer_id)
             # It's an ongoing transfer, increase the allocated bw of this transfer accordingly
             additional_bw_to_allocate = min(sender_bw_left, receiver_bw_left)
             if additional_bw_to_allocate > 0:
                 # We can allocate more bw to this transfer, do so and update everything accordingly.
-                self.logger.info("Allocating %d additional bw to transfer %d", additional_bw_to_allocate,
-                                 transfer.transfer_id)
+                self.logger.debug("Allocating %d additional bw to transfer %d", additional_bw_to_allocate,
+                                  transfer.transfer_id)
                 task_name = "transfer_%d_finish_%d" % (transfer.transfer_id, transfer.reschedules)
                 self.cancel_pending_task(task_name)
 
@@ -188,7 +189,8 @@ class BWScheduler(TaskManager):
                 self.register_task(new_task_name, self.on_outgoing_transfer_complete, transfer,
                                    delay=new_estimated_finish_time)
         elif transfer in self.outgoing_requests:
-            self.logger.info("Sender %s got available bw notification from receiver %s for pending request %s", self.my_id, transfer.receiver_scheduler.my_id, transfer.transfer_id)
+            self.logger.debug("Sender %s got available bw notification from receiver %s for pending request %s",
+                              self.my_id, transfer.receiver_scheduler.my_id, transfer.transfer_id)
             bw_to_allocate = min(sender_bw_left, receiver_bw_left)
             if bw_to_allocate > 0:
                 self.schedule_request(transfer, bw_to_allocate)

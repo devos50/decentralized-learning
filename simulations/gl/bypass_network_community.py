@@ -65,7 +65,7 @@ class GLBypassNetworkCommunity(GLCommunity):
                 json_data = json.loads(serialized_response.decode())
                 self.transfers.append((self.peer_manager.get_my_short_id(),
                                        node.overlays[0].peer_manager.get_my_short_id(), json_data["round"],
-                                       transfer_time, json_data["type"], transfer_success))
+                                       transfer_time, "model", transfer_success))
 
                 if transfer_success:
                     res = TransferResult(self.my_peer, serialized_response, binary_data, 0)
