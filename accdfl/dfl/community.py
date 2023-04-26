@@ -570,6 +570,11 @@ class DFLCommunity(LearningCommunity):
         self.logger.info("Aggregator %s triggered aggregation timeout in round %d - wrapping up",
                          self.peer_manager.get_my_short_id(), model_round)
 
+        if index < self.aggregate_sample_estimate:
+            self.logger.info("Aggregator %s triggered aggregation timeout in round %d but it's outdated - ignoring",
+                             self.peer_manager.get_my_short_id(), model_round)
+            return
+
         if self.has_enough_trained_models_for_liveness():
             ensure_future(self.aggregator_complete_round(model_round, index))
         else:
