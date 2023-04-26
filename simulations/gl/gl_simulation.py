@@ -119,9 +119,6 @@ class GLSimulation(LearningSimulation):
             other_nodes = [n for n in self.nodes if n != node]
             node.overlays[0].nodes = other_nodes
 
-        for node in self.nodes:
-            assert len(node.overlays[0].nodes) == 20
-
     async def on_round_complete(self, peer_ind: int, round_nr: int):
         # Compute model accuracy
         if self.args.accuracy_logging_interval > 0 and not self.args.accuracy_logging_interval_is_in_sec and \
