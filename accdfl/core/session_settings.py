@@ -28,10 +28,11 @@ class DFLSettings:
     sample_size: int
     num_aggregators: int
     success_fraction: float = 1
+    liveness_success_fraction: float = 0.5
     ping_timeout: float = 5
     inactivity_threshold: int = 50
     fixed_aggregator: Optional[bytes] = None
-    aggregation_timeout: float = 0
+    aggregation_timeout: float = 300
 
 
 @dataclass

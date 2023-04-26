@@ -68,6 +68,7 @@ class DFLSimulation(LearningSimulation):
             sample_size=self.args.sample_size,
             num_aggregators=self.args.num_aggregators,
             success_fraction=self.args.success_fraction,
+            liveness_success_fraction=self.args.liveness_success_fraction,
             ping_timeout=5,
             inactivity_threshold=1000,
             fixed_aggregator=peer_pk if self.args.fix_aggregator else None,
