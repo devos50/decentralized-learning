@@ -51,8 +51,9 @@ class DFLBypassNetworkCommunity(DFLCommunity):
                         transfer_success = False
                     transfer_time = asyncio.get_event_loop().time() - transfer_start_time
 
-                    self.endpoint.bytes_up += transfer.get_transferred_bytes()
-                    node.overlays[0].endpoint.bytes_down += transfer.get_transferred_bytes()
+                    transferred_bytes: int = int(transfer.get_transferred_bytes())
+                    self.endpoint.bytes_up += transferred_bytes
+                    node.overlays[0].endpoint.bytes_down += transferred_bytes
 
                     self.logger.info("Model transfer %s => %s started at t=%f and took %f s.",
                                      self.peer_manager.get_my_short_id(),
