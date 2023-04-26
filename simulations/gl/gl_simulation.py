@@ -90,8 +90,12 @@ class GLSimulation(LearningSimulation):
             self.model_manager.process_incoming_trained_model(b"%d" % ind, model)
 
         if self.args.dl_accuracy_method == "aggregate":
-            avg_model = self.model_manager.aggregate_trained_models()
-            accuracy, loss = self.evaluator.evaluate_accuracy(avg_model, device_name=self.args.accuracy_device_name)
+            if not self.args.bypass_training:
+                avg_model = self.model_manager.aggregate_trained_models()
+                accuracy, loss = self.evaluator.evaluate_accuracy(avg_model, device_name=self.args.accuracy_device_name)
+            else:
+                accuracy, loss = 0, 0
+
             with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
                 out_file.write("%s,GL,%f,%d,%d,%f,%f\n" % (self.args.dataset, get_event_loop().time(), 0,
                                                            int(cur_time), accuracy, loss))
@@ -127,8 +131,12 @@ class GLSimulation(LearningSimulation):
             try:
                 print("Testing model of peer %d on device %s..." % (peer_ind + 1, self.args.accuracy_device_name))
                 model = self.nodes[peer_ind].overlays[0].model_manager.model
-                accuracy, loss = self.evaluator.evaluate_accuracy(
-                    model, device_name=self.args.accuracy_device_name)
+                if not self.args.bypass_training:
+                    accuracy, loss = self.evaluator.evaluate_accuracy(
+                        model, device_name=self.args.accuracy_device_name)
+                else:
+                    accuracy, loss = 0, 0
+
                 with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
                     out_file.write("%s,GL,%f,%d,%d,%f,%f\n" %
                                    (self.args.dataset, get_event_loop().time(),
