@@ -8,6 +8,7 @@ import stat
 import subprocess
 import time
 from argparse import Namespace
+from base64 import b64encode
 from random import Random
 from statistics import median, mean
 from typing import Dict, List, Optional, Tuple
@@ -46,7 +47,7 @@ class LearningSimulation(TaskManager):
         self.args = args
         self.session_settings: Optional[SessionSettings] = None
         self.nodes = []
-        self.data_dir = os.path.join("data", "n_%d_%s" % (self.args.peers, self.args.dataset))
+        self.data_dir = os.path.join("data", "n_%d_%s_sd%d" % (self.args.peers, self.args.dataset, self.args.seed))
         self.evaluator = None
         self.logger = None
         self.model_manager: Optional[ModelManager] = None
@@ -56,7 +57,11 @@ class LearningSimulation(TaskManager):
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = ConfigBuilder().clear_keys().clear_overlays()
-        builder.add_key("my peer", "curve25519", os.path.join(self.data_dir, f"ec{peer_id}.pem"))
+
+        key_str = chr(peer_id).encode() * 1000
+        key_base = b"LibNaCLSK:%s" % key_str[:68]
+        key_material = b64encode(key_base).decode()
+        builder.add_key_from_bin("my peer", key_material, file_path=os.path.join(self.data_dir, f"ec{peer_id}.pem"))
         return builder
 
     async def start_ipv8_nodes(self) -> None:
@@ -108,7 +113,7 @@ class LearningSimulation(TaskManager):
         """
         Set the relevant traces.
         """
-        rand = Random(self.args.traces_seed)
+        rand = Random(self.args.seed)
         if self.args.availability_traces:
             self.logger.info("Applying availability trace file %s", self.args.availability_traces)
             with open(self.args.availability_traces, "rb") as traces_file:

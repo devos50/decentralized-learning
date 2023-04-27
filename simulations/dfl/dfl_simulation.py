@@ -23,8 +23,10 @@ class DFLSimulation(LearningSimulation):
         super().__init__(args)
         self.latest_accuracy_check_round: int = 0
         self.best_accuracy: float = 0.0
-        self.data_dir = os.path.join("data", "n_%d_%s_s%d_a%d_dfl" % (self.args.peers, self.args.dataset,
-                                                                      self.args.sample_size, self.args.num_aggregators))
+        self.data_dir = os.path.join("data", "n_%d_%s_s%d_a%d_sd%d_dfl" % (self.args.peers, self.args.dataset,
+                                                                           self.args.sample_size,
+                                                                           self.args.num_aggregators,
+                                                                           self.args.seed))
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = super().get_ipv8_builder(peer_id)
@@ -162,7 +164,7 @@ class DFLSimulation(LearningSimulation):
         # We will now start round 1. The nodes that participate in the first round are always selected from the pool of
         # active peers. If we use our sampling function, training might not start at all if many offline nodes
         # are selected for the first round.
-        rand_sampler = Random(42)
+        rand_sampler = Random(self.args.seed)
         for initial_active_node in rand_sampler.sample(active_nodes, min(len(active_nodes), self.args.sample_size)):
             overlay = initial_active_node.overlays[0]
             self.logger.info("Activating peer %s in round 1", overlay.peer_manager.get_my_short_id())
