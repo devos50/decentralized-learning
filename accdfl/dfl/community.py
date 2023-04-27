@@ -600,12 +600,18 @@ class DFLCommunity(LearningCommunity):
                          self.peer_manager.get_my_short_id(), model_round - 1, peer_id)
 
         if model_round > self.train_sample_estimate:
+            self.logger.info("Participant %s interrupting current training task for round %d",
+                             self.peer_manager.get_my_short_id(), self.train_sample_estimate)
             self.train_sample_estimate = model_round
             self.cancel_current_training_task()
             self.completed_training = False
         if model_round == self.train_sample_estimate and not self.ongoing_training_task_name and not self.completed_training:
             self.model_manager.model = model
             self.train_in_round(model_round)
+        else:
+            self.logger.info("Participant %s NOT starting training round %d (train sample: %d, ongoing train task: %s, "
+                             "completed training: %d)", self.peer_manager.get_my_short_id(), model_round,
+                             self.train_sample_estimate, self.ongoing_training_task_name, self.completed_training)
 
     async def on_send_complete(self, result: TransferResult):
         await super().on_send_complete(result)
