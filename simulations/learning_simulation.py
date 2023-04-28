@@ -201,7 +201,7 @@ class LearningSimulation(TaskManager):
 
         if self.args.bypass_model_transfers:
             with open(os.path.join(self.data_dir, "transfers.csv"), "w") as out_file:
-                out_file.write("from,to,round,duration,type,success\n")
+                out_file.write("from,to,round,start_time,duration,type,success\n")
 
     def check_activity(self):
         """
@@ -436,7 +436,7 @@ export PYTHONPATH=%s
             with open(os.path.join(self.data_dir, "transfers.csv"), "a") as out_file:
                 for node in self.nodes:
                     for transfer in node.overlays[0].transfers:
-                        out_file.write("%s,%s,%d,%f,%s,%d\n" % transfer)
+                        out_file.write("%s,%s,%d,%f,%f,%s,%d\n" % transfer)
                     node.overlays[0].transfers = []
 
         with open(os.path.join(self.data_dir, "statistics.json"), "a") as out_file:

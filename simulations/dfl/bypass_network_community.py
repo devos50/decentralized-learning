@@ -1,8 +1,7 @@
 import asyncio
 import json
-import random
 from asyncio import ensure_future, Future
-from typing import List, Tuple, Set
+from typing import List, Tuple
 
 from accdfl.dfl.community import DFLCommunity
 from accdfl.util.eva.result import TransferResult
@@ -17,7 +16,7 @@ class DFLBypassNetworkCommunity(DFLCommunity):
         self.nodes = None
         self.available_for_send: float = 0
         self.available_for_receive: float = 0
-        self.transfers: List[Tuple[str, str, int, float, str, bool]] = []
+        self.transfers: List[Tuple[str, str, int, float, float, str, bool]] = []
 
         self.bw_scheduler: BWScheduler = BWScheduler(self.peer_manager.get_my_short_id())
 
@@ -41,10 +40,10 @@ class DFLBypassNetworkCommunity(DFLCommunity):
                 if not node.overlays[0].is_active:
                     break
 
+                transfer_start_time = asyncio.get_event_loop().time()
                 if self.bw_scheduler.bw_limit > 0:
                     transfer_size_kbits = (len(binary_data) + len(serialized_response)) / 1024 * 8
                     transfer = self.bw_scheduler.add_transfer(node.overlays[0].bw_scheduler, transfer_size_kbits)
-                    transfer_start_time = asyncio.get_event_loop().time()
                     try:
                         await transfer.complete_future
                     except RuntimeError:
@@ -66,7 +65,7 @@ class DFLBypassNetworkCommunity(DFLCommunity):
                 json_data = json.loads(serialized_response.decode())
                 self.transfers.append((self.peer_manager.get_my_short_id(),
                                        node.overlays[0].peer_manager.get_my_short_id(), json_data["round"],
-                                       transfer_time, json_data["type"], transfer_success))
+                                       transfer_start_time, transfer_time, json_data["type"], transfer_success))
 
                 if transfer_success:
                     res = TransferResult(self.my_peer, serialized_response, binary_data, 0)
