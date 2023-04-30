@@ -15,8 +15,6 @@ class GLBypassNetworkCommunity(GLCommunity):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.bandwidth: Optional[float] = None
-        self.available_for_send: float = 0
-        self.available_for_receive: float = 0
         self.transfers: List[Tuple[str, str, int, float, float, str, bool]] = []
 
         self.bw_scheduler: BWScheduler = BWScheduler(self.peer_manager.get_my_short_id())

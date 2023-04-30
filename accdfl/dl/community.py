@@ -28,7 +28,7 @@ class DLCommunity(LearningCommunity):
         """
         Start to participate in the training process.
         """
-        assert self.did_setup, "Process has not been setup - call setup() first"
+        super().start()
         if self.neighbours:
             self.start_next_round()
         else:
@@ -65,8 +65,6 @@ class DLCommunity(LearningCommunity):
         if self.settings.dl.topology == "exp-one-peer":
             nb_ind = (self.round - 1) % len(self.neighbours)
             to_send = [self.neighbours[nb_ind]]
-        else:
-            raise RuntimeError("Unknown DL topology %s" % self.settings.dl.topology)
 
         for peer_pk in to_send:
             peer = self.get_peer_by_pk(peer_pk)
@@ -75,6 +73,9 @@ class DLCommunity(LearningCommunity):
                                     self.peer_manager.get_my_short_id(), self.peer_manager.get_short_id(peer_pk))
                 continue
 
+            self.logger.info("Participant %s sending model of round %d to participant %s",
+                             self.peer_manager.get_my_short_id(), self.round,
+                             self.peer_manager.get_short_id(peer.public_key.key_to_bin()))
             ensure_future(self.eva_send_model(self.round, self.model_manager.model, peer))
 
         self.check_round_complete()
