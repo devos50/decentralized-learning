@@ -57,6 +57,20 @@ class ModelTrainer:
                          self.settings.learning.learning_rate, self.settings.learning.weight_decay)
 
         start_time = time.time()
+        if self.settings.is_simulation:
+            # If we're running a simulation, we should advance the time of the DiscreteLoop with either the simulated
+            # elapsed time or the elapsed real-world time for training. Otherwise,training would be considered instant
+            # in our simulations. We do this before the actual training so if our sleep gets interrupted, the local
+            # model will not be updated.
+            if self.simulated_speed:
+                elapsed_time = AUGMENTATION_FACTOR_SIM * local_steps * self.settings.learning.batch_size * (self.simulated_speed / 1000)
+            else:
+                elapsed_time = time.time() - start_time
+
+            self.logger.info("Model training took %f s.", elapsed_time)
+            await sleep(elapsed_time)
+            self.total_training_time += elapsed_time
+
         samples_trained_on = 0
         for local_step in range(local_steps):
             if not self.settings.bypass_training:
@@ -86,19 +100,6 @@ class ModelTrainer:
                 self.logger.debug('d-sgd.next node backward propagation (step %d/%d)', local_step, local_steps)
                 loss.backward()
                 optimizer.optimizer.step()
-
-        if self.settings.is_simulation:
-            # If we're running a simulation, we should advance the time of the DiscreteLoop with either the simulated
-            # elapsed time or the elapsed real-world time for training. Otherwise,training would be considered instant
-            # in our simulations.
-            if self.simulated_speed:
-                elapsed_time = AUGMENTATION_FACTOR_SIM * local_steps * self.settings.learning.batch_size * (self.simulated_speed / 1000)
-            else:
-                elapsed_time = time.time() - start_time
-
-            self.logger.info("Model training took %f s.", elapsed_time)
-            await sleep(elapsed_time)
-            self.total_training_time += elapsed_time
 
         self.is_training = False
 
