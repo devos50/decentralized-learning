@@ -2,11 +2,11 @@ import asyncio
 import copy
 import json
 import pickle
-import random
 import time
 from asyncio import Future, ensure_future
 from binascii import unhexlify, hexlify
 from math import floor
+from random import Random
 from typing import Dict, Optional, List, Tuple
 
 import torch
@@ -32,6 +32,8 @@ class DFLCommunity(LearningCommunity):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        self.random = Random(int.from_bytes(self.my_peer.public_key.key_to_bin(), 'big'))
 
         # Statistics
         self.active_peers_history = []
@@ -153,7 +155,7 @@ class DFLCommunity(LearningCommunity):
         if self.my_id in active_peer_pks:
             active_peer_pks.remove(self.my_id)
 
-        random_peer_pks = random.sample(active_peer_pks, min(self.sample_manager.sample_size, len(active_peer_pks)))
+        random_peer_pks = self.random.sample(active_peer_pks, min(self.sample_manager.sample_size, len(active_peer_pks)))
         for peer_pk in random_peer_pks:
             peer = self.get_peer_by_pk(peer_pk)
             if not peer:
@@ -362,7 +364,7 @@ class DFLCommunity(LearningCommunity):
                          self.peer_manager.get_my_short_id(), sample_index - 1)
 
         # For load balancing purposes, shuffle this list
-        random.shuffle(participants)
+        self.random.shuffle(participants)
 
         population_view = copy.deepcopy(self.peer_manager.last_active)
         for peer_pk in participants:
@@ -396,7 +398,7 @@ class DFLCommunity(LearningCommunity):
         population_view = copy.deepcopy(self.peer_manager.last_active)
 
         # For load balancing purposes, shuffle this list
-        random.shuffle(aggregators)
+        self.random.shuffle(aggregators)
 
         for aggregator in aggregators:
             if aggregator == self.my_id:
