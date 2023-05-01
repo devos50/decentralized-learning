@@ -46,6 +46,10 @@ class DLBypassNetworkCommunity(DLCommunity):
                 if self.bw_scheduler.bw_limit > 0:
                     transfer_size_kbits = (len(binary_data) + len(serialized_response)) / 1024 * 8
                     transfer = self.bw_scheduler.add_transfer(node.overlays[0].bw_scheduler, transfer_size_kbits)
+                    self.logger.info("Model transfer %s => %s started at t=%f",
+                                     self.peer_manager.get_my_short_id(),
+                                     node.overlays[0].peer_manager.get_my_short_id(),
+                                     transfer_start_time)
                     try:
                         await transfer.complete_future
                     except RuntimeError:
@@ -56,9 +60,10 @@ class DLBypassNetworkCommunity(DLCommunity):
                     self.endpoint.bytes_up += transferred_bytes
                     node.overlays[0].endpoint.bytes_down += transferred_bytes
 
-                    self.logger.info("Model transfer %s => %s started at t=%f and took %f s.",
+                    self.logger.info("Model transfer %s => %s %s at t=%f and took %f s.",
                                      self.peer_manager.get_my_short_id(),
                                      node.overlays[0].peer_manager.get_my_short_id(),
+                                     "completed" if transfer_success else "failed",
                                      transfer_start_time, transfer_time)
                 else:
                     self.endpoint.bytes_up += len(binary_data) + len(serialized_response)

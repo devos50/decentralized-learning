@@ -1,7 +1,7 @@
 import logging
 import os
 import time
-from asyncio import sleep
+from asyncio import sleep, CancelledError, get_event_loop
 from typing import Optional
 
 import torch
@@ -56,20 +56,26 @@ class ModelTrainer:
                          local_steps, device_name, self.settings.learning.batch_size,
                          self.settings.learning.learning_rate, self.settings.learning.weight_decay)
 
-        start_time = time.time()
         if self.settings.is_simulation:
             # If we're running a simulation, we should advance the time of the DiscreteLoop with either the simulated
             # elapsed time or the elapsed real-world time for training. Otherwise,training would be considered instant
             # in our simulations. We do this before the actual training so if our sleep gets interrupted, the local
             # model will not be updated.
+            start_time = get_event_loop().time()
             if self.simulated_speed:
                 elapsed_time = AUGMENTATION_FACTOR_SIM * local_steps * self.settings.learning.batch_size * (self.simulated_speed / 1000)
             else:
                 elapsed_time = time.time() - start_time
 
-            self.logger.info("Model training took %f s.", elapsed_time)
-            await sleep(elapsed_time)
+            try:
+                await sleep(elapsed_time)
+            except CancelledError:
+                self.is_training = False
+                self.total_training_time += (get_event_loop().time() - start_time)
+                return 0  # Training got interrupted - don't update the model
             self.total_training_time += elapsed_time
+
+            self.logger.info("Model training completed and took %f s.", elapsed_time)
 
         samples_trained_on = 0
         for local_step in range(local_steps):

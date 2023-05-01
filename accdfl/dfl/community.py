@@ -613,8 +613,6 @@ class DFLCommunity(LearningCommunity):
                          self.peer_manager.get_my_short_id(), model_round - 1, peer_id)
 
         if model_round > self.train_sample_estimate:
-            self.logger.info("Participant %s interrupting current training task for round %d",
-                             self.peer_manager.get_my_short_id(), self.train_sample_estimate)
             if model_round > 1:  # We don't want to log this for the first round
                 self.log_event(self.train_sample_estimate, "interrupt_training")
             self.train_sample_estimate = model_round
