@@ -88,6 +88,8 @@ class LearningSimulation(TaskManager):
                 overlay.cancel_pending_task("_check_tasks")  # To ignore the warning for long-running tasks
                 overlay.logger = SimulationLoggerAdapter(overlay.logger, {})
                 overlay.peer_manager.logger = SimulationLoggerAdapter(overlay.peer_manager.logger, {})
+                if self.args.bypass_model_transfers:
+                    overlay.bw_scheduler.logger = SimulationLoggerAdapter(overlay.peer_manager.logger, {})
 
             self.nodes.append(instance)
 

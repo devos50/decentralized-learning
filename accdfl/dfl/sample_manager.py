@@ -24,16 +24,3 @@ class SampleManager:
             hashes.append((peer_id, h.digest()))
         hashes = sorted(hashes, key=lambda t: t[1])
         return [t[0] for t in hashes]
-
-    def get_sample_for_round(self, round: int) -> List[bytes]:
-        if round in self.sample_cache:
-            return self.sample_cache[round]
-
-        peers = self.peer_manager.get_active_peers(round)
-        sample = self.get_ordered_sample_list(round, peers)[:self.sample_size]
-        self.sample_cache[round] = sample
-
-        return sample
-
-    def is_participant_in_round(self, peer_id: bytes, round: int) -> bool:
-        return peer_id in self.get_sample_for_round(round)

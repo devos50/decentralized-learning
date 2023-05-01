@@ -201,7 +201,10 @@ class BWScheduler(TaskManager):
             raise RuntimeError("We do not know about request %d!" % transfer.transfer_id)
 
     def kill_all_transfers(self):
-        self.logger.warning("Interrupting all transfers of participant %s in the scheduler", self.my_id)
+        transfer_count: int = len(self.incoming_transfers) + len(self.outgoing_transfers)
+        if transfer_count > 0:
+            self.logger.warning("Interrupting all %d transfers of participant %s in the scheduler",
+                                transfer_count, self.my_id)
         self.cancel_all_pending_tasks()
         for transfer in self.outgoing_transfers:
             transfer.receiver_scheduler.on_incoming_transfer_complete(transfer)
