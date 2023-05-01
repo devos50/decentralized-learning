@@ -136,7 +136,7 @@ class LearningSimulation(TaskManager):
                 node.overlays[0].model_manager.model_trainer.simulated_speed = data[device_ids[ind]]["computation"]
                 if self.args.bypass_model_transfers:
                     # Also apply the network latencies
-                    bw_limit: int = int(data[ind + 1]["communication"])
+                    bw_limit: int = int(data[ind + 1]["communication"]) * 1024 // 8
                     node.overlays[0].bw_scheduler.bw_limit = bw_limit
                     nodes_bws[node.overlays[0].my_peer.public_key.key_to_bin()] = bw_limit
 

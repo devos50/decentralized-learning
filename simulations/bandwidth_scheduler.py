@@ -14,7 +14,7 @@ class BWScheduler(TaskManager):
 
     def __init__(self, my_id: str) -> None:
         super().__init__()
-        self.bw_limit: int = 0  # in KB/s
+        self.bw_limit: int = 0  # in bytes/s
         self.outgoing_requests: List[Transfer] = []  # Outgoing transfers waiting to be started
         self.incoming_requests: List[Transfer] = []  # Incoming transfers waiting to be started
 
@@ -61,10 +61,10 @@ class BWScheduler(TaskManager):
             self.is_active = False
             self.total_time_transmitting += (get_event_loop().time() - self.became_active)
 
-    def add_transfer(self, receiver_scheduler: "BWScheduler", transfer_size: float) -> "Transfer":
+    def add_transfer(self, receiver_scheduler: "BWScheduler", transfer_size: int) -> "Transfer":
         """
         A new transfer request arrived.
-        :param transfer_size: Size of the transfer, in kilobit
+        :param transfer_size: Size of the transfer, in bytes
         """
         transfer: Transfer = Transfer(self, receiver_scheduler, transfer_size)
         self.outgoing_requests.append(transfer)
@@ -236,11 +236,11 @@ class Transfer:
     Represents a bandwidth transfer.
     """
 
-    def __init__(self, sender_scheduler: BWScheduler, receiver_scheduler: BWScheduler, transfer_size: float):
+    def __init__(self, sender_scheduler: BWScheduler, receiver_scheduler: BWScheduler, transfer_size: int):
         self.transfer_id = random.randint(0, 100000000000)
         self.sender_scheduler: BWScheduler = sender_scheduler
         self.receiver_scheduler: BWScheduler = receiver_scheduler
-        self.transfer_size: float = transfer_size
+        self.transfer_size: int = transfer_size
         self.transferred: int = 0
         self.allocated_bw: int = 0
         self.start_time: int = -1
@@ -249,6 +249,7 @@ class Transfer:
         self.reschedules: int = 0
 
     def finish(self):
+        self.update()
         try:
             self.complete_future.set_result(None)
         except InvalidStateError:
@@ -268,5 +269,5 @@ class Transfer:
         self.transferred += transferred
         self.last_time_updated = get_event_loop().time()
 
-    def get_transferred_bytes(self):
-        return self.transferred * 1024 * 8
+    def get_transferred_bytes(self) -> int:
+        return self.transferred
