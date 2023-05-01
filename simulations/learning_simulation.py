@@ -131,11 +131,17 @@ class LearningSimulation(TaskManager):
                 data = pickle.load(traces_file)
 
             device_ids = rand.sample(list(data.keys()), self.args.peers)
+            nodes_bws: Dict[bytes, int] = {}
             for ind, node in enumerate(self.nodes):
                 node.overlays[0].model_manager.model_trainer.simulated_speed = data[device_ids[ind]]["computation"]
                 if self.args.bypass_model_transfers:
                     # Also apply the network latencies
-                    node.overlays[0].bw_scheduler.bw_limit = int(data[ind + 1]["communication"])
+                    bw_limit: int = int(data[ind + 1]["communication"])
+                    node.overlays[0].bw_scheduler.bw_limit = bw_limit
+                    nodes_bws[node.overlays[0].my_peer.public_key.key_to_bin()] = bw_limit
+
+            for node in self.nodes:
+                node.overlays[0].other_nodes_bws = nodes_bws
 
         self.logger.info("Traces applied!")
 

@@ -85,6 +85,8 @@ class DFLCommunity(LearningCommunity):
         # Components
         self.sample_manager: Optional[SampleManager] = None  # Initialized when the process is setup
 
+        self.other_nodes_bws: Dict[bytes, int] = {}
+
         self.add_message_handler(AdvertiseMembership, self.on_membership_advertisement)
         self.add_message_handler(PingPayload, self.on_ping)
         self.add_message_handler(PongPayload, self.on_pong)
@@ -209,6 +211,12 @@ class DFLCommunity(LearningCommunity):
         self.logger.info("Participant %s starts to determine %d available peers in sample %d (candidates: %d)",
                          self.peer_manager.get_my_short_id(), count, sample,
                          len(candidate_peers))
+
+        if getting_aggregators and not self.settings.dfl.fixed_aggregator and self.other_nodes_bws:
+            # Filter the candidates in the sample and sort them based on their bandwidth capabilities
+            candidate_peers = sorted(candidate_peers[:self.settings.dfl.sample_size],
+                                     key=lambda pk: self.other_nodes_bws[pk], reverse=True)
+
         cache = PingPeersRequestCache(self, candidate_peers, count, sample)
         self.request_cache.add(cache)
         cache.start()
