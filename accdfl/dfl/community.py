@@ -587,18 +587,18 @@ class DFLCommunity(LearningCommunity):
                              self.peer_manager.get_my_short_id(), model_round)
             return
 
-        #if self.has_enough_trained_models_for_liveness():
-        self.log_event(model_round, "aggregate_timeout")
-        ensure_future(self.aggregator_complete_round(model_round, index))
-        # else:
-        #     self.aggregate_start_time = 0
-        #     self.completed_aggregation = True
-        #     self.is_aggregating = False
-        #     self.logger.info("Aggregator %s triggered aggregation timeout in round %d but didn't receive sufficient "
-        #                      "models to continue (%d models received)",
-        #                      self.peer_manager.get_my_short_id(), model_round,
-        #                      len(self.model_manager.incoming_trained_models))
-        #     self.model_manager.reset_incoming_trained_models()
+        if self.has_enough_trained_models_for_liveness():
+            self.log_event(model_round, "aggregate_timeout")
+            ensure_future(self.aggregator_complete_round(model_round, index))
+        else:
+            self.aggregate_start_time = 0
+            self.completed_aggregation = True
+            self.is_aggregating = False
+            self.logger.info("Aggregator %s triggered aggregation timeout in round %d but didn't receive sufficient "
+                             "models to continue (%d models received)",
+                             self.peer_manager.get_my_short_id(), model_round,
+                             len(self.model_manager.incoming_trained_models))
+            self.model_manager.reset_incoming_trained_models()
 
     def received_aggregated_model(self, peer: Peer, model_round: int, model: nn.Module) -> None:
         if self.shutting_down:
