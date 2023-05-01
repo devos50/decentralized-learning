@@ -120,6 +120,9 @@ class DFLSimulation(LearningSimulation):
         with open(os.path.join(self.data_dir, "derived_samples.csv"), "w") as out_file:
             out_file.write("peer,sample_id,sample\n")
 
+        with open(os.path.join(self.data_dir, "events.csv"), "w") as out_file:
+            out_file.write("time,peer,round,event\n")
+
         # Start the liveness check (every 5 minutes)
         self.register_task("check_liveness", self.check_liveness, interval=600)
 
@@ -263,3 +266,14 @@ class DFLSimulation(LearningSimulation):
                     sample_str = "-".join(sorted(sample))
                     out_file.write("%d,%d,%s\n" % (peer_id + 1, sample_id, sample_str))
                 node.overlays[0].derived_samples = []
+
+        # Write away all events
+        new_events = []
+        for node in self.nodes:
+            for event in node.overlays[0].events:
+                new_events.append(event)
+        new_events = sorted(new_events, key=lambda x: x[0])
+
+        with open(os.path.join(self.data_dir, "events.csv"), "a") as out_file:
+            for event in new_events:
+                out_file.write("%f,%s,%d,%s\n" % event)

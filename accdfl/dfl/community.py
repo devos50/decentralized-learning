@@ -35,7 +35,6 @@ class DFLCommunity(LearningCommunity):
 
         # Statistics
         self.active_peers_history = []
-
         self.bw_in_stats: Dict[str, Dict[str, int]] = {
             "bytes": {
                 "model": 0,
@@ -71,6 +70,7 @@ class DFLCommunity(LearningCommunity):
         }
         self.determine_sample_durations = []
         self.derived_samples: List[Tuple[int, List[str]]] = []
+        self.events: List[Tuple[float, str, int, str]] = []
 
         # State
         self.ongoing_training_task_name: Optional[str] = None
@@ -88,6 +88,10 @@ class DFLCommunity(LearningCommunity):
         self.add_message_handler(AdvertiseMembership, self.on_membership_advertisement)
         self.add_message_handler(PingPayload, self.on_ping)
         self.add_message_handler(PongPayload, self.on_pong)
+
+    def log_event(self, round: int, event: str):
+        cur_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
+        self.events.append((cur_time, self.peer_manager.get_my_short_id(), round, event))
 
     def start(self, advertise_join: bool = False):
         """
@@ -316,9 +320,12 @@ class DFLCommunity(LearningCommunity):
 
         self.logger.info("Participant %s starts participating in round %d", self.peer_manager.get_my_short_id(), round)
         self.completed_training = False
+        self.log_event(round, "start_train")
 
         # 1. Train the model
         await self.model_manager.train()
+
+        self.log_event(round, "done_train")
 
         # It might be that we went offline at this point - check for it
         if not self.is_active:
@@ -452,8 +459,10 @@ class DFLCommunity(LearningCommunity):
         incoming_model = unserialize_model(serialized_model, self.settings.dataset, architecture=self.settings.model)
 
         if json_data["type"] == "trained_model":
+            self.log_event(json_data["round"], "received_trained_model")
             await self.received_trained_model(result.peer, json_data["round"], incoming_model)
         elif json_data["type"] == "aggregated_model":
+            self.log_event(json_data["round"], "received_aggregated_model")
             self.received_aggregated_model(result.peer, json_data["round"], incoming_model)
 
     def has_enough_trained_models(self) -> bool:
@@ -480,6 +489,7 @@ class DFLCommunity(LearningCommunity):
         if index > self.aggregate_sample_estimate:
             self.logger.info("Participant %s received trained model for round %d for the first time - "
                              "starting to aggregate", self.peer_manager.get_my_short_id(), model_round)
+            self.log_event(model_round, "start_aggregate")
 
             # Set the round timeout
             if self.settings.dfl.aggregation_timeout > 0:
@@ -530,6 +540,8 @@ class DFLCommunity(LearningCommunity):
             self.is_aggregating = False
             return
 
+        self.log_event(model_round, "done_aggregation")
+
         # 3.1. Aggregate these models
         self.logger.info("Aggregator %s will average the models of round %d",
                          self.peer_manager.get_my_short_id(), model_round)
@@ -576,6 +588,7 @@ class DFLCommunity(LearningCommunity):
             return
 
         #if self.has_enough_trained_models_for_liveness():
+        self.log_event(model_round, "aggregate_timeout")
         ensure_future(self.aggregator_complete_round(model_round, index))
         # else:
         #     self.aggregate_start_time = 0
@@ -602,6 +615,8 @@ class DFLCommunity(LearningCommunity):
         if model_round > self.train_sample_estimate:
             self.logger.info("Participant %s interrupting current training task for round %d",
                              self.peer_manager.get_my_short_id(), self.train_sample_estimate)
+            if model_round > 1:  # We don't want to log this for the first round
+                self.log_event(self.train_sample_estimate, "interrupt_training")
             self.train_sample_estimate = model_round
             self.cancel_current_training_task()
             self.completed_training = False
