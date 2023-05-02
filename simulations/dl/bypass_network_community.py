@@ -18,7 +18,8 @@ class DLBypassNetworkCommunity(DLCommunity):
         self.bandwidth: Optional[float] = None
         self.transfers: List[Tuple[str, str, int, float, float, str, bool]] = []
 
-        self.bw_scheduler: BWScheduler = BWScheduler(self.peer_manager.get_my_short_id())
+        self.bw_scheduler: BWScheduler = BWScheduler(self.my_peer.public_key.key_to_bin(),
+                                                     self.peer_manager.get_my_short_id())
 
     def schedule_eva_send_model(self, peer: Peer, serialized_response: bytes, binary_data: bytes, start_time: float) -> Future:
         # Schedule the transfer

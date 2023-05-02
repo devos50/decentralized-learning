@@ -18,3 +18,9 @@ class PingPayload:
 class PongPayload:
     round: int
     identifier: int
+
+
+@dataclass(msg_id=13)
+class AggAckPayload:
+    round: int
+    success: bool

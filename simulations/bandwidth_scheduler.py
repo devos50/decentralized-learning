@@ -5,14 +5,14 @@ sending and receiving party.
 import logging
 import random
 from asyncio import Future, get_event_loop, InvalidStateError
-from typing import List
+from typing import List, Dict
 
 from ipv8.taskmanager import TaskManager
 
 
 class BWScheduler(TaskManager):
 
-    def __init__(self, my_id: str) -> None:
+    def __init__(self, peer_pk: bytes, my_id: str) -> None:
         super().__init__()
         self.bw_limit: int = 0  # in bytes/s
         self.outgoing_requests: List[Transfer] = []  # Outgoing transfers waiting to be started
@@ -21,6 +21,7 @@ class BWScheduler(TaskManager):
         self.outgoing_transfers: List[Transfer] = []  # Ongoing outgoing transfers
         self.incoming_transfers: List[Transfer] = []  # Ongoing incoming transfers
 
+        self.peer_pk = peer_pk
         self.my_id = my_id
 
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -247,6 +248,7 @@ class Transfer:
         self.last_time_updated: int = 0
         self.complete_future: Future = Future()
         self.reschedules: int = 0
+        self.metadata: Dict = {}
 
     def finish(self):
         self.update()
