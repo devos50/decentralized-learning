@@ -389,7 +389,6 @@ class DFLCommunity(LearningCommunity):
             raise RuntimeError("Round number %d invalid!" % round)
 
         self.logger.info("Participant %s starts participating in round %d", self.peer_manager.get_my_short_id(), round)
-        self.train_future = Future()
         self.completed_training = False
         self.log_event(round, "start_train")
 
@@ -415,6 +414,7 @@ class DFLCommunity(LearningCommunity):
                          self.peer_manager.get_my_short_id(), len(aggregator_ids), round + 1, aggregator_ids)
 
         # 3. Send the trained model to the aggregators in the next sample
+        self.train_future = Future()
         await self.send_trained_model_to_aggregators(aggregators, round + 1)
 
         await self.train_future
@@ -561,8 +561,7 @@ class DFLCommunity(LearningCommunity):
                floor(self.settings.dfl.sample_size * self.settings.dfl.success_fraction)
 
     def has_enough_trained_models_for_liveness(self, agg_round: int) -> bool:
-        return len(self.aggregations[agg_round].incoming_trained_models) >= \
-               floor(self.settings.dfl.sample_size * self.settings.dfl.liveness_success_fraction)
+        return len(self.aggregations[agg_round].incoming_trained_models) >= 2
 
     async def received_trained_model(self, peer: Peer, index: int, model: nn.Module) -> None:
         model_round = index - 1  # The round associated with this model is one smaller than the sample index
