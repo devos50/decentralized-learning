@@ -373,7 +373,8 @@ class DFLCommunity(LearningCommunity):
             self.peer_manager.last_active[peer_pk] = (payload.round, (payload.round, NodeMembershipChange.LEAVE))
 
             # Try to send the model to the next eligible aggregator
-            ensure_future(self.forward_trained_model(payload.round))
+            if self.train_future:
+                ensure_future(self.forward_trained_model(payload.round))
 
     def train_in_round(self, round):
         self.ongoing_training_task_name = "round_%d" % round
@@ -596,27 +597,23 @@ class DFLCommunity(LearningCommunity):
             model_manager = ModelManager(None, self.settings, self.model_manager.participant_index)
             self.aggregations[index] = model_manager
 
-        self.aggregations[index].process_incoming_trained_model(peer_pk, model)
+        if index not in self.aggregations_completed:
+            self.aggregations[index].process_incoming_trained_model(peer_pk, model)
 
-        # Check whether we received enough incoming models
-        if self.has_enough_trained_models(index):
-            self.logger.info("Aggregator %s received sufficient trained models (%d) of round %d",
-                             self.peer_manager.get_my_short_id(), len(self.aggregations[index].incoming_trained_models),
-                             model_round)
-            await self.aggregator_complete_round(model_round, index)
-        else:
-            self.logger.info("Aggregator %s has not enough trained models (%d) of round %d yet",
-                             self.peer_manager.get_my_short_id(), len(self.aggregations[index].incoming_trained_models),
-                             model_round)
+            # Check whether we received enough incoming models
+            if self.has_enough_trained_models(index):
+                self.logger.info("Aggregator %s received sufficient trained models (%d) of round %d",
+                                 self.peer_manager.get_my_short_id(), len(self.aggregations[index].incoming_trained_models),
+                                 model_round)
+                await self.aggregator_complete_round(model_round, index)
+            else:
+                self.logger.info("Aggregator %s has not enough trained models (%d) of round %d yet",
+                                 self.peer_manager.get_my_short_id(), len(self.aggregations[index].incoming_trained_models),
+                                 model_round)
 
     async def aggregator_complete_round(self, model_round: int, index: int):
-        model_manager = self.aggregations.pop(index)
+        model_manager = self.aggregations[index]
         self.aggregations_completed.add(index)
-
-        if not self.is_active:
-            self.logger.warning("Aggregator %s completed aggregation but is offline!",
-                                self.peer_manager.get_my_short_id())
-            return
 
         # Stop the timeout task
         timeout_task_name: str = "aggregate_%d_timeout" % model_round
@@ -652,6 +649,9 @@ class DFLCommunity(LearningCommunity):
                          self.peer_manager.get_my_short_id(), model_round)
         if self.aggregate_complete_callback:
             ensure_future(self.aggregate_complete_callback(model_round, avg_model))
+
+        if index in self.aggregations:
+            self.aggregations.pop(index)
 
         self.log_event(model_round, "done_aggregation")
 
