@@ -350,17 +350,17 @@ class DFLCommunity(LearningCommunity):
                               my_peer_id, peer_short_id)
             return
 
-        self.logger.info("Participant %s receiving agg ack message from aggregator %s", my_peer_id, peer_short_id)
+        self.logger.info("Participant %s receiving agg ack message from aggregator %s for round %d", my_peer_id, peer_short_id, payload.round)
 
         self.bw_in_stats["bytes"]["aggack"] += len(raw_data)
         self.bw_in_stats["num"]["aggack"] += 1
 
         # We can safely wrap up training in this round.
         if payload.success:
-            if self.train_future:
+            if self.train_future and self.train_sample_estimate == payload.round:
                 self.train_future.set_result(True)
             else:
-                self.logger.warning("Participant %s ignoring agg ack as it's not training", my_peer_id)
+                self.logger.warning("Participant %s ignoring agg ack as it's not training or the incoming agg ack is for an invalid round", my_peer_id)
         else:
             # Mark this aggregator as offline
             self.peer_manager.last_active[peer_pk] = (payload.round, (payload.round, NodeMembershipChange.LEAVE))
@@ -381,6 +381,7 @@ class DFLCommunity(LearningCommunity):
             raise RuntimeError("Round number %d invalid!" % round)
 
         self.logger.info("Participant %s starts participating in round %d", self.peer_manager.get_my_short_id(), round)
+        self.train_future = Future()
         self.completed_training = False
         self.log_event(round, "start_train")
 
@@ -393,8 +394,6 @@ class DFLCommunity(LearningCommunity):
         if not self.is_active:
             self.logger.warning("Participant %s went offline during model training in round %d - not proceeding", self.peer_manager.get_my_short_id(), round)
             return
-
-        self.train_future = Future()
 
         await self.forward_trained_model(round)
 
@@ -587,8 +586,8 @@ class DFLCommunity(LearningCommunity):
         elif index == self.aggregate_sample_estimate and self.is_aggregating:
             self.model_manager.process_incoming_trained_model(peer_pk, model)
         else:
-            self.logger.info("Participant %s ignoring incoming trained model of round %d",
-                             self.peer_manager.get_my_short_id(), model_round)
+            self.logger.info("Participant %s ignoring incoming trained model of round %d (aggregate sample estimate: %d)",
+                             self.peer_manager.get_my_short_id(), model_round, self.aggregate_sample_estimate)
             return
 
         # Check whether we received enough incoming models
@@ -619,8 +618,6 @@ class DFLCommunity(LearningCommunity):
                                 self.peer_manager.get_my_short_id())
             self.is_aggregating = False
             return
-
-        self.log_event(model_round, "done_aggregation")
 
         # 3.1. Aggregate these models
         self.logger.info("Aggregator %s will average the models of round %d",
@@ -663,6 +660,7 @@ class DFLCommunity(LearningCommunity):
             ensure_future(self.aggregate_complete_callback(model_round, avg_model))
 
         self.is_aggregating = False
+        self.log_event(model_round, "done_aggregation")
 
     def on_aggregation_timeout(self, model_round: int, index: int):
         self.logger.info("Aggregator %s triggered aggregation timeout in round %d - wrapping up",
