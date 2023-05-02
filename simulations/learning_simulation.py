@@ -430,8 +430,7 @@ export PYTHONPATH=%s
 
         return {
             "time": asyncio.get_event_loop().time(),
-            "global": aggregate_stats,
-            "individual": individual_stats
+            "global": aggregate_stats
         }
 
     def flush_statistics(self):
