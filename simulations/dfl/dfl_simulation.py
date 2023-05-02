@@ -143,7 +143,7 @@ class DFLSimulation(LearningSimulation):
 
         one_node_aggregating: bool = False
         for node in self.nodes:
-            if node.overlays[0].is_active and node.overlays[0].is_aggregating:
+            if node.overlays[0].is_active and node.overlays[0].aggregations:
                 one_node_aggregating = True
                 break
 
