@@ -85,6 +85,7 @@ class DFLCommunity(LearningCommunity):
         self.train_sample_estimate: int = 0
         self.advertise_index: int = 1
         self.aggregations: Dict = {}
+        self.aggregation_timeouts = set()
         self.aggregations_completed = set()
         self.completed_training = False
         self.train_future: Optional[Future] = None
@@ -156,6 +157,9 @@ class DFLCommunity(LearningCommunity):
                     self.send_agg_ack(peer, agg_round - 1, False)
 
             self.aggregations = {}
+            for task_name in self.aggregation_timeouts:
+                self.cancel_pending_task(task_name)
+            self.aggregation_timeouts = set()
 
         if graceful:
             self.advertise_membership(NodeMembershipChange.LEAVE)
@@ -584,8 +588,10 @@ class DFLCommunity(LearningCommunity):
 
             # Set the round timeout
             if self.settings.dfl.aggregation_timeout > 0:
-                self.register_task("aggregate_%d_timeout" % model_round, self.on_aggregation_timeout, model_round,
+                task_name = "aggregate_%d_timeout" % model_round
+                self.register_task(task_name, self.on_aggregation_timeout, model_round,
                                    index, delay=self.settings.dfl.aggregation_timeout)
+                self.aggregation_timeouts.add(task_name)
 
             model_manager = ModelManager(None, self.settings, self.model_manager.participant_index)
             self.aggregations[index] = model_manager
@@ -616,6 +622,7 @@ class DFLCommunity(LearningCommunity):
         timeout_task_name: str = "aggregate_%d_timeout" % model_round
         if self.is_pending_task_active(timeout_task_name):
             self.cancel_pending_task(timeout_task_name)
+        self.aggregation_timeouts.remove(timeout_task_name)
 
         # 3.1. Aggregate these models
         self.logger.info("Aggregator %s will average the models of round %d",
