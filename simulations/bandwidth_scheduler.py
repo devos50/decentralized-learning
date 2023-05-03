@@ -226,6 +226,8 @@ class BWScheduler(TaskManager):
             if request in request.sender_scheduler.outgoing_requests:
                 request.sender_scheduler.outgoing_requests.remove(request)
 
+        self.cancel_all_pending_tasks()
+
         self.incoming_transfers = []
         self.outgoing_transfers = []
         self.incoming_requests = []
