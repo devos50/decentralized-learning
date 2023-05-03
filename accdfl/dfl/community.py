@@ -111,7 +111,7 @@ class DFLCommunity(LearningCommunity):
         super().start()
 
         if advertise_join:
-            self.advertise_membership(NodeMembershipChange.JOIN)
+            ensure_future(self.advertise_membership(NodeMembershipChange.JOIN))
 
     def setup(self, settings: SessionSettings):
         self.logger.info("Setting up experiment with %d initial participants and sample size %d (I am participant %s)" %
@@ -131,7 +131,7 @@ class DFLCommunity(LearningCommunity):
 
     def go_online(self):
         super().go_online()
-        self.advertise_membership(NodeMembershipChange.JOIN)
+        ensure_future(self.advertise_membership(NodeMembershipChange.JOIN))
 
     def go_offline(self, graceful: bool = True) -> None:
         super().go_offline()
@@ -167,7 +167,7 @@ class DFLCommunity(LearningCommunity):
         self.train_future = None
 
         if graceful:
-            self.advertise_membership(NodeMembershipChange.LEAVE)
+            ensure_future(self.advertise_membership(NodeMembershipChange.LEAVE))
         else:
             self.cancel_all_pending_tasks()
 
@@ -178,9 +178,9 @@ class DFLCommunity(LearningCommunity):
         if not self.active_peers_history or (self.active_peers_history[-1][1] != active_peers):  # It's the first entry or it has changed
             self.active_peers_history.append((time.time(), active_peers))
 
-    def advertise_membership(self, change: NodeMembershipChange):
+    async def advertise_membership(self, change: NodeMembershipChange):
         """
-        Advertise your (new) membership to random peers.
+        Advertise your (new) membership to random (online) peers.
         """
         self.logger.debug("Participant %s advertising its membership change to active participants",
                           self.peer_manager.get_my_short_id())
@@ -189,7 +189,7 @@ class DFLCommunity(LearningCommunity):
         if self.my_id in active_peer_pks:
             active_peer_pks.remove(self.my_id)
 
-        random_peer_pks = self.random.sample(active_peer_pks, min(self.sample_manager.sample_size * 4, len(active_peer_pks)))
+        random_peer_pks = await self.determine_available_peers_for_sample(0, self.settings.dfl.sample_size * 2)
         for peer_pk in random_peer_pks:
             peer = self.get_peer_by_pk(peer_pk)
             if not peer:
@@ -631,6 +631,9 @@ class DFLCommunity(LearningCommunity):
                          self.peer_manager.get_my_short_id(), model_round)
         avg_model = model_manager.aggregate_trained_models()
 
+        if self.aggregate_complete_callback:
+            ensure_future(self.aggregate_complete_callback(model_round, avg_model))
+
         # Capture the peers
         peers_that_sent_trained_model: List[bytes] = list(model_manager.incoming_trained_models.keys())
 
@@ -657,8 +660,6 @@ class DFLCommunity(LearningCommunity):
         # 4. Invoke the complete callback
         self.logger.info("Aggregator %s completed aggregation and sending in round %d",
                          self.peer_manager.get_my_short_id(), model_round)
-        if self.aggregate_complete_callback:
-            ensure_future(self.aggregate_complete_callback(model_round, avg_model))
 
         if index in self.aggregations:
             self.aggregations.pop(index)
