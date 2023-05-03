@@ -164,6 +164,7 @@ class DFLCommunity(LearningCommunity):
         # Cancel training
         self.cancel_current_training_task()
         self.completed_training = True
+        self.train_future = None
 
         if graceful:
             self.advertise_membership(NodeMembershipChange.LEAVE)
@@ -421,18 +422,15 @@ class DFLCommunity(LearningCommunity):
         self.train_future = Future()
         await self.send_trained_model_to_aggregators(aggregators, round + 1)
 
-        if not self.train_future:
-            print("PROBLEM WITH PARTICIPANT %s" % self.peer_manager.get_my_short_id())
-            a = 1 / 0
+        if self.train_future:  # Could be interrupted
+            await self.train_future
 
-        await self.train_future
-
-        self.completed_training = True
-        self.ongoing_training_task_name = None
-        self.train_future = None
-        self.logger.info("Participant %s completed round %d", self.peer_manager.get_my_short_id(), round)
-        if self.round_complete_callback:
-            ensure_future(self.round_complete_callback(round))
+            self.completed_training = True
+            self.ongoing_training_task_name = None
+            self.train_future = None
+            self.logger.info("Participant %s completed round %d", self.peer_manager.get_my_short_id(), round)
+            if self.round_complete_callback:
+                ensure_future(self.round_complete_callback(round))
 
     async def send_aggregated_model_to_participants(self, participants: List[bytes], model: nn.Module, sample_index: int) -> List[bool]:
         if not self.is_active:
