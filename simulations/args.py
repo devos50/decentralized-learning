@@ -14,6 +14,7 @@ def get_args(dataset: str, default_lr: float, default_momentum: float = 0):
     # Accuracy testing
     parser.add_argument('--dl-test-mode', type=str, default="local")
     parser.add_argument('--das-test-subprocess-jobs', type=int, default=1)
+    parser.add_argument('--das-test-num-models-per-subprocess', type=int, default=10)
     parser.add_argument('--accuracy-logging-interval', type=int, default=5)
     parser.add_argument('--accuracy-logging-interval-is-in-sec', action=argparse.BooleanOptionalAction)
     parser.add_argument('--dl-accuracy-method', type=str, default="individual")  # individual or aggregate
