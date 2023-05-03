@@ -305,7 +305,7 @@ class LearningSimulation(TaskManager):
         dump_settings(self.session_settings)
 
         # Divide the clients over the DAS nodes
-        client_queue = list(range(len(self.model_manager.incoming_trained_models.values())))
+        client_queue = list(self.model_manager.incoming_trained_models.keys())
         while client_queue:
             self.logger.info("Scheduling new batch on DAS nodes - %d clients left", len(client_queue))
 
@@ -323,13 +323,12 @@ class LearningSimulation(TaskManager):
                 # Prepare the input files for the subjobs
                 model_ids = []
                 for client_id in clients_on_this_node:
-                    model_id = client_id
+                    model_id = int(client_id)
                     model_ids.append(model_id)
                     all_model_ids.add(model_id)
                     model_file_name = "%d.model" % model_id
                     model_path = os.path.join(self.session_settings.work_dir, model_file_name)
-                    node_id = b"%d" % client_id
-                    torch.save(self.model_manager.incoming_trained_models[node_id].state_dict(), model_path)
+                    torch.save(self.model_manager.incoming_trained_models[client_id].state_dict(), model_path)
 
                 import accdfl.util as autil
                 script_dir = os.path.join(os.path.abspath(os.path.dirname(autil.__file__)), "evaluate_model.py")
