@@ -275,8 +275,10 @@ class DFLSimulation(LearningSimulation):
         for node in self.nodes:
             for event in node.overlays[0].events:
                 new_events.append(event)
-        new_events = sorted(new_events, key=lambda x: x[0])
+            node.overlays[0].events = []
 
-        with open(os.path.join(self.data_dir, "events.csv"), "a") as out_file:
-            for event in new_events:
-                out_file.write("%f,%s,%d,%s\n" % event)
+        if self.args.log_events:
+            new_events = sorted(new_events, key=lambda x: x[0])
+            with open(os.path.join(self.data_dir, "events.csv"), "a") as out_file:
+                for event in new_events:
+                    out_file.write("%f,%s,%d,%s\n" % event)
