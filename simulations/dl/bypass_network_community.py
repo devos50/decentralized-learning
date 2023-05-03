@@ -31,8 +31,6 @@ class DLBypassNetworkCommunity(DLCommunity):
         super(DLCommunity, self).go_offline(graceful=graceful)
         self.bw_scheduler.kill_all_transfers()
 
-        # TODO cancel round
-
     async def bypass_send(self, peer: Peer, serialized_response: bytes, binary_data: bytes):
         found: bool = False
         transfer_success: bool = True
