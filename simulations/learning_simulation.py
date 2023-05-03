@@ -387,7 +387,7 @@ export PYTHONPATH=%s
         """
         results: Dict[int, Tuple[float, float]] = {}
         for ind, model in enumerate(self.model_manager.incoming_trained_models.values()):
-            self.logger.info("Testing model %d on device %s..." % (ind + 1, self.args.accuracy_device_name))
+            self.logger.warning("Testing model %d on device %s..." % (ind + 1, self.args.accuracy_device_name))
             if not self.args.bypass_training:
                 accuracy, loss = self.evaluator.evaluate_accuracy(model, device_name=self.args.accuracy_device_name)
             else:

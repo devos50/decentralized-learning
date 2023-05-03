@@ -78,8 +78,8 @@ class GLSimulation(LearningSimulation):
             tot_up += node.overlays[0].endpoint.bytes_up
             tot_down += node.overlays[0].endpoint.bytes_down
 
-        self.logger.info("Computing accuracies for all models, current time: %f, bytes up: %d, bytes down: %d",
-                         cur_time, tot_up, tot_down)
+        self.logger.warning("Computing accuracies for all models, current time: %f, bytes up: %d, bytes down: %d",
+                            cur_time, tot_up, tot_down)
 
         # Put all the models in the model manager
         for ind, node in enumerate(self.nodes):
