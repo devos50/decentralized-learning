@@ -49,7 +49,7 @@ class ModelTrainer:
 
         local_steps: int = self.settings.learning.local_steps
         device = torch.device(device_name)
-        model.to(device)
+        model = model.to(device)
         optimizer = SGDOptimizer(model, self.settings.learning.learning_rate, self.settings.learning.momentum, self.settings.learning.weight_decay)
 
         self.logger.info("Will perform %d local steps of training on device %s (batch size: %d, lr: %f, wd: %f)",
@@ -78,6 +78,7 @@ class ModelTrainer:
             self.logger.info("Model training completed and took %f s.", elapsed_time)
 
         samples_trained_on = 0
+        model = model.to(device)  # just to make sure...
         for local_step in range(local_steps):
             if not self.settings.bypass_training:
                 train_set = self.dataset.get_trainset(batch_size=self.settings.learning.batch_size, shuffle=True)
