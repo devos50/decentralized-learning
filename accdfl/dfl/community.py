@@ -644,6 +644,11 @@ class DFLCommunity(LearningCommunity):
         # 3.3. Distribute the average model to the available participants in the sample.
         await self.send_aggregated_model_to_participants(participants, avg_model, index)
 
+        if not self.is_active:
+            # It might be that the aggregator went offline
+            self.logger.warning("Aggregator %s went offline - not continuing", self.peer_manager.get_my_short_id())
+            return
+
         # 3.4. Send acknowledgement to the previous sample that aggregation has completed.
         for peer_pk in peers_that_sent_trained_model:
             peer = self.get_peer_by_pk(peer_pk)
