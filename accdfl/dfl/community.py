@@ -681,7 +681,6 @@ class DFLCommunity(LearningCommunity):
                              self.peer_manager.get_my_short_id(), model_round,
                              len(self.aggregations[index].incoming_trained_models))
             self.aggregations.pop(index)
-            self.aggregations_completed.add(index)
 
     def received_aggregated_model(self, peer: Peer, model_round: int, model: nn.Module) -> None:
         if self.shutting_down:
