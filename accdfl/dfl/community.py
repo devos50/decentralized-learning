@@ -161,6 +161,10 @@ class DFLCommunity(LearningCommunity):
                 self.cancel_pending_task(task_name)
             self.aggregation_timeouts = set()
 
+        # Cancel training
+        self.cancel_current_training_task()
+        self.completed_training = True
+
         if graceful:
             self.advertise_membership(NodeMembershipChange.LEAVE)
         else:
