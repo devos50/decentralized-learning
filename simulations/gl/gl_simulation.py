@@ -1,4 +1,5 @@
 import os
+import random
 from argparse import Namespace
 from asyncio import get_event_loop
 from binascii import hexlify
@@ -82,10 +83,18 @@ class GLSimulation(LearningSimulation):
                             cur_time, tot_up, tot_down)
 
         # Put all the models in the model manager
+        eligible_nodes = []
         for ind, node in enumerate(self.nodes):
             if not self.nodes[ind].overlays[0].is_active:
                 continue
 
+            eligible_nodes.append((ind, node))
+
+        # Don't test all models for efficiency reasons, just up to 20% of the entire network
+        eligible_nodes = random.sample(eligible_nodes, min(len(eligible_nodes), int(len(self.nodes) * 0.2)))
+        print("Will test accuracy of %d nodes..." % len(eligible_nodes))
+
+        for ind, node in eligible_nodes:
             model = self.nodes[ind].overlays[0].model_manager.model
             self.model_manager.process_incoming_trained_model(b"%d" % ind, model)
 
