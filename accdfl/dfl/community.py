@@ -421,6 +421,10 @@ class DFLCommunity(LearningCommunity):
         self.train_future = Future()
         await self.send_trained_model_to_aggregators(aggregators, round + 1)
 
+        if not self.train_future:
+            print("PROBLEM WITH PARTICIPANT %s" % self.peer_manager.get_my_short_id())
+            a = 1 / 0
+
         await self.train_future
 
         self.completed_training = True
@@ -527,7 +531,7 @@ class DFLCommunity(LearningCommunity):
             self.logger.info("Participant %s interrupting training task %s",
                              self.peer_manager.get_my_short_id(), self.ongoing_training_task_name)
             self.cancel_pending_task(self.ongoing_training_task_name)
-            self.ongoing_training_task_name = None
+        self.ongoing_training_task_name = None
 
     async def on_receive(self, result: TransferResult):
         peer_pk = result.peer.public_key.key_to_bin()
