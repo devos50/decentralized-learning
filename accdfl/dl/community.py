@@ -4,8 +4,7 @@ import json
 import time
 from asyncio import ensure_future
 from binascii import unhexlify
-from collections import defaultdict
-from typing import List, Dict, Tuple
+from typing import List, Tuple
 
 import torch
 from torch import nn
@@ -31,6 +30,14 @@ class DLCommunity(LearningCommunity):
         super().start()
         if not self.neighbours:
             raise RuntimeError("No neighbours for peer %s", self.peer_manager.get_my_short_id())
+
+    def go_offline(self, graceful: bool = True):
+        super().go_offline(graceful=graceful)
+        train_task_name = "round_%d" % self.round
+        if self.is_pending_task_active(train_task_name):
+            self.logger.warning("Cancelling training task of participant %s as it goes offline",
+                                self.peer_manager.get_my_short_id())
+            self.cancel_pending_task(train_task_name)
 
     def eva_send_model(self, round, model, peer):
         start_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
@@ -81,6 +88,9 @@ class DLCommunity(LearningCommunity):
         """
         Aggregate the received models.
         """
+        if not self.incoming_models:
+            # Nothing to aggregate
+            return
 
         # The round is complete - wrap it up and proceed
         self.logger.info("Participant %s received %d models, aggregating...",

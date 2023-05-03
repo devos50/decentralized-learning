@@ -112,9 +112,14 @@ class DLSimulation(LearningSimulation):
             node.overlays[0].aggregate_models()
 
         self.round_nr += 1
-        print("STARTING ROUND %d" % self.round_nr)
+        nodes_started = 0
+
         for node in self.nodes:
-            node.overlays[0].start_round(self.round_nr)
+            if node.overlays[0].is_active:
+                node.overlays[0].start_round(self.round_nr)
+                nodes_started += 1
+
+        print("Round %d started (with %d nodes)" % (self.round_nr, nodes_started))
 
     def compute_all_accuracies(self):
         cur_time = get_event_loop().time()
