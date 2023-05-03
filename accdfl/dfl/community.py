@@ -189,7 +189,7 @@ class DFLCommunity(LearningCommunity):
         if self.my_id in active_peer_pks:
             active_peer_pks.remove(self.my_id)
 
-        random_peer_pks = self.random.sample(active_peer_pks, min(self.sample_manager.sample_size, len(active_peer_pks)))
+        random_peer_pks = self.random.sample(active_peer_pks, min(self.sample_manager.sample_size * 4, len(active_peer_pks)))
         for peer_pk in random_peer_pks:
             peer = self.get_peer_by_pk(peer_pk)
             if not peer:
