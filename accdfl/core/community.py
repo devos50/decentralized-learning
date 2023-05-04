@@ -40,7 +40,7 @@ class LearningCommunity(Community):
         self.shutting_down = False
 
         # Components
-        self.peer_manager: PeerManager = PeerManager(self.my_id, -1)
+        self.peer_manager: PeerManager = PeerManager(self.my_id, 100000)
         self.model_manager: Optional[ModelManager] = None    # Initialized when the process is setup
 
         # Model exchange parameters
