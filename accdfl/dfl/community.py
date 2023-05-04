@@ -572,7 +572,7 @@ class DFLCommunity(LearningCommunity):
                floor(self.settings.dfl.sample_size * self.settings.dfl.success_fraction)
 
     def has_enough_trained_models_for_liveness(self, agg_round: int) -> bool:
-        return len(self.aggregations[agg_round].incoming_trained_models) >= 2
+        return len(self.aggregations[agg_round].incoming_trained_models) >= 3
 
     async def received_trained_model(self, peer: Peer, index: int, model: nn.Module) -> None:
         model_round = index - 1  # The round associated with this model is one smaller than the sample index
