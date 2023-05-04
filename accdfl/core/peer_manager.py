@@ -112,4 +112,4 @@ class PeerManager:
             if membership_index > self.last_active[peer_pk][1][0]:
                 self.logger.debug("Participant %s updating membership status of participant %s to: %s",
                                   self.get_my_short_id(), self.get_short_id(peer_pk), str(info[1]))
-                self.last_active[peer_pk] = (info[1][0], info[1])
+                self.last_active[peer_pk] = (self.last_active[peer_pk][0], info[1])
