@@ -98,7 +98,7 @@ class DLSimulation(LearningSimulation):
         self.round_start_time = get_event_loop().time()
         for node in self.nodes:
             node.overlays[0].start_round(self.round_nr)
-        self.register_task("round_done", self.on_round_done, interval=120)
+        self.register_task("round_done", self.on_round_done, interval=self.args.dl_round_timeout)
         self.register_task("check_accuracy", self.compute_all_accuracies, interval=self.args.accuracy_logging_interval)
         await super().start_simulation()
 
