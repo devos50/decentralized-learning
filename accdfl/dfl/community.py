@@ -678,6 +678,11 @@ class DFLCommunity(LearningCommunity):
         if index not in self.aggregations:
             return  # Just ignore it, the aggregator might have gone offline
 
+        if max(self.aggregations_completed) > index:
+            self.logger.warning("Timeout triggered for aggregator %s but work is irrelevant as we already completed "
+                                "aggregation for a subsequent round, ignoring it", self.peer_manager.get_my_short_id())
+            return
+
         if self.has_enough_trained_models_for_liveness(index):
             self.log_event(model_round, "aggregate_timeout")
             ensure_future(self.aggregator_complete_round(model_round, index))
