@@ -7,7 +7,7 @@ from asyncio import Future, ensure_future
 from binascii import unhexlify, hexlify
 from math import floor
 from random import Random
-from typing import Dict, Optional, List, Tuple
+from typing import Dict, Optional, List, Tuple, Set
 
 import torch
 from torch import nn
@@ -141,17 +141,25 @@ class DFLCommunity(LearningCommunity):
                                 self.peer_manager.get_my_short_id())
 
             for agg_round, model_manager in self.aggregations.items():
-                peers_to_inform: List[bytes] = []
+                peers_to_inform: Set[bytes] = set()
 
                 # Get peers that are currently sending their model to this aggregator
                 for transfer in self.bw_scheduler.incoming_transfers:
                     if transfer.metadata and transfer.metadata["round"] == agg_round and transfer.metadata["type"] == "aggregated_model":
-                        peers_to_inform.append(transfer.sender_scheduler.peer_pk)
+                        peers_to_inform.add(transfer.sender_scheduler.peer_pk)
 
                 # Get peers that have sent their model to this aggregator
                 for peer_pk in model_manager.incoming_trained_models.keys():
-                    peers_to_inform.append(peer_pk)
+                    peers_to_inform.add(peer_pk)
 
+                # Also determine the peers in the sample size
+                candidate_peers = self.sample_manager.get_ordered_sample_list(
+                    agg_round - 1, self.peer_manager.get_active_peers(agg_round - 1))[:self.settings.dfl.sample_size]
+                for candidate_peer in candidate_peers:
+                    peers_to_inform.add(candidate_peer)
+
+                self.logger.info("Aggregator %s will inform %d peers of failed aggregation",
+                                 self.peer_manager.get_my_short_id(), len(peers_to_inform))
                 for peer_pk in peers_to_inform:
                     peer = self.get_peer_by_pk(peer_pk)
                     self.send_agg_ack(peer, agg_round - 1, False)
