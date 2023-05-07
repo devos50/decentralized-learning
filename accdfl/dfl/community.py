@@ -201,7 +201,7 @@ class DFLCommunity(LearningCommunity):
             random_peer_pks = self.random.sample(active_peer_pks, min(self.sample_manager.sample_size * 2, len(active_peer_pks)))
         else:
             # When coming online we probably don't have a fresh view on the network so we need to determine online nodes
-            random_peer_pks = await self.determine_available_peers_for_sample(0, self.settings.dfl.sample_size * 2)
+            random_peer_pks = await self.determine_available_peers_for_sample(0, self.settings.dfl.sample_size * 2, pick_active_peers=False)
         for peer_pk in random_peer_pks:
             peer = self.get_peer_by_pk(peer_pk)
             if not peer:
@@ -250,12 +250,15 @@ class DFLCommunity(LearningCommunity):
             max(payload.round, latest_round), (payload.index, NodeMembershipChange.LEAVE))
 
     def determine_available_peers_for_sample(self, sample: int, count: int,
-                                             getting_aggregators: bool = False) -> Future:
+                                             getting_aggregators: bool = False, pick_active_peers: bool = True) -> Future:
         if getting_aggregators and self.settings.dfl.fixed_aggregator:
             candidate_peers = [self.settings.dfl.fixed_aggregator]
         else:
-            candidate_peers = self.sample_manager.get_ordered_sample_list(
-                sample, self.peer_manager.get_active_peers(sample))
+            if pick_active_peers:
+                raw_peers = self.peer_manager.get_active_peers(sample)
+            else:
+                raw_peers = self.peer_manager.get_peers()
+            candidate_peers = self.sample_manager.get_ordered_sample_list(sample, raw_peers)
         self.logger.info("Participant %s starts to determine %d available peers in sample %d (candidates: %d)",
                          self.peer_manager.get_my_short_id(), count, sample,
                          len(candidate_peers))

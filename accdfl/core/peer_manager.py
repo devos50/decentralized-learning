@@ -45,6 +45,9 @@ class PeerManager:
             active_peers = [peer_pk for peer_pk in active_peers if (self.last_active[peer_pk][0] >= (round - self.inactivity_threshold) or peer_pk == self.my_pk)]
         return active_peers
 
+    def get_peers(self) -> List[bytes]:
+        return [peer_pk for peer_pk, status in self.last_active.items()]
+
     def get_num_peers(self, round: Optional[int] = None) -> int:
         """
         Return the number of peers in the local view.
