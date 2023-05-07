@@ -119,7 +119,6 @@ class DFLCommunity(LearningCommunity):
         super().setup(settings)
         self.peer_manager.inactivity_threshold = settings.dfl.inactivity_threshold
         self.sample_manager = SampleManager(self.peer_manager, settings.dfl.sample_size, settings.dfl.num_aggregators)
-        self.update_population_view_history()
 
     def get_round_estimate(self) -> int:
         """
@@ -473,7 +472,6 @@ class DFLCommunity(LearningCommunity):
 
         # Flush pending changes to the local view
         self.peer_manager.flush_last_active_pending()
-        self.update_population_view_history()
 
         res = await asyncio.gather(*futures)
         return res
@@ -564,7 +562,6 @@ class DFLCommunity(LearningCommunity):
         self.peer_manager.merge_population_views(received_population_view)
         self.peer_manager.update_peer_activity(result.peer.public_key.key_to_bin(),
                                                max(json_data["round"], self.get_round_estimate()))
-        self.update_population_view_history()
         incoming_model = unserialize_model(serialized_model, self.settings.dataset, architecture=self.settings.model)
 
         if json_data["type"] == "trained_model":
