@@ -242,8 +242,9 @@ class DFLCommunity(LearningCommunity):
         change: NodeMembershipChange = NodeMembershipChange(payload.change)
         latest_round = self.get_round_estimate()
         if change == NodeMembershipChange.JOIN:
-            self.peer_manager.last_active[peer_pk] = (
-                max(payload.round, latest_round), (payload.index, NodeMembershipChange.JOIN))
+            # Do not apply this immediately since we do not want the newly joined node to be part of the next sample just yet.
+            self.peer_manager.last_active_pending[peer_pk] = (
+            max(payload.round, latest_round), (payload.index, NodeMembershipChange.JOIN))
         else:
             self.peer_manager.last_active[peer_pk] = (
             max(payload.round, latest_round), (payload.index, NodeMembershipChange.LEAVE))
