@@ -198,10 +198,10 @@ class DFLCommunity(LearningCommunity):
 
         if change == NodeMembershipChange.LEAVE:
             # When going offline, we can simply query our current view of the network and select the last nodes offline
-            random_peer_pks = self.random.sample(active_peer_pks, min(self.sample_manager.sample_size * 2, len(active_peer_pks)))
+            random_peer_pks = self.random.sample(active_peer_pks, min(self.sample_manager.sample_size * 4, len(active_peer_pks)))
         else:
             # When coming online we probably don't have a fresh view on the network so we need to determine online nodes
-            random_peer_pks = await self.determine_available_peers_for_sample(0, self.settings.dfl.sample_size * 2, pick_active_peers=False)
+            random_peer_pks = await self.determine_available_peers_for_sample(0, self.settings.dfl.sample_size * 4, pick_active_peers=False)
         for peer_pk in random_peer_pks:
             peer = self.get_peer_by_pk(peer_pk)
             if not peer:
