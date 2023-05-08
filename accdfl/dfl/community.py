@@ -111,7 +111,7 @@ class DFLCommunity(LearningCommunity):
         super().start()
 
         if advertise_join:
-            ensure_future(self.advertise_membership(NodeMembershipChange.JOIN))
+            self.advertise_membership(NodeMembershipChange.JOIN)
 
     def setup(self, settings: SessionSettings):
         self.logger.info("Setting up experiment with %d initial participants and sample size %d (I am participant %s)" %
@@ -134,7 +134,7 @@ class DFLCommunity(LearningCommunity):
             return
 
         super().go_online()
-        ensure_future(self.advertise_membership(NodeMembershipChange.JOIN))
+        self.advertise_membership(NodeMembershipChange.JOIN)
 
     def go_offline(self, graceful: bool = True) -> None:
         if not self.is_active:
@@ -182,7 +182,7 @@ class DFLCommunity(LearningCommunity):
         self.train_future = None
 
         if graceful:
-            ensure_future(self.advertise_membership(NodeMembershipChange.LEAVE))
+            self.advertise_membership(NodeMembershipChange.LEAVE)
         else:
             self.cancel_all_pending_tasks()
 
@@ -193,7 +193,7 @@ class DFLCommunity(LearningCommunity):
         if not self.active_peers_history or (self.active_peers_history[-1][1] != active_peers):  # It's the first entry or it has changed
             self.active_peers_history.append((time.time(), active_peers))
 
-    async def advertise_membership(self, change: NodeMembershipChange):
+    def advertise_membership(self, change: NodeMembershipChange):
         """
         Advertise your (new) membership to random (online) peers.
         """
@@ -212,7 +212,8 @@ class DFLCommunity(LearningCommunity):
             random_peer_pks = self.random.sample(active_peer_pks, min(self.sample_manager.sample_size * 2, len(active_peer_pks)))
         else:
             # When coming online we probably don't have a fresh view on the network so we need to determine online nodes
-            random_peer_pks = await self.determine_available_peers_for_sample(0, self.settings.dfl.sample_size * 2, pick_active_peers=False)
+            peer_pks = self.peer_manager.get_peers()
+            random_peer_pks = self.random.sample(peer_pks, min(self.sample_manager.sample_size * 5, len(peer_pks)))
 
         if self.advertise_index > (advertise_index + 1):
             # It's not relevant anymore what we're doing
