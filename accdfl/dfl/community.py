@@ -197,11 +197,11 @@ class DFLCommunity(LearningCommunity):
         """
         Advertise your (new) membership to random (online) peers.
         """
-        self.logger.debug("Participant %s advertising its membership change to active participants",
-                          self.peer_manager.get_my_short_id())
-
         advertise_index: int = self.advertise_index
         self.advertise_index += 1
+
+        self.logger.info("Participant %s advertising its membership change %s to active participants (idx %d)",
+                         self.peer_manager.get_my_short_id(), change, advertise_index)
 
         active_peer_pks = self.peer_manager.get_active_peers()
         if self.my_id in active_peer_pks:
@@ -251,16 +251,18 @@ class DFLCommunity(LearningCommunity):
 
         peer_pk = peer.public_key.key_to_bin()
         peer_id = self.peer_manager.get_short_id(peer_pk)
-        self.logger.debug("Participant %s updating membership of participant %s",
-                          self.peer_manager.get_my_short_id(), peer_id)
 
         change: NodeMembershipChange = NodeMembershipChange(payload.change)
         latest_round = self.get_round_estimate()
         if change == NodeMembershipChange.JOIN:
+            self.logger.info("Participant %s updating membership of participant %s to: JOIN (idx %d)",
+                              self.peer_manager.get_my_short_id(), peer_id, payload.index)
             # Do not apply this immediately since we do not want the newly joined node to be part of the next sample just yet.
             self.peer_manager.last_active_pending[peer_pk] = (
             max(payload.round, latest_round), (payload.index, NodeMembershipChange.JOIN))
         else:
+            self.logger.info("Participant %s updating membership of participant %s to: LEAVE (idx %d)",
+                              self.peer_manager.get_my_short_id(), peer_id, payload.index)
             self.peer_manager.last_active[peer_pk] = (
             max(payload.round, latest_round), (payload.index, NodeMembershipChange.LEAVE))
 
@@ -588,7 +590,10 @@ class DFLCommunity(LearningCommunity):
         self.bw_in_stats["bytes"]["view"] += len(serialized_population_view)
         self.bw_in_stats["num"]["model"] += 1
         self.bw_in_stats["num"]["view"] += 1
+        candidates = len(self.peer_manager.get_active_peers())
         self.peer_manager.merge_population_views(received_population_view)
+        self.logger.warning("Participant %s candidates before: %d, after: %d",
+                            self.peer_manager.get_my_short_id(), candidates, len(self.peer_manager.get_active_peers()))
         self.peer_manager.update_peer_activity(result.peer.public_key.key_to_bin(),
                                                max(json_data["round"], self.get_round_estimate()))
         incoming_model = unserialize_model(serialized_model, self.settings.dataset, architecture=self.settings.model)
