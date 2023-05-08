@@ -307,7 +307,7 @@ class DFLCommunity(LearningCommunity):
         Send a ping message with an identifier to a specific peer.
         """
         auth = BinMemberAuthenticationPayload(self.my_peer.public_key.key_to_bin())
-        payload = PingPayload(self.get_round_estimate(), identifier)
+        payload = PingPayload(self.get_round_estimate(), self.advertise_index, identifier)
 
         packet = self._ez_pack(self._prefix, PingPayload.msg_id, [auth, payload])
         self.bw_out_stats["bytes"]["ping"] += len(packet)
@@ -329,6 +329,9 @@ class DFLCommunity(LearningCommunity):
 
         if peer_pk in self.peer_manager.last_active:
             self.peer_manager.update_peer_activity(peer_pk, max(self.get_round_estimate(), payload.round))
+            if payload.index > self.peer_manager.last_active[peer_pk][1][0]:
+                self.peer_manager.last_active[peer_pk] = (self.peer_manager.last_active[peer_pk][0],
+                                                          (payload.index, NodeMembershipChange.JOIN))
 
         self.send_pong(peer, payload.identifier)
 
@@ -337,7 +340,7 @@ class DFLCommunity(LearningCommunity):
         Send a pong message with an identifier to a specific peer.
         """
         auth = BinMemberAuthenticationPayload(self.my_peer.public_key.key_to_bin())
-        payload = PongPayload(self.get_round_estimate(), identifier)
+        payload = PongPayload(self.get_round_estimate(), self.advertise_index, identifier)
 
         packet = self._ez_pack(self._prefix, PongPayload.msg_id, [auth, payload])
         self.bw_out_stats["bytes"]["pong"] += len(packet)
@@ -346,8 +349,9 @@ class DFLCommunity(LearningCommunity):
 
     @lazy_wrapper_wd(PongPayload)
     def on_pong(self, peer: Peer, payload: PongPayload, raw_data: bytes) -> None:
+        peer_pk = peer.public_key.key_to_bin()
         my_peer_id = self.peer_manager.get_my_short_id()
-        peer_short_id = self.peer_manager.get_short_id(peer.public_key.key_to_bin())
+        peer_short_id = self.peer_manager.get_short_id(peer_pk)
 
         if not self.is_active:
             self.logger.debug("Participant %s ignoring ping message from %s due to inactivity",
@@ -362,6 +366,12 @@ class DFLCommunity(LearningCommunity):
         if not self.request_cache.has("ping-%s" % peer_short_id, payload.identifier):
             self.logger.warning("ping cache with id %s not found", payload.identifier)
             return
+
+        if peer_pk in self.peer_manager.last_active:
+            self.peer_manager.update_peer_activity(peer_pk, max(self.get_round_estimate(), payload.round))
+            if payload.index > self.peer_manager.last_active[peer_pk][1][0]:
+                self.peer_manager.last_active[peer_pk] = (self.peer_manager.last_active[peer_pk][0],
+                                                          (payload.index, NodeMembershipChange.JOIN))
 
         self.peer_manager.update_peer_activity(peer.public_key.key_to_bin(),
                                                max(self.get_round_estimate(), payload.round))
