@@ -129,10 +129,18 @@ class DFLCommunity(LearningCommunity):
         return max(self.train_sample_estimate, max_in_aggs, max_round_in_population_view)
 
     def go_online(self):
+        if self.is_active:
+            self.logger.warning("Participant %s already online - ignoring", self.peer_manager.get_my_short_id())
+            return
+
         super().go_online()
         ensure_future(self.advertise_membership(NodeMembershipChange.JOIN))
 
     def go_offline(self, graceful: bool = True) -> None:
+        if not self.is_active:
+            self.logger.warning("Participant %s already offline - ignoring", self.peer_manager.get_my_short_id())
+            return
+
         super().go_offline()
 
         if self.aggregations:
@@ -192,16 +200,24 @@ class DFLCommunity(LearningCommunity):
         self.logger.debug("Participant %s advertising its membership change to active participants",
                           self.peer_manager.get_my_short_id())
 
+        advertise_index: int = self.advertise_index
+        self.advertise_index += 1
+
         active_peer_pks = self.peer_manager.get_active_peers()
         if self.my_id in active_peer_pks:
             active_peer_pks.remove(self.my_id)
 
         if change == NodeMembershipChange.LEAVE:
             # When going offline, we can simply query our current view of the network and select the last nodes offline
-            random_peer_pks = self.random.sample(active_peer_pks, min(self.sample_manager.sample_size * 4, len(active_peer_pks)))
+            random_peer_pks = self.random.sample(active_peer_pks, min(self.sample_manager.sample_size * 2, len(active_peer_pks)))
         else:
             # When coming online we probably don't have a fresh view on the network so we need to determine online nodes
-            random_peer_pks = await self.determine_available_peers_for_sample(0, self.settings.dfl.sample_size * 4, pick_active_peers=False)
+            random_peer_pks = await self.determine_available_peers_for_sample(0, self.settings.dfl.sample_size * 2, pick_active_peers=False)
+
+        if self.advertise_index > (advertise_index + 1):
+            # It's not relevant anymore what we're doing
+            return
+
         for peer_pk in random_peer_pks:
             peer = self.get_peer_by_pk(peer_pk)
             if not peer:
@@ -211,7 +227,7 @@ class DFLCommunity(LearningCommunity):
                               self.peer_manager.get_my_short_id(), self.peer_manager.get_short_id(peer_pk))
             global_time = self.claim_global_time()
             auth = BinMemberAuthenticationPayload(self.my_peer.public_key.key_to_bin())
-            payload = AdvertiseMembership(self.get_round_estimate(), self.advertise_index, change.value)
+            payload = AdvertiseMembership(self.get_round_estimate(), advertise_index, change.value)
             dist = GlobalTimeDistributionPayload(global_time)
             packet = self._ez_pack(self._prefix, AdvertiseMembership.msg_id, [auth, dist, payload])
             self.bw_out_stats["bytes"]["membership"] += len(packet)
@@ -220,8 +236,7 @@ class DFLCommunity(LearningCommunity):
 
         # Update your own population view
         info = self.peer_manager.last_active[self.my_id]
-        self.peer_manager.last_active[self.my_id] = (info[0], (self.advertise_index, change))
-        self.advertise_index += 1
+        self.peer_manager.last_active[self.my_id] = (info[0], (advertise_index, change))
 
     @lazy_wrapper_wd(GlobalTimeDistributionPayload, AdvertiseMembership)
     def on_membership_advertisement(self, peer, dist, payload, raw_data: bytes):
