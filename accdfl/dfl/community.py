@@ -309,7 +309,7 @@ class DFLCommunity(LearningCommunity):
         Send a ping message with an identifier to a specific peer.
         """
         auth = BinMemberAuthenticationPayload(self.my_peer.public_key.key_to_bin())
-        payload = PingPayload(self.get_round_estimate(), self.advertise_index, identifier)
+        payload = PingPayload(self.get_round_estimate(), self.advertise_index - 1, identifier)
 
         packet = self._ez_pack(self._prefix, PingPayload.msg_id, [auth, payload])
         self.bw_out_stats["bytes"]["ping"] += len(packet)
@@ -342,7 +342,7 @@ class DFLCommunity(LearningCommunity):
         Send a pong message with an identifier to a specific peer.
         """
         auth = BinMemberAuthenticationPayload(self.my_peer.public_key.key_to_bin())
-        payload = PongPayload(self.get_round_estimate(), self.advertise_index, identifier)
+        payload = PongPayload(self.get_round_estimate(), self.advertise_index - 1, identifier)
 
         packet = self._ez_pack(self._prefix, PongPayload.msg_id, [auth, payload])
         self.bw_out_stats["bytes"]["pong"] += len(packet)
