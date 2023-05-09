@@ -418,7 +418,7 @@ class DFLCommunity(LearningCommunity):
                 self.logger.warning("Participant %s ignoring agg ack as it's not training or the incoming agg ack is for an invalid round", my_peer_id)
         else:
             # Mark this aggregator as offline
-            self.peer_manager.last_active[peer_pk] = (payload.round, (payload.round, NodeMembershipChange.LEAVE))
+            self.peer_manager.last_active[peer_pk] = (payload.round, (0, NodeMembershipChange.LEAVE))
 
             # Try to send the model to the next eligible aggregator
             if self.train_future:
