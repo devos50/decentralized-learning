@@ -3,7 +3,7 @@ from argparse import Namespace
 from asyncio import get_event_loop
 from binascii import hexlify
 from random import Random
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 import torch
 
@@ -22,6 +22,8 @@ class DFLSimulation(LearningSimulation):
     def __init__(self, args: Namespace) -> None:
         super().__init__(args)
         self.latest_accuracy_check_round: int = 0
+        self.last_round_complete_time: Optional[float] = None
+        self.round_durations: List[float] = []
         self.best_accuracy: float = 0.0
         self.data_dir = os.path.join("data", "n_%d_%s_s%d_a%d_sd%d_dfl" % (self.args.peers, self.args.dataset,
                                                                            self.args.sample_size,
@@ -117,6 +119,9 @@ class DFLSimulation(LearningSimulation):
         with open(os.path.join(self.data_dir, "determine_sample_durations.csv"), "w") as out_file:
             out_file.write("peer,start_time,end_time\n")
 
+        with open(os.path.join(self.data_dir, "round_durations.csv"), "w") as out_file:
+            out_file.write("time\n")
+
         with open(os.path.join(self.data_dir, "derived_samples.csv"), "w") as out_file:
             out_file.write("peer,sample_id,sample\n")
 
@@ -186,6 +191,13 @@ class DFLSimulation(LearningSimulation):
 
         cur_time = get_event_loop().time()
         print("Round %d completed @ t=%f - bytes up: %d, bytes down: %d" % (round_nr, cur_time, tot_up, tot_down))
+
+        if round_nr > self.latest_accuracy_check_round:
+            if not self.last_round_complete_time:
+                self.round_durations.append(cur_time)
+            else:
+                self.round_durations.append(cur_time - self.last_round_complete_time)
+            self.last_round_complete_time = cur_time
 
         if self.args.accuracy_logging_interval > 0 and round_nr % self.args.accuracy_logging_interval == 0 and \
                 round_nr > self.latest_accuracy_check_round:
@@ -261,6 +273,12 @@ class DFLSimulation(LearningSimulation):
                 for start_time, end_time in node.overlays[0].determine_sample_durations:
                     out_file.write("%d,%f,%f\n" % (peer_id + 1, start_time, end_time))
                 node.overlays[0].determine_sample_durations = []
+
+        # Write away the round durations
+        with open(os.path.join(self.data_dir, "round_durations.csv"), "a") as out_file:
+            for round_duration in self.round_durations:
+                out_file.write("%f\n" % round_duration)
+            self.round_durations = []
 
         # Write away the derived samples
         with open(os.path.join(self.data_dir, "derived_samples.csv"), "a") as out_file:
