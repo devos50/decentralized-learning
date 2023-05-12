@@ -99,7 +99,6 @@ class DLSimulation(LearningSimulation):
         for node in self.nodes:
             node.overlays[0].start_round(self.round_nr)
         self.register_task("round_done", self.on_round_done, interval=self.args.dl_round_timeout)
-        self.register_task("check_accuracy", self.compute_all_accuracies, interval=self.args.accuracy_logging_interval)
         await super().start_simulation()
 
     def on_round_done(self):
@@ -110,6 +109,18 @@ class DLSimulation(LearningSimulation):
 
         for node in self.nodes:
             node.overlays[0].aggregate_models()
+
+        if self.session_settings.dl.topology == "dynamic":
+            self.build_k_regular_topology(7)  # Refresh the topology
+
+        if self.session_settings.dl.topology == "dynamic-k-out":
+            self.build_k_out_topology(7)  # Refresh the topology
+
+        if self.round_nr % self.args.accuracy_logging_interval == 0:
+            self.compute_all_accuracies()
+
+        if self.round_nr == self.args.rounds:
+            self.loop.stop()
 
         self.round_nr += 1
         nodes_started = 0
@@ -141,10 +152,10 @@ class DLSimulation(LearningSimulation):
             eligible_nodes.append((ind, node))
 
         # Don't test all models for efficiency reasons, just up to 20% of the entire network
-        eligible_nodes = random.sample(eligible_nodes, min(len(eligible_nodes), int(len(self.nodes) * 0.2)))
+        eligible_nodes = self.nodes
         print("Will test accuracy of %d nodes..." % len(eligible_nodes))
 
-        for ind, node in eligible_nodes:
+        for ind, node in enumerate(self.nodes):
             model = self.nodes[ind].overlays[0].model_manager.model
             self.model_manager.process_incoming_trained_model(b"%d" % ind, model)
 
@@ -174,6 +185,38 @@ class DLSimulation(LearningSimulation):
 
         self.model_manager.reset_incoming_trained_models()
 
+    def build_k_regular_topology(self, k):
+        k = 7
+        for node_ind in range(len(self.nodes)):
+            self.nodes[node_ind].overlays[0].neighbours = []
+
+        self.logger.info("Building %d-regular graph topology", k)
+        G = nx.random_regular_graph(k, len(self.nodes))
+        for node_ind in range(len(self.nodes)):
+            for nb_node_ind in list(G.neighbors(node_ind)):
+                nb_pk = self.nodes[nb_node_ind].overlays[0].my_peer.public_key.key_to_bin()
+                self.nodes[node_ind].overlays[0].neighbours.append(nb_pk)
+
+    def build_k_out_topology(self, k):
+        # n is the number of nodes, k is the number of outgoing edges per node
+        if len(self.nodes) * k % 2 != 0:
+            raise ValueError('n * k must be even for a regular graph')
+
+        G = nx.DiGraph()
+        nodes = list(range(len(self.nodes)))
+        for node in nodes:
+            # choose k distinct neighbors for each node
+            neighbors = random.sample([i for i in nodes if i != node], k)
+            for neighbor in neighbors:
+                G.add_edge(node, neighbor)
+
+        for node_ind in range(len(self.nodes)):
+            self.nodes[node_ind].overlays[0].neighbours = []
+
+        for from_node, to_node in G.edges:
+            nb_pk = self.nodes[to_node].overlays[0].my_peer.public_key.key_to_bin()
+            self.nodes[from_node].overlays[0].neighbours.append(nb_pk)
+
     def build_topology(self):
         self.logger.info("Building a %s topology", self.session_settings.dl.topology)
         if self.session_settings.dl.topology == "ring":
@@ -189,13 +232,11 @@ class DLSimulation(LearningSimulation):
                 for nb_ind in nb_ids:
                     nb_pk = self.nodes[self.participants_ids[0] + nb_ind].overlays[0].my_peer.public_key.key_to_bin()
                     self.nodes[self.participants_ids[0] + node_ind].overlays[0].neighbours.append(nb_pk)
-        elif self.session_settings.dl.topology == "k-regular":
-            k: int = floor(log(len(self.nodes), 2))
-            self.logger.info("Building %d-regular graph topology", k)
-            G = nx.random_regular_graph(k, len(self.nodes))
-            for node_ind in range(len(self.nodes)):
-                for nb_node_ind in list(G.neighbors(node_ind)):
-                    nb_pk = self.nodes[nb_node_ind].overlays[0].my_peer.public_key.key_to_bin()
-                    self.nodes[node_ind].overlays[0].neighbours.append(nb_pk)
+        elif self.session_settings.dl.topology in ["dynamic", "k-regular"]:
+            # k: int = floor(log(len(self.nodes), 2))
+            self.build_k_regular_topology(7)
+        elif self.session_settings.dl.topology == "dynamic-k-out":
+            # k: int = floor(log(len(self.nodes), 2))
+            self.build_k_out_topology(7)
         else:
             raise RuntimeError("Unknown DL topology %s" % self.session_settings.dl.topology)
