@@ -25,10 +25,9 @@ class DFLSimulation(LearningSimulation):
         self.last_round_complete_time: Optional[float] = None
         self.round_durations: List[float] = []
         self.best_accuracy: float = 0.0
-        self.data_dir = os.path.join("data", "n_%d_%s_s%d_a%d_sd%d_dfl" % (self.args.peers, self.args.dataset,
-                                                                           self.args.sample_size,
-                                                                           self.args.num_aggregators,
-                                                                           self.args.seed))
+        self.data_dir = os.path.join("data", "n_%d_%s_s%d_a%d_sf%f_sd%d_dfl" % (
+            self.args.peers, self.args.dataset, self.args.sample_size, self.args.num_aggregators,
+            self.args.success_fraction, self.args.seed))
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = super().get_ipv8_builder(peer_id)
