@@ -213,7 +213,7 @@ class DFLCommunity(LearningCommunity):
         else:
             # When coming online we probably don't have a fresh view on the network so we need to determine online nodes
             peer_pks = self.peer_manager.get_peers()
-            random_peer_pks = self.random.sample(peer_pks, min(self.sample_manager.sample_size * 15, len(peer_pks)))
+            random_peer_pks = self.random.sample(peer_pks, min(self.sample_manager.sample_size * 10, len(peer_pks)))
 
         if self.advertise_index > (advertise_index + 1):
             # It's not relevant anymore what we're doing
