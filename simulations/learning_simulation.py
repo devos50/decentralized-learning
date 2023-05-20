@@ -201,7 +201,7 @@ class LearningSimulation(TaskManager):
 
         if self.args.activity_log_interval:
             with open(os.path.join(self.data_dir, "activities.csv"), "w") as out_file:
-                out_file.write("time,online,offline\n")
+                out_file.write("time,online,offline,min_nodes_in_view,max_nodes_in_view,avg_nodes_in_view,median_nodes_in_view\n")
             self.register_task("check_activity", self.check_activity, interval=self.args.activity_log_interval)
 
         if self.args.flush_statistics_interval:
@@ -216,15 +216,19 @@ class LearningSimulation(TaskManager):
         Count the number of online/offline peers and write it away.
         """
         online, offline = 0, 0
+        active_nodes_in_view: List[int] = []
         for node in self.nodes:
             if node.overlays[0].is_active:
                 online += 1
+                active_nodes_in_view.append(len(node.overlays[0].peer_manager.get_active_peers()))
             else:
                 offline += 1
 
         cur_time = asyncio.get_event_loop().time()
         with open(os.path.join(self.data_dir, "activities.csv"), "a") as out_file:
-            out_file.write("%d,%d,%d\n" % (cur_time, online, offline))
+            out_file.write("%d,%d,%d,%d,%d,%f,%f\n" % (
+                cur_time, online, offline, min(active_nodes_in_view), max(active_nodes_in_view),
+                sum(active_nodes_in_view) / len(active_nodes_in_view), median(active_nodes_in_view)))
 
     async def start_simulation(self) -> None:
         active_nodes: List = []
