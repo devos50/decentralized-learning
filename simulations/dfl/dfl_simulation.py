@@ -1,4 +1,5 @@
 import os
+import shutil
 from argparse import Namespace
 from asyncio import get_event_loop
 from binascii import hexlify
@@ -197,6 +198,12 @@ class DFLSimulation(LearningSimulation):
             else:
                 self.round_durations.append(cur_time - self.last_round_complete_time)
             self.last_round_complete_time = cur_time
+
+        # Checkpoint if needed
+        if self.args.checkpoint_interval and round_nr % self.args.checkpoint_interval == 0:
+            models_dir = os.path.join(self.data_dir, "models")
+            os.makedirs(models_dir, exist_ok=True)
+            torch.save(model.state_dict(), os.path.join(models_dir, "%d_%d.model" % (round_nr, ind)))
 
         if self.args.accuracy_logging_interval > 0 and round_nr % self.args.accuracy_logging_interval == 0 and \
                 round_nr > self.latest_accuracy_check_round:
