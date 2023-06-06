@@ -17,6 +17,7 @@ class LearningSettings:
     momentum: float
     weight_decay: float
     batch_size: int
+    local_steps: int
 
 
 @dataclass
@@ -27,10 +28,11 @@ class DFLSettings:
     sample_size: int
     num_aggregators: int
     success_fraction: float = 1
-    aggregation_timeout: float = 5
+    liveness_success_fraction: float = 0.4
     ping_timeout: float = 5
     inactivity_threshold: int = 50
     fixed_aggregator: Optional[bytes] = None
+    aggregation_timeout: float = 300
 
 
 @dataclass
@@ -61,6 +63,7 @@ class SessionSettings:
     participants: List[str]
     all_participants: List[str]
     target_participants: int
+    dataset_base_path: str = None
     dfl: Optional[DFLSettings] = None
     dl: Optional[DLSettings] = None
     gl: Optional[GLSettings] = None
@@ -76,6 +79,7 @@ class SessionSettings:
     eva_max_simultaneous_transfers: int = 30  # Corresponds to a peak usage of ~3.4 MB/s for an aggregator
     is_simulation: bool = False
     train_device_name: str = "cpu"
+    bypass_training: bool = False  # Whether to bypass model training, can be useful to observe network dynamics
 
 
 def dump_settings(settings: SessionSettings):

@@ -17,6 +17,7 @@ class CIFAR10(Dataset):
     """
     Class for the CIFAR10 dataset
     """
+    CIFAR10_trainset = None
 
     def __init__(
         self,
@@ -97,9 +98,14 @@ class CIFAR10(Dataset):
 
         """
         self.logger.info("Loading training set from directory %s and with alpha %f", self.train_dir, self.alpha)
-        trainset = torchvision.datasets.CIFAR10(
-            root=self.train_dir, train=True, download=True, transform=self.train_transformer
-        )
+        if CIFAR10.CIFAR10_trainset:
+            trainset = CIFAR10.CIFAR10_trainset
+        else:
+            trainset = torchvision.datasets.CIFAR10(
+                root=self.train_dir, train=True, download=True, transform=self.train_transformer
+            )
+            CIFAR10.CIFAR10_trainset = trainset
+
         c_len = len(trainset)
 
         if self.sizes == None:  # Equal distribution of data among processes

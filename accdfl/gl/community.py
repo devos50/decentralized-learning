@@ -19,14 +19,26 @@ class GLCommunity(LearningCommunity):
         super().__init__(*args, **kwargs)
         self.round: int = 1
         self.model_age: int = 0
-        self.neighbours: List[bytes] = []  # The PKs of the neighbours we will send our model to
+        self.nodes = None
+        self.round_task_name = None
 
     def start(self):
         """
         Start to participate in the training process.
         """
-        assert self.did_setup, "Process has not been setup - call setup() first"
-        assert self.neighbours, "We need some neighbours"
+        super().start()
+        self.start_next_round()
+
+    def go_offline(self, graceful: bool = True):
+        super().go_offline()
+        if self.round_task_name and self.is_pending_task_active(self.round_task_name):
+            self.logger.info("Participant %s cancelling round task %s",
+                             self.peer_manager.get_my_short_id(), self.round_task_name)
+            self.cancel_pending_task(self.round_task_name)
+            self.round_task_name = None
+
+    def go_online(self):
+        super().go_online()
         self.start_next_round()
 
     def eva_send_model(self, round: int, model_age: int, model, peer):
@@ -37,7 +49,12 @@ class GLCommunity(LearningCommunity):
         return self.schedule_eva_send_model(peer, serialized_response, serialized_model, start_time)
 
     def start_next_round(self):
-        self.register_task("round_%d" % self.round, self.do_round)
+        self.round_task_name = "round_%d" % self.round
+        if not self.is_pending_task_active(self.round_task_name):
+            self.register_task(self.round_task_name, self.do_round)
+        else:
+            self.logger.warning("Task %s of participant %s already seems to be active!",
+                                self.round_task_name, self.peer_manager.get_my_short_id())
 
     async def do_round(self):
         """
@@ -48,20 +65,27 @@ class GLCommunity(LearningCommunity):
         # Wait
         await sleep(self.settings.gl.round_timeout)
 
-        # Select a random neighbour and send the model
-        peer_pk = random.choice(self.neighbours)
-        peer = self.get_peer_by_pk(peer_pk)
-        if not peer:
-            raise RuntimeError("Participant %s cannot find Peer object for participant %s!" % (
-                               self.peer_manager.get_my_short_id(), self.peer_manager.get_short_id(peer_pk)))
+        # Select a random neighbour and send the model.
+        online_nodes: List = [node for node in self.nodes if node.overlays[0].is_active]
+        if online_nodes:
+            rand_online_node = random.choice(online_nodes)
+            peer = rand_online_node.overlays[0].my_peer
 
-        await self.eva_send_model(self.round, self.model_age, self.model_manager.model, peer)
+            await self.eva_send_model(self.round, self.model_age, self.model_manager.model, peer)
+        else:
+            self.logger.warning("Peer %s has no neighbouring online peer, skipping model transfer!",
+                                self.peer_manager.get_my_short_id())
 
         if self.round_complete_callback:
             ensure_future(self.round_complete_callback(self.round))
         self.logger.info("Peer %s completed round %d", self.peer_manager.get_my_short_id(), self.round)
         self.round += 1
-        self.register_task("round_%d" % self.round, self.do_round)
+
+        self.round_task_name = None
+
+        if self.is_active:
+            self.round_task_name = "round_%d" % self.round
+            self.register_task(self.round_task_name, self.do_round)
 
     async def on_receive(self, result: TransferResult):
         """
@@ -72,7 +96,7 @@ class GLCommunity(LearningCommunity):
         my_peer_id = self.peer_manager.get_my_short_id()
 
         if not self.is_active:
-            self.logger.warning("Participant %s ignoring message from %s due to inactivity", my_peer_id, peer_id)
+            self.logger.debug("Participant %s ignoring message from %s due to inactivity", my_peer_id, peer_id)
             return
 
         self.logger.info(f'Participant {my_peer_id} received data from participant {peer_id}: {result.info.decode()}')

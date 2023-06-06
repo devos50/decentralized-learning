@@ -49,6 +49,7 @@ class Dataset:
         self.rank = rank
         self.machine_id = machine_id
         self.mapping = mapping
+        self.uid = self.mapping.get_uid(rank, machine_id)
         # the number of global processes, needed to split-up the dataset
         self.n_procs = mapping.get_n_procs()
         self.train_dir = utils.conditional_value(train_dir, "", None)

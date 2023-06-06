@@ -2,7 +2,7 @@ import asyncio
 import time
 from asyncio import Future, ensure_future
 from binascii import unhexlify, hexlify
-from typing import Optional, Callable, Dict
+from typing import Optional, Callable, Dict, List
 
 import torch
 
@@ -29,6 +29,8 @@ class LearningCommunity(Community):
         self.round_complete_callback: Optional[Callable] = None
         self.aggregate_complete_callback: Optional[Callable] = None
 
+        self.peers_list: List[Peer] = []
+
         # Settings
         self.settings: Optional[SessionSettings] = None
 
@@ -38,15 +40,15 @@ class LearningCommunity(Community):
         self.shutting_down = False
 
         # Components
-        self.peer_manager: PeerManager = PeerManager(self.my_id, -1)
+        self.peer_manager: PeerManager = PeerManager(self.my_id, 100000)
         self.model_manager: Optional[ModelManager] = None    # Initialized when the process is setup
 
         # Model exchange parameters
         self.eva = EVAProtocol(self, self.on_receive, self.on_send_complete, self.on_error)
-        self.transfer_times = []
 
         # Availability traces
         self.traces: Optional[Dict] = None
+        self.traces_count: int = 0
 
         self.logger.info("The %s started with peer ID: %s", self.__class__.__name__,
                          self.peer_manager.get_my_short_id())
@@ -78,8 +80,9 @@ class LearningCommunity(Community):
                          self.peer_manager.get_my_short_id(), traces["finish_time"])
 
         # Schedule the next call to set_traces
-        self.register_task("reapply-trace-%s" % self.peer_manager.get_my_short_id(), self.set_traces, self.traces,
-                           delay=self.traces["finish_time"])
+        self.register_task("reapply-trace-%s-%d" % (self.peer_manager.get_my_short_id(), self.traces_count),
+                           self.set_traces, self.traces, delay=self.traces["finish_time"])
+        self.traces_count += 1
 
     def go_online(self):
         self.is_active = True
@@ -112,6 +115,11 @@ class LearningCommunity(Community):
 
         self.did_setup = True
 
+    def get_peers(self):
+        if self.peers_list:
+            return self.peers_list
+        return super().get_peers()
+
     def get_peer_by_pk(self, target_pk: bytes):
         peers = list(self.get_peers())
         for peer in peers:
@@ -133,7 +141,6 @@ class LearningCommunity(Community):
         else:
             # The transfer seems to be completed - record the transfer time
             end_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
-            self.transfer_times.append(end_time - start_time)
 
     def schedule_eva_send_model(self, peer: Peer, serialized_response: bytes, binary_data: bytes, start_time: float) -> Future:
         # Schedule the transfer

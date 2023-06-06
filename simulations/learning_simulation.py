@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 import pickle
@@ -7,6 +8,7 @@ import stat
 import subprocess
 import time
 from argparse import Namespace
+from base64 import b64encode
 from random import Random
 from statistics import median, mean
 from typing import Dict, List, Optional, Tuple
@@ -31,6 +33,8 @@ from simulation.simulation_endpoint import SimulationEndpoint
 
 from simulations.dl.bypass_network_community import DLBypassNetworkCommunity
 from simulations.dfl.bypass_network_community import DFLBypassNetworkCommunity
+from simulations.gl.bypass_network_community import GLBypassNetworkCommunity
+from simulations.logger import SimulationLoggerAdapter
 
 
 class LearningSimulation(TaskManager):
@@ -43,7 +47,7 @@ class LearningSimulation(TaskManager):
         self.args = args
         self.session_settings: Optional[SessionSettings] = None
         self.nodes = []
-        self.data_dir = os.path.join("data", "n_%d_%s" % (self.args.peers, self.args.dataset))
+        self.data_dir = os.path.join("data", "n_%d_%s_sd%d" % (self.args.peers, self.args.dataset, self.args.seed))
         self.evaluator = None
         self.logger = None
         self.model_manager: Optional[ModelManager] = None
@@ -53,7 +57,11 @@ class LearningSimulation(TaskManager):
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = ConfigBuilder().clear_keys().clear_overlays()
-        builder.add_key("my peer", "curve25519", os.path.join(self.data_dir, f"ec{peer_id}.pem"))
+
+        key_str = chr(peer_id).encode() * 1000
+        key_base = b"LibNaCLSK:%s" % key_str[:68]
+        key_material = b64encode(key_base).decode()
+        builder.add_key_from_bin("my peer", key_material, file_path=os.path.join(self.data_dir, f"ec{peer_id}.pem"))
         return builder
 
     async def start_ipv8_nodes(self) -> None:
@@ -64,10 +72,11 @@ class LearningSimulation(TaskManager):
             instance = IPv8(self.get_ipv8_builder(peer_id).finalize(), endpoint_override=endpoint,
                             extra_communities={
                                 'DLCommunity': DLCommunity,
-                                'GLCommunity': GLCommunity,
                                 'DLBypassNetworkCommunity': DLBypassNetworkCommunity,
                                 'DFLCommunity': DFLCommunity,
                                 'DFLBypassNetworkCommunity': DFLBypassNetworkCommunity,
+                                'GLCommunity': GLCommunity,
+                                'GLBypassNetworkCommunity': GLBypassNetworkCommunity,
                             })
             await instance.start()
 
@@ -76,6 +85,11 @@ class LearningSimulation(TaskManager):
                 overlay.max_peers = -1
                 overlay.my_peer.address = instance.overlays[0].endpoint.wan_address
                 overlay.my_estimated_wan = instance.overlays[0].endpoint.wan_address
+                overlay.cancel_pending_task("_check_tasks")  # To ignore the warning for long-running tasks
+                overlay.logger = SimulationLoggerAdapter(overlay.logger, {})
+                overlay.peer_manager.logger = SimulationLoggerAdapter(overlay.peer_manager.logger, {})
+                if self.args.bypass_model_transfers:
+                    overlay.bw_scheduler.logger = SimulationLoggerAdapter(overlay.peer_manager.logger, {})
 
             self.nodes.append(instance)
 
@@ -90,22 +104,18 @@ class LearningSimulation(TaskManager):
         root.setLevel(getattr(logging, self.args.log_level))
 
         self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = SimulationLoggerAdapter(self.logger, {})
 
     def ipv8_discover_peers(self) -> None:
-        for node_a in self.nodes:
-            for node_b in self.nodes:
-                if node_a == node_b:
-                    continue
-
-                node_a.network.verified_peers.add(node_b.overlays[0].my_peer)
-                node_a.network.discover_services(node_b.overlays[0].my_peer, [node_a.overlays[0].community_id, ])
-        self.logger.info("IPv8 peer discovery complete")
+        peers_list = [node.overlays[0].my_peer for node in self.nodes]
+        for node in self.nodes:
+            node.overlays[0].peers_list = peers_list
 
     def apply_traces(self):
         """
         Set the relevant traces.
         """
-        rand = Random(self.args.traces_seed)
+        rand = Random(self.args.seed)
         if self.args.availability_traces:
             self.logger.info("Applying availability trace file %s", self.args.availability_traces)
             with open(self.args.availability_traces, "rb") as traces_file:
@@ -121,11 +131,17 @@ class LearningSimulation(TaskManager):
                 data = pickle.load(traces_file)
 
             device_ids = rand.sample(list(data.keys()), self.args.peers)
+            nodes_bws: Dict[bytes, int] = {}
             for ind, node in enumerate(self.nodes):
                 node.overlays[0].model_manager.model_trainer.simulated_speed = data[device_ids[ind]]["computation"]
                 if self.args.bypass_model_transfers:
                     # Also apply the network latencies
-                    node.overlays[0].bandwidth = data[ind + 1]["communication"]
+                    bw_limit: int = int(data[ind + 1]["communication"]) * 1024 // 8
+                    node.overlays[0].bw_scheduler.bw_limit = bw_limit
+                    nodes_bws[node.overlays[0].my_peer.public_key.key_to_bin()] = bw_limit
+
+            for node in self.nodes:
+                node.overlays[0].other_nodes_bws = nodes_bws
 
         self.logger.info("Traces applied!")
 
@@ -185,48 +201,57 @@ class LearningSimulation(TaskManager):
 
         if self.args.activity_log_interval:
             with open(os.path.join(self.data_dir, "activities.csv"), "w") as out_file:
-                out_file.write("time,online,offline\n")
+                out_file.write("time,online,offline,min_nodes_in_view,max_nodes_in_view,avg_nodes_in_view,median_nodes_in_view\n")
             self.register_task("check_activity", self.check_activity, interval=self.args.activity_log_interval)
+
+        if self.args.flush_statistics_interval:
+            self.register_task("flush_statistics", self.flush_statistics, interval=self.args.flush_statistics_interval)
+
+        if self.args.bypass_model_transfers:
+            with open(os.path.join(self.data_dir, "transfers.csv"), "w") as out_file:
+                out_file.write("from,to,round,start_time,duration,type,success\n")
 
     def check_activity(self):
         """
         Count the number of online/offline peers and write it away.
         """
         online, offline = 0, 0
+        active_nodes_in_view: List[int] = []
         for node in self.nodes:
             if node.overlays[0].is_active:
                 online += 1
+                active_nodes_in_view.append(len(node.overlays[0].peer_manager.get_active_peers()))
             else:
                 offline += 1
 
         cur_time = asyncio.get_event_loop().time()
         with open(os.path.join(self.data_dir, "activities.csv"), "a") as out_file:
-            out_file.write("%d,%d,%d\n" % (cur_time, online, offline))
+            out_file.write("%d,%d,%d,%d,%d,%f,%f\n" % (
+                cur_time, online, offline, min(active_nodes_in_view), max(active_nodes_in_view),
+                sum(active_nodes_in_view) / len(active_nodes_in_view), median(active_nodes_in_view)))
 
     async def start_simulation(self) -> None:
-        nodes_started: int = 0
+        active_nodes: List = []
         for ind, node in enumerate(self.nodes):
-            if node.overlays[0].traces and node.overlays[0].traces["active"][0] == 0:
+            if not node.overlays[0].traces or (node.overlays[0].traces and node.overlays[0].traces["active"][0] == 0):
                 node.overlays[0].start()
-                nodes_started += 1
-        self.logger.info("Started %d nodes...", nodes_started)
+                active_nodes.append(node)
+        self.logger.info("Started %d nodes...", len(active_nodes))
 
+        self.start_nodes_training(active_nodes)
+
+        dataset_base_path: str = self.args.dataset_base_path or os.environ["HOME"]
         if self.args.dataset in ["cifar10", "mnist"]:
-            data_dir = os.path.join(os.environ["HOME"], "dfl-data")
+            data_dir = os.path.join(dataset_base_path, "dfl-data")
         else:
             # The LEAF dataset
-            data_dir = os.path.join(os.environ["HOME"], "leaf", self.args.dataset)
+            data_dir = os.path.join(dataset_base_path, "leaf", self.args.dataset)
 
-        self.evaluator = ModelEvaluator(data_dir, self.session_settings)
+        if not self.args.bypass_training:
+            self.evaluator = ModelEvaluator(data_dir, self.session_settings)
 
         if self.args.profile:
             yappi.start(builtins=True)
-
-        if self.args.profile:
-            yappi.stop()
-            yappi_stats = yappi.get_func_stats()
-            yappi_stats.sort("tsub")
-            yappi_stats.save(os.path.join(self.data_dir, "yappi.stats"), type='callgrind')
 
         start_time = time.time()
         if self.args.duration > 0:
@@ -235,6 +260,15 @@ class LearningSimulation(TaskManager):
             self.loop.stop()
         else:
             self.logger.info("Running simulation for undefined time")
+
+        if self.args.profile:
+            yappi.stop()
+            yappi_stats = yappi.get_func_stats()
+            yappi_stats.sort("tsub")
+            yappi_stats.save(os.path.join(self.data_dir, "yappi.stats"), type='callgrind')
+
+    def start_nodes_training(self, active_nodes: List) -> None:
+        pass
 
     def on_ipv8_ready(self) -> None:
         """
@@ -275,7 +309,7 @@ class LearningSimulation(TaskManager):
         dump_settings(self.session_settings)
 
         # Divide the clients over the DAS nodes
-        client_queue = list(range(len(self.model_manager.incoming_trained_models.values())))
+        client_queue = list(self.model_manager.incoming_trained_models.keys())
         while client_queue:
             self.logger.info("Scheduling new batch on DAS nodes - %d clients left", len(client_queue))
 
@@ -293,13 +327,12 @@ class LearningSimulation(TaskManager):
                 # Prepare the input files for the subjobs
                 model_ids = []
                 for client_id in clients_on_this_node:
-                    model_id = client_id
+                    model_id = int(client_id)
                     model_ids.append(model_id)
                     all_model_ids.add(model_id)
                     model_file_name = "%d.model" % model_id
                     model_path = os.path.join(self.session_settings.work_dir, model_file_name)
-                    node_id = b"%d" % client_id
-                    torch.save(self.model_manager.incoming_trained_models[node_id].state_dict(), model_path)
+                    torch.save(self.model_manager.incoming_trained_models[client_id].state_dict(), model_path)
 
                 import accdfl.util as autil
                 script_dir = os.path.join(os.path.abspath(os.path.dirname(autil.__file__)), "evaluate_model.py")
@@ -357,46 +390,70 @@ export PYTHONPATH=%s
         """
         results: Dict[int, Tuple[float, float]] = {}
         for ind, model in enumerate(self.model_manager.incoming_trained_models.values()):
-            self.logger.info("Testing model %d on device %s..." % (ind + 1, self.args.accuracy_device_name))
-            accuracy, loss = self.evaluator.evaluate_accuracy(
-                model, device_name=self.args.accuracy_device_name)
+            self.logger.warning("Testing model %d on device %s..." % (ind + 1, self.args.accuracy_device_name))
+            if not self.args.bypass_training:
+                accuracy, loss = self.evaluator.evaluate_accuracy(model, device_name=self.args.accuracy_device_name)
+            else:
+                accuracy, loss = 0, 0
+
             results[ind] = (accuracy, loss)
         return results
 
+    def get_statistics(self) -> Dict:
+        # Determine both individual and aggregate statistics.
+        total_bytes_up: int = 0
+        total_bytes_down: int = 0
+        total_train_time: float = 0
+        total_network_time: float = 0
+
+        individual_stats = {}
+        for ind, node in enumerate(self.nodes):
+            bytes_up = node.overlays[0].endpoint.bytes_up
+            bytes_down = node.overlays[0].endpoint.bytes_down
+            train_time = node.overlays[0].model_manager.model_trainer.total_training_time
+            network_time = node.overlays[0].bw_scheduler.total_time_transmitting
+            individual_stats[ind] = {
+                "bytes_up": bytes_up,
+                "bytes_down": bytes_down,
+                "train_time": train_time,
+                "network_time": network_time
+            }
+
+            total_bytes_up += bytes_up
+            total_bytes_down += bytes_down
+            total_train_time += train_time
+            total_network_time += network_time
+
+        aggregate_stats = {
+            "bytes_up": total_bytes_up,
+            "bytes_down": total_bytes_down,
+            "train_time": total_train_time,
+            "network_time": total_network_time
+        }
+
+        return {
+            "time": asyncio.get_event_loop().time(),
+            "global": aggregate_stats
+        }
+
+    def flush_statistics(self):
+        """
+        Flush all the statistics generated by nodes.
+        """
+
+        # Write away the model transfers between peers
+        if self.args.bypass_model_transfers:
+            with open(os.path.join(self.data_dir, "transfers.csv"), "a") as out_file:
+                for node in self.nodes:
+                    for transfer in node.overlays[0].transfers:
+                        out_file.write("%s,%s,%d,%f,%f,%s,%d\n" % transfer)
+                    node.overlays[0].transfers = []
+
+        with open(os.path.join(self.data_dir, "statistics.json"), "a") as out_file:
+            out_file.write(json.dumps(self.get_statistics()) + "\n")
+
     def on_simulation_finished(self) -> None:
-        """
-        Write away the most important data.
-        """
-        self.logger.info("Writing away experiment statistics")
-
-        # Write away the model transfer times
-        with open(os.path.join(self.data_dir, "transfer_times.csv"), "w") as transfer_times_file:
-            transfer_times_file.write("time\n")
-            for node in self.nodes:
-                for transfer_time in node.overlays[0].transfer_times:
-                    transfer_times_file.write("%f\n" % transfer_time)
-
-        # Write away the model training times
-        with open(os.path.join(self.data_dir, "training_times.csv"), "w") as training_times_file:
-            training_times_file.write("peer,duration\n")
-            for ind, node in enumerate(self.nodes):
-                for training_time in node.overlays[0].model_manager.training_times:
-                    training_times_file.write("%d,%f\n" % (ind + 1, training_time))
-
-        # Write away the individual, generic bandwidth statistics
-        tot_up, tot_down = 0, 0
-        with open(os.path.join(self.data_dir, "bandwidth.csv"), "w") as bw_file:
-            bw_file.write("peer,outgoing_bytes,incoming_bytes\n")
-            for ind, node in enumerate(self.nodes):
-                tot_up += node.overlays[0].endpoint.bytes_up
-                tot_down += node.overlays[0].endpoint.bytes_down
-                bw_file.write("%d,%d,%d\n" % (ind + 1,
-                                              node.overlays[0].endpoint.bytes_up,
-                                              node.overlays[0].endpoint.bytes_down))
-
-        # Write away the total, generic bandwidth statistics
-        with open(os.path.join(self.data_dir, "total_bandwidth.txt"), "w") as bw_file:
-            bw_file.write("%d,%d" % (tot_up, tot_down))
+        self.flush_statistics()
 
     async def run(self) -> None:
         self.setup_directories()
