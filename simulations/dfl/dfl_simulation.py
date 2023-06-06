@@ -1,5 +1,4 @@
 import os
-import shutil
 from argparse import Namespace
 from asyncio import get_event_loop
 from binascii import hexlify
@@ -26,9 +25,13 @@ class DFLSimulation(LearningSimulation):
         self.last_round_complete_time: Optional[float] = None
         self.round_durations: List[float] = []
         self.best_accuracy: float = 0.0
-        self.data_dir = os.path.join("data", "n_%d_%s_s%d_a%d_sf%f_sd%d_dfl" % (
+        datadir_name = "n_%d_%s_s%d_a%d_sf%f_sd%d" % (
             self.args.peers, self.args.dataset, self.args.sample_size, self.args.num_aggregators,
-            self.args.success_fraction, self.args.seed))
+            self.args.success_fraction, self.args.seed)
+        if self.args.cohort is not None:
+            datadir_name += "_c%d" % self.args.cohort
+        datadir_name += "_dfl"
+        self.data_dir = os.path.join("data", datadir_name)
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = super().get_ipv8_builder(peer_id)
@@ -48,9 +51,25 @@ class DFLSimulation(LearningSimulation):
             participants_pks = [hexlify(self.nodes[ind].overlays[0].my_peer.public_key.key_to_bin()).decode()
                             for ind in range(start_ind, end_ind)]
             participants_ids = list(range(start_ind, end_ind))
+        elif self.args.cohort_file:
+            cohorts: Dict[int, str] = {}
+
+            # Read the cohort organisations and set the active participants accordingly.
+            with open(os.path.join("data", self.args.cohort_file)) as cohort_file:
+                for line in cohort_file.readlines():
+                    parts = line.strip().split(",")
+                    cohorts[int(parts[0])] = parts[1]
+
+            participants_ids = [int(n) for n in cohorts[self.args.cohort].split("-")]
+            participants_pks = [hexlify(self.nodes[ind].overlays[0].my_peer.public_key.key_to_bin()).decode()
+                                for ind in participants_ids]
         else:
             participants_pks = [hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes]
             participants_ids = list(range(len(self.nodes)))
+
+        if self.args.sample_size == 0:
+            self.args.sample_size = len(participants_ids)
+            self.logger.info("Setting sample size to %d" % self.args.sample_size)
 
         # Determine who will be the aggregator
         peer_pk = None
@@ -203,7 +222,7 @@ class DFLSimulation(LearningSimulation):
         if self.args.checkpoint_interval and round_nr % self.args.checkpoint_interval == 0:
             models_dir = os.path.join(self.data_dir, "models")
             os.makedirs(models_dir, exist_ok=True)
-            torch.save(model.state_dict(), os.path.join(models_dir, "%d_%d.model" % (round_nr, ind)))
+            torch.save(model.state_dict(), os.path.join(models_dir, "%d_%d_%d.model" % (round_nr, cur_time, ind)))
 
         if self.args.accuracy_logging_interval > 0 and round_nr % self.args.accuracy_logging_interval == 0 and \
                 round_nr > self.latest_accuracy_check_round:
