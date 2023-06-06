@@ -24,6 +24,10 @@ def get_args(dataset: str, default_lr: float, default_momentum: float = 0):
     parser.add_argument('--capability-traces', type=str, default=None)
     parser.add_argument('--seed', type=int, default=42)  # Seed used to sample traces
 
+    # Cohort-based training
+    parser.add_argument('--cohort-file', type=str, default=None)
+    parser.add_argument('--cohort', type=int, default=None)
+
     # Other settings
     parser.add_argument('--log-level', type=str, default="INFO")
     parser.add_argument('--dataset', type=str, default=dataset)
@@ -50,7 +54,7 @@ def get_args(dataset: str, default_lr: float, default_momentum: float = 0):
     parser.add_argument('--fix-aggregator', action=argparse.BooleanOptionalAction)
     parser.add_argument('--success-fraction', type=float, default=1.0)
     parser.add_argument('--liveness-success-fraction', type=float, default=0.4)
-    parser.add_argument('--sample-size', type=int, default=10)
+    parser.add_argument('--sample-size', type=int, default=0)
     parser.add_argument('--num-aggregators', type=int, default=1)
     parser.add_argument('--aggregation-timeout', type=float, default=300)
     parser.add_argument('--activity-log-interval', type=int, default=None)
