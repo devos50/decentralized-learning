@@ -131,7 +131,7 @@ class LearningSimulation(TaskManager):
                 node.overlays[0].set_traces(data[device_ids[ind]])
 
         if self.args.capability_traces:
-            self.logger.info("Applying capability trace file %s", self.args.availability_traces)
+            self.logger.info("Applying capability trace file %s", self.args.capability_traces)
             with open(self.args.capability_traces, "rb") as traces_file:
                 data = pickle.load(traces_file)
 
