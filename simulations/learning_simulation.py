@@ -53,6 +53,10 @@ class LearningSimulation(TaskManager):
         self.logger = None
         self.model_manager: Optional[ModelManager] = None
 
+        if self.args.torch_threads:
+            print("Setting number of PyTorch threads to: %d" % self.args.torch_threads)
+            torch.set_num_threads(self.args.torch_threads)
+
         self.loop = DiscreteLoop()
         asyncio.set_event_loop(self.loop)
 

@@ -4,6 +4,8 @@ import argparse
 def get_args(dataset: str, default_lr: float, default_momentum: float = 0):
     parser = argparse.ArgumentParser()
 
+    parser.add_argument('--torch-threads', type=int, default=None)
+
     # Learning settings
     parser.add_argument('--learning-rate', type=float, default=default_lr)
     parser.add_argument('--momentum', type=float, default=default_momentum)
