@@ -183,6 +183,9 @@ class LearningSimulation(TaskManager):
         """
         Based on the latencies, determine the ID of the peer with the lowest median latency to other peers.
         """
+        if not self.args.latencies_file:
+            return eligible_peers[0]
+
         latencies = []
         with open(self.args.latencies_file) as latencies_file:
             for line in latencies_file.readlines():
