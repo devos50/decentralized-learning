@@ -55,6 +55,7 @@ def get_args():
     parser.add_argument('public_dataset')
     parser.add_argument('--distill-timestamp', type=int, default=None)  # The timestamp during the experiment at which we distill
     parser.add_argument('--partitioner', type=str, default="iid")
+    parser.add_argument('--alpha', type=float, default=1)
     parser.add_argument('--learning-rate', type=float, default=0.001)
     parser.add_argument('--momentum', type=float, default=0.9)
     parser.add_argument('--weight-decay', type=float, default=0)
@@ -153,6 +154,7 @@ def determine_cohort_weights(args):
         all_participants=["a"],
         target_participants=total_peers,
         partitioner=args.partitioner,
+        alpha=args.alpha,
     )
 
     grouped_samples_per_class = []
