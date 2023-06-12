@@ -26,9 +26,9 @@ class DFLSimulation(LearningSimulation):
         self.last_checkpoint_time: float = 0
         self.round_durations: List[float] = []
         self.best_accuracy: float = 0.0
-        datadir_name = "n_%d_%s_s%d_a%d_sf%f_sd%d" % (
-            self.args.peers, self.args.dataset, self.args.sample_size, self.args.num_aggregators,
-            self.args.success_fraction, self.args.seed)
+        partitioner_str = self.args.partitioner if self.args.partitioner != "dirichlet" else "dirichlet%f" % self.args.alpha
+        datadir_name = "n_%d_%s_%s_sd%d" % (
+            self.args.peers, self.args.dataset, partitioner_str, self.args.seed)
         if self.args.cohort is not None:
             datadir_name += "_c%d" % self.args.cohort
         datadir_name += "_dfl"
