@@ -23,6 +23,7 @@ class DFLSimulation(LearningSimulation):
         super().__init__(args)
         self.latest_accuracy_check_round: int = 0
         self.last_round_complete_time: Optional[float] = None
+        self.last_checkpoint_time: float = 0
         self.round_durations: List[float] = []
         self.best_accuracy: float = 0.0
         datadir_name = "n_%d_%s_s%d_a%d_sf%f_sd%d" % (
@@ -223,7 +224,12 @@ class DFLSimulation(LearningSimulation):
             self.last_round_complete_time = cur_time
 
         # Checkpoint if needed
-        if self.args.checkpoint_interval and round_nr % self.args.checkpoint_interval == 0:
+        if self.args.checkpoint_interval and self.args.checkpoint_interval_is_in_sec and cur_time >= self.last_checkpoint_time + self.args.checkpoint_interval:
+            self.last_checkpoint_time += self.args.checkpoint_interval
+            models_dir = os.path.join(self.data_dir, "models")
+            os.makedirs(models_dir, exist_ok=True)
+            torch.save(model.state_dict(), os.path.join(models_dir, "%d_%d_%d.model" % (round_nr, cur_time, ind)))
+        elif self.args.checkpoint_interval and not self.args.checkpoint_interval_is_in_sec and round_nr % self.args.checkpoint_interval == 0:
             models_dir = os.path.join(self.data_dir, "models")
             os.makedirs(models_dir, exist_ok=True)
             torch.save(model.state_dict(), os.path.join(models_dir, "%d_%d_%d.model" % (round_nr, cur_time, ind)))

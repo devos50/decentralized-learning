@@ -43,6 +43,7 @@ def get_args(dataset: str, default_lr: float, default_momentum: float = 0):
     parser.add_argument('--peers', type=int, default=10)
     parser.add_argument('--active-participants', type=str, default=None)
     parser.add_argument('--checkpoint-interval', type=int, default=None)
+    parser.add_argument('--checkpoint-interval-is-in-sec', action=argparse.BooleanOptionalAction)
     parser.add_argument('--train-device-name', type=str, default="cpu")
     parser.add_argument('--accuracy-device-name', type=str, default="cpu")
     parser.add_argument('--bypass-model-transfers', action=argparse.BooleanOptionalAction)
