@@ -11,4 +11,5 @@ python3 -u simulations/dfl/cifar10.py \
 --bypass-model-transfers \
 --seed 24082 \
 --fix-aggregator \
---checkpoint-interval 5
+--checkpoint-interval 1800 \
+--checkpoint-interval-is-in-sec

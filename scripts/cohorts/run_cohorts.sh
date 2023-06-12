@@ -14,7 +14,8 @@ for cohort_value in {0..9}; do
   --seed 24082 \
   --torch-threads 6 \
   --fix-aggregator \
-  --checkpoint-interval 5 \
+  --checkpoint-interval 1800 \
+  --checkpoint-interval-is-in-sec
   --cohort-file "cohorts.txt" \
   --cohort $cohort_value > "output_${cohort_value}.log" 2>&1 &
 done
