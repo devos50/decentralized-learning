@@ -30,6 +30,7 @@ cohorts: Dict[int, List[int]] = {}
 total_peers: int = 0
 cifar10_testset = None
 weights = None
+distill_timestamp = 0
 
 
 class DatasetWithIndex(Dataset):
@@ -61,7 +62,7 @@ def get_args():
     parser.add_argument('--peers', type=int, default=10)
     parser.add_argument('--student-model', type=str, default=None)
     parser.add_argument('--teacher-model', type=str, default=None)
-    parser.add_argument('--epochs', type=int, default=200)
+    parser.add_argument('--epochs', type=int, default=30)
     parser.add_argument('--acc-check-interval', type=int, default=1)
     parser.add_argument('--check-teachers-accuracy', action=argparse.BooleanOptionalAction)
     parser.add_argument('--data-dir', type=str, default=os.path.join(os.environ["HOME"], "dfl-data"))
@@ -83,7 +84,10 @@ def read_cohorts(args) -> None:
 
 
 def read_teacher_models(args):
+    global distill_timestamp
     logger.info("Reading teacher models...")
+
+    model_timestamps: List[int] = []
 
     # Load the teacher models
     for cohort_ind in range(len(cohorts.keys())):
@@ -107,6 +111,7 @@ def read_teacher_models(args):
         # Find the right model given the distillation timestamp
         if args.distill_timestamp is None:
             model_to_load = cohort_models[-1][2]
+            model_timestamps.append(cohort_models[-1][1])
         else:
             highest_ind = None
             for ind in range(len(cohort_models)):
@@ -118,6 +123,7 @@ def read_teacher_models(args):
                 raise RuntimeError("No model produced at timestamp %f for cohort %d" % (args.distill_timestamp, cohort_ind))
 
             model_to_load = cohort_models[highest_ind][2]
+            model_timestamps.append(cohort_models[highest_ind][1])
 
         logger.info("Using model %s for cohort %d", os.path.basename(model_to_load), cohort_ind)
         model = create_model(args.private_dataset, architecture=args.teacher_model)
@@ -129,6 +135,8 @@ def read_teacher_models(args):
             # Test accuracy of the teacher model
             acc, loss = cifar10_testset.test(model, device_name=device)
             logger.info("Accuracy of teacher model %d: %f, %f", cohort_ind, acc, loss)
+
+    distill_timestamp = args.distill_timestamp if args.distill_timestamp is not None else max(model_timestamps)
 
 
 def determine_cohort_weights(args):
@@ -193,9 +201,6 @@ async def run(args):
     if not os.path.exists("data"):
         os.mkdir("data")
 
-    with open(os.path.join("data", "distill_accuracies.csv"), "w") as out_file:
-        out_file.write("epoch,accuracy,loss,best_acc,train_time,total_time\n")
-
     start_time = time.time()
     time_for_testing = 0  # Keep track of the time we spend on testing - we want to exclude this
 
@@ -247,6 +252,9 @@ async def run(args):
     # Reset loader
     cifar100_loader = DataLoader(dataset=DatasetWithIndex(cifar100_dataset.trainset), batch_size=args.batch_size, shuffle=True)
 
+    with open(os.path.join("data", "distill_accuracies_%d.csv" % distill_timestamp), "w") as out_file:
+        out_file.write("distill_time,epoch,accuracy,loss,best_acc,train_time,total_time\n")
+
     # Distill \o/
     optimizer = optim.Adam(student_model.parameters(), lr=args.learning_rate, betas=(args.momentum, 0.999), weight_decay=args.weight_decay)
     criterion = torch.nn.L1Loss(reduce=True)
@@ -272,8 +280,8 @@ async def run(args):
                 best_acc = acc
             logger.info("Accuracy of student model after %d epochs: %f, %f (best: %f)", epoch + 1, acc, loss, best_acc)
             time_for_testing += (time.time() - test_start_time)
-            with open(os.path.join("data", "distill_accuracies.csv"), "a") as out_file:
-                out_file.write("%d,%f,%f,%f,%f,%f\n" % (epoch + 1, acc, loss, best_acc, time.time() - start_time - time_for_testing, time.time() - start_time))
+            with open(os.path.join("data", "distill_accuracies_%d.csv" % distill_timestamp), "a") as out_file:
+                out_file.write("%d,%d,%f,%f,%f,%f,%f\n" % (distill_timestamp, epoch + 1, acc, loss, best_acc, time.time() - start_time - time_for_testing, time.time() - start_time))
 
 logging.basicConfig(level=logging.INFO)
 loop = asyncio.get_event_loop()
