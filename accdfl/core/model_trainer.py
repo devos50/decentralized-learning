@@ -29,6 +29,7 @@ class ModelTrainer:
         self.settings: SessionSettings = settings
         self.participant_index: int = participant_index
         self.simulated_speed: Optional[float] = None
+        self.fixed_simulated_training_time: Optional[float] = None
         self.total_training_time: float = 0
         self.is_training: bool = False
 
@@ -65,7 +66,9 @@ class ModelTrainer:
             # in our simulations. We do this before the actual training so if our sleep gets interrupted, the local
             # model will not be updated.
             start_time = get_event_loop().time()
-            if self.simulated_speed:
+            if self.fixed_simulated_training_time:
+                elapsed_time = self.fixed_simulated_training_time
+            elif self.simulated_speed:
                 elapsed_time = AUGMENTATION_FACTOR_SIM * local_steps * self.settings.learning.batch_size * (self.simulated_speed / 1000)
             else:
                 elapsed_time = 0

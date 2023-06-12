@@ -148,6 +148,11 @@ class LearningSimulation(TaskManager):
 
             for node in self.nodes:
                 node.overlays[0].other_nodes_bws = nodes_bws
+        else:  # No traces set, but maybe we are using a fixed training/transfer time
+            if self.args.fixed_training_time is not None:
+                for node in self.nodes:
+                    node.overlays[0].model_manager.model_trainer.fixed_simulated_training_time = \
+                        self.args.fixed_training_time
 
         self.logger.info("Traces applied!")
 
