@@ -51,7 +51,7 @@ def get_args(dataset: str, default_lr: float, default_momentum: float = 0):
     parser.add_argument('--profile', action=argparse.BooleanOptionalAction)
     parser.add_argument('--log-events', action=argparse.BooleanOptionalAction)
     parser.add_argument('--topology', type=str, default="exp-one-peer")
-    parser.add_argument('--latencies-file', type=str, default="data/latencies.txt")
+    parser.add_argument('--latencies-file', type=str, default=None)
     parser.add_argument('--gl-round-timeout', type=int, default=60)
     parser.add_argument('--dl-round-timeout', type=int, default=120)
     parser.add_argument('--fix-aggregator', action=argparse.BooleanOptionalAction)
