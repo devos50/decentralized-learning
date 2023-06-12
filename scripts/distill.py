@@ -110,8 +110,13 @@ def read_teacher_models(args):
         else:
             highest_ind = None
             for ind in range(len(cohort_models)):
-                if cohort_models[ind][1] < args.distill_timestamp and (highest_ind is None or cohort_models[ind][1] > cohort_models[highest_ind][1]):
+                if cohort_models[ind][1] >= args.distill_timestamp:
                     highest_ind = ind
+                    break
+
+            if highest_ind is None:
+                raise RuntimeError("No model produced at timestamp %f for cohort %d" % (args.distill_timestamp, cohort_ind))
+
             model_to_load = cohort_models[highest_ind][2]
 
         logger.info("Using model %s for cohort %d", os.path.basename(model_to_load), cohort_ind)
