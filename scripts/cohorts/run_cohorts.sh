@@ -12,6 +12,7 @@ for cohort_value in {0..9}; do
   --fixed-training-time 30 \
   --bypass-model-transfers \
   --seed 24082 \
+  --torch-threads 6 \
   --fix-aggregator \
   --checkpoint-interval 5 \
   --cohort-file "cohorts.txt" \
