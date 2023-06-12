@@ -8,7 +8,7 @@ for cohort_value in {0..9}; do
   --activity-log-interval 60 \
   --accuracy-logging-interval 5 \
   --duration 0 \
-  --rounds 500 \
+  --rounds 1000 \
   --fixed-training-time 30 \
   --bypass-model-transfers \
   --seed 24082 \
