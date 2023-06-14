@@ -225,6 +225,7 @@ class DFLSimulation(LearningSimulation):
         torch.save(self.current_aggregated_model.state_dict(), os.path.join(models_dir, "%d_%d_0.model" % (self.latest_accuracy_check_round, cur_time)))
 
     async def on_aggregate_complete(self, ind: int, round_nr: int, model):
+        self.current_aggregated_model = model
         tot_up, tot_down = 0, 0
         for node in self.nodes:
             tot_up += node.overlays[0].endpoint.bytes_up
