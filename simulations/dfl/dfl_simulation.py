@@ -23,6 +23,7 @@ class DFLSimulation(LearningSimulation):
         super().__init__(args)
         self.latest_accuracy_check_round: int = 0
         self.last_round_complete_time: Optional[float] = None
+        self.current_aggregated_model = None
         self.last_checkpoint_time: float = 0
         self.round_durations: List[float] = []
         self.best_accuracy: float = 0.0
@@ -155,6 +156,11 @@ class DFLSimulation(LearningSimulation):
         # Start the liveness check (every 5 minutes)
         self.register_task("check_liveness", self.check_liveness, interval=600)
 
+        # Start the model checkpointing process
+        if self.args.checkpoint_interval and self.args.checkpoint_interval_is_in_sec:
+            self.logger.info("Starting model checkpoint loop every %d sec", self.args.checkpoint_interval)
+            self.register_task("checkpoint", self.checkpoint_model_interval, interval=self.args.checkpoint_interval)
+
     def check_liveness(self):
         # Condition 1: At least one online node is training their model
         one_node_training: bool = False
@@ -207,6 +213,17 @@ class DFLSimulation(LearningSimulation):
         for node in self.nodes:
             node.overlays[0].peers_first_round = activated_peers_pks
 
+    def checkpoint_model_interval(self):
+        self.logger.info("Checkpointing model...")
+        if not self.current_aggregated_model:
+            return
+
+        cur_time = get_event_loop().time()
+        self.last_checkpoint_time += self.args.checkpoint_interval
+        models_dir = os.path.join(self.data_dir, "models")
+        os.makedirs(models_dir, exist_ok=True)
+        torch.save(self.current_aggregated_model.state_dict(), os.path.join(models_dir, "%d_%d_0.model" % (self.latest_accuracy_check_round, cur_time)))
+
     async def on_aggregate_complete(self, ind: int, round_nr: int, model):
         tot_up, tot_down = 0, 0
         for node in self.nodes:
@@ -224,12 +241,7 @@ class DFLSimulation(LearningSimulation):
             self.last_round_complete_time = cur_time
 
         # Checkpoint if needed
-        if self.args.checkpoint_interval and self.args.checkpoint_interval_is_in_sec and cur_time >= self.last_checkpoint_time + self.args.checkpoint_interval:
-            self.last_checkpoint_time += self.args.checkpoint_interval
-            models_dir = os.path.join(self.data_dir, "models")
-            os.makedirs(models_dir, exist_ok=True)
-            torch.save(model.state_dict(), os.path.join(models_dir, "%d_%d_%d.model" % (round_nr, cur_time, ind)))
-        elif self.args.checkpoint_interval and not self.args.checkpoint_interval_is_in_sec and round_nr % self.args.checkpoint_interval == 0:
+        if self.args.checkpoint_interval and not self.args.checkpoint_interval_is_in_sec and round_nr % self.args.checkpoint_interval == 0:
             models_dir = os.path.join(self.data_dir, "models")
             os.makedirs(models_dir, exist_ok=True)
             torch.save(model.state_dict(), os.path.join(models_dir, "%d_%d_%d.model" % (round_nr, cur_time, ind)))
