@@ -97,7 +97,7 @@ class ModelTrainer:
             if self.settings.bypass_training:
                 continue
 
-            if self.settings.learning.local_steps == 0:
+            if self.settings.learning.local_steps != 0:
                 # Refresh the training set
                 train_set = self.dataset.get_trainset(batch_size=self.settings.learning.batch_size, shuffle=True)
                 train_set_it = iter(train_set)
