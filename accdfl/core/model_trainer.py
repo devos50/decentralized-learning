@@ -102,33 +102,36 @@ class ModelTrainer:
                 train_set = self.dataset.get_trainset(batch_size=self.settings.learning.batch_size, shuffle=True)
                 train_set_it = iter(train_set)
 
-            data, target = next(train_set_it)
+            try:
+                data, target = next(train_set_it)
 
-            if self.settings.dataset == "google_speech":
-                data = torch.unsqueeze(data, 1)
+                if self.settings.dataset == "google_speech":
+                    data = torch.unsqueeze(data, 1)
 
-            model.train()
-            data, target = Variable(data.to(device)), Variable(target.to(device))
-            samples_trained_on += len(data)
+                model.train()
+                data, target = Variable(data.to(device)), Variable(target.to(device))
+                samples_trained_on += len(data)
 
-            optimizer.optimizer.zero_grad()
-            self.logger.debug('d-sgd.next node forward propagation (step %d/%d)', local_step, local_steps)
-            output = model.forward(data)
+                optimizer.optimizer.zero_grad()
+                self.logger.debug('d-sgd.next node forward propagation (step %d/%d)', local_step, local_steps)
+                output = model.forward(data)
 
-            if self.settings.dataset == "movielens":
-                lossf = MSELoss()
-            elif self.settings.dataset == "cifar10":
-                if self.settings.model == ["resnet8", "resnet18"]:
-                    lossf = CrossEntropyLoss()
+                if self.settings.dataset == "movielens":
+                    lossf = MSELoss()
+                elif self.settings.dataset == "cifar10":
+                    if self.settings.model == ["resnet8", "resnet18"]:
+                        lossf = CrossEntropyLoss()
+                    else:
+                        lossf = NLLLoss()
                 else:
-                    lossf = NLLLoss()
-            else:
-                lossf = CrossEntropyLoss()
+                    lossf = CrossEntropyLoss()
 
-            loss = lossf(output, target)
-            self.logger.debug('d-sgd.next node backward propagation (step %d/%d)', local_step, local_steps)
-            loss.backward()
-            optimizer.optimizer.step()
+                loss = lossf(output, target)
+                self.logger.debug('d-sgd.next node backward propagation (step %d/%d)', local_step, local_steps)
+                loss.backward()
+                optimizer.optimizer.step()
+            except StopIteration:
+                pass
 
         self.is_training = False
         model.to("cpu")
