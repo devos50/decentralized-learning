@@ -60,7 +60,6 @@ def get_args():
     parser.add_argument('--momentum', type=float, default=0.9)
     parser.add_argument('--weight-decay', type=float, default=0)
     parser.add_argument('--batch-size', type=int, default=512)
-    parser.add_argument('--peers', type=int, default=10)
     parser.add_argument('--student-model', type=str, default=None)
     parser.add_argument('--teacher-model', type=str, default=None)
     parser.add_argument('--epochs', type=int, default=50)
@@ -248,7 +247,7 @@ async def run(args):
     logger.info("Aggregating logits...")
     aggregated_predictions = []
     for sample_ind in range(len(logits[0])):
-        predictions = [logits[n][sample_ind] for n in range(args.peers)]
+        predictions = [logits[n][sample_ind] for n in range(len(cohorts.keys()))]
         aggregated_predictions.append(torch.sum(torch.stack(predictions), dim=0))
 
     # Reset loader
