@@ -665,7 +665,8 @@ class DFLCommunity(LearningCommunity):
         timeout_task_name: str = "aggregate_%d_timeout" % model_round
         if self.is_pending_task_active(timeout_task_name):
             self.cancel_pending_task(timeout_task_name)
-        self.aggregation_timeouts.remove(timeout_task_name)
+        if timeout_task_name in self.aggregation_timeouts:
+            self.aggregation_timeouts.remove(timeout_task_name)
 
         # 3.1. Aggregate these models
         self.logger.info("Aggregator %s will average the models of round %d",
