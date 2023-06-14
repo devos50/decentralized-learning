@@ -25,6 +25,7 @@ def get_args(dataset: str, default_lr: float, default_momentum: float = 0):
     parser.add_argument('--availability-traces', type=str, default=None)
     parser.add_argument('--capability-traces', type=str, default=None)
     parser.add_argument('--fixed-training-time', type=float, default=None)
+    parser.add_argument('--instant-network', action=argparse.BooleanOptionalAction)
     parser.add_argument('--seed', type=int, default=42)  # Seed used to sample traces
 
     # Cohort-based training
