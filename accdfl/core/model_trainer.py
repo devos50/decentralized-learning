@@ -56,6 +56,14 @@ class ModelTrainer:
         device = torch.device(device_name)
         optimizer = SGDOptimizer(model, self.settings.learning.learning_rate, self.settings.learning.momentum, self.settings.learning.weight_decay)
 
+        if self.settings.learning.local_steps == 0 and not self.settings.bypass_training:
+            # Load the train set and determine the number of local steps we should take
+            train_set = self.dataset.get_trainset(batch_size=self.settings.learning.batch_size, shuffle=True)
+            train_set_it = iter(train_set)
+            local_steps = len(train_set.dataset) // self.settings.learning.batch_size
+            if len(train_set.dataset) % self.settings.learning.batch_size != 0:
+                local_steps += 1
+
         self.logger.info("Will perform %d local steps of training on device %s (batch size: %d, lr: %f, wd: %f)",
                          local_steps, device_name, self.settings.learning.batch_size,
                          self.settings.learning.learning_rate, self.settings.learning.weight_decay)
@@ -86,37 +94,41 @@ class ModelTrainer:
         samples_trained_on = 0
         model = model.to(device)
         for local_step in range(local_steps):
-            if not self.settings.bypass_training:
+            if self.settings.bypass_training:
+                continue
+
+            if self.settings.learning.local_steps == 0:
+                # Refresh the training set
                 train_set = self.dataset.get_trainset(batch_size=self.settings.learning.batch_size, shuffle=True)
                 train_set_it = iter(train_set)
 
-                data, target = next(train_set_it)
+            data, target = next(train_set_it)
 
-                if self.settings.dataset == "google_speech":
-                    data = torch.unsqueeze(data, 1)
+            if self.settings.dataset == "google_speech":
+                data = torch.unsqueeze(data, 1)
 
-                model.train()
-                data, target = Variable(data.to(device)), Variable(target.to(device))
-                samples_trained_on += len(data)
+            model.train()
+            data, target = Variable(data.to(device)), Variable(target.to(device))
+            samples_trained_on += len(data)
 
-                optimizer.optimizer.zero_grad()
-                self.logger.debug('d-sgd.next node forward propagation (step %d/%d)', local_step, local_steps)
-                output = model.forward(data)
+            optimizer.optimizer.zero_grad()
+            self.logger.debug('d-sgd.next node forward propagation (step %d/%d)', local_step, local_steps)
+            output = model.forward(data)
 
-                if self.settings.dataset == "movielens":
-                    lossf = MSELoss()
-                elif self.settings.dataset == "cifar10":
-                    if self.settings.model in ["resnet8", "resnet18"]:
-                        lossf = CrossEntropyLoss()
-                    else:
-                        lossf = NLLLoss()
-                else:
+            if self.settings.dataset == "movielens":
+                lossf = MSELoss()
+            elif self.settings.dataset == "cifar10":
+                if self.settings.model == ["resnet8", "resnet18"]:
                     lossf = CrossEntropyLoss()
+                else:
+                    lossf = NLLLoss()
+            else:
+                lossf = CrossEntropyLoss()
 
-                loss = lossf(output, target)
-                self.logger.debug('d-sgd.next node backward propagation (step %d/%d)', local_step, local_steps)
-                loss.backward()
-                optimizer.optimizer.step()
+            loss = lossf(output, target)
+            self.logger.debug('d-sgd.next node backward propagation (step %d/%d)', local_step, local_steps)
+            loss.backward()
+            optimizer.optimizer.step()
 
         self.is_training = False
         model.to("cpu")
