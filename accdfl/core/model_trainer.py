@@ -76,7 +76,7 @@ class ModelTrainer:
             elif self.simulated_speed:
                 elapsed_time = AUGMENTATION_FACTOR_SIM * local_steps * self.settings.learning.batch_size * (self.simulated_speed / 1000)
             else:
-                elapsed_time = time.time() - start_time
+                elapsed_time = 0  # Assume training is instant
 
             try:
                 await sleep(elapsed_time)
