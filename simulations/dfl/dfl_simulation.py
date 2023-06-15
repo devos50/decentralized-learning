@@ -24,6 +24,7 @@ class DFLSimulation(LearningSimulation):
         self.latest_accuracy_check_round: int = 0
         self.last_round_complete_time: Optional[float] = None
         self.current_aggregated_model = None
+        self.current_aggregated_model_round: int = 0
         self.last_checkpoint_time: float = 0
         self.round_durations: List[float] = []
         self.best_accuracy: float = 0.0
@@ -161,6 +162,11 @@ class DFLSimulation(LearningSimulation):
             self.logger.info("Starting model checkpoint loop every %d sec", self.args.checkpoint_interval)
             self.register_task("checkpoint", self.checkpoint_model_interval, interval=self.args.checkpoint_interval)
 
+        # Start the model accuracy check process
+        if self.args.accuracy_logging_interval and self.args.accuracy_logging_interval_is_in_sec:
+            self.logger.info("Starting model accuracy check loop every %d sec", self.args.checkpoint_interval)
+            self.register_task("accuracy_check", self.check_accuracy_interval, interval=self.args.accuracy_logging_interval)
+
     def check_liveness(self):
         # Condition 1: At least one online node is training their model
         one_node_training: bool = False
@@ -224,8 +230,26 @@ class DFLSimulation(LearningSimulation):
         os.makedirs(models_dir, exist_ok=True)
         torch.save(self.current_aggregated_model.state_dict(), os.path.join(models_dir, "%d_%d_0.model" % (self.latest_accuracy_check_round, cur_time)))
 
+    def check_accuracy_interval(self):
+        self.logger.info("Checking accuracy of model...")
+        if not self.current_aggregated_model:
+            return
+
+        if not self.args.bypass_training:
+            accuracy, loss = self.evaluator.evaluate_accuracy(self.current_aggregated_model, device_name=self.args.accuracy_device_name)
+        else:
+            accuracy, loss = 0, 0
+
+        with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
+            bytes_up, bytes_down, train_time, network_time = self.get_aggregated_statistics()
+            group = "\"s=%d, a=%d\"" % (self.args.sample_size, self.args.num_aggregators)
+            out_file.write("%s,%s,%f,0,%d,%f,%f,%d,%d,%f,%f\n" % (self.args.dataset, group, get_event_loop().time(),
+                                                                  self.current_aggregated_model_round, accuracy, loss,
+                                                                  bytes_up, bytes_down, train_time, network_time))
+
     async def on_aggregate_complete(self, ind: int, round_nr: int, model):
         self.current_aggregated_model = model
+        self.current_aggregated_model_round = round
         tot_up, tot_down = 0, 0
         for node in self.nodes:
             tot_up += node.overlays[0].endpoint.bytes_up
@@ -247,8 +271,8 @@ class DFLSimulation(LearningSimulation):
             os.makedirs(models_dir, exist_ok=True)
             torch.save(model.state_dict(), os.path.join(models_dir, "%d_%d_%d.model" % (round_nr, cur_time, ind)))
 
-        if self.args.accuracy_logging_interval > 0 and round_nr % self.args.accuracy_logging_interval == 0 and \
-                round_nr > self.latest_accuracy_check_round:
+        if self.args.accuracy_logging_interval > 0 and not self.args.accuracy_logging_interval_is_in_sec and \
+                round_nr % self.args.accuracy_logging_interval == 0 and round_nr > self.latest_accuracy_check_round:
 
             print("Will compute accuracy for round %d!" % round_nr)
             if not self.args.bypass_training:
