@@ -45,7 +45,7 @@ class ModelTrainer:
         """
         self.is_training = True
 
-        if not self.dataset and not self.settings.bypass_training:
+        if not self.dataset:
             self.dataset = create_dataset(self.settings, participant_index=self.participant_index, train_dir=self.train_dir)
 
         local_steps: int = self.settings.learning.local_steps
@@ -53,7 +53,7 @@ class ModelTrainer:
         model = model.to(device)
         optimizer = SGDOptimizer(model, self.settings.learning.learning_rate, self.settings.learning.momentum, self.settings.learning.weight_decay)
 
-        if self.settings.learning.local_steps == 0 and not self.settings.bypass_training:
+        if self.settings.learning.local_steps == 0:
             # Load the train set and determine the number of local steps we should take
             train_set = self.dataset.get_trainset(batch_size=self.settings.learning.batch_size, shuffle=True)
             train_set_it = iter(train_set)
