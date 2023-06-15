@@ -7,6 +7,7 @@ import argparse
 import csv
 import glob
 import os
+from collections import defaultdict
 
 parser = argparse.ArgumentParser()
 parser.add_argument('root_models_dir')
@@ -18,7 +19,13 @@ with open("../../data/client_utilizations.csv", "w") as out_file:
     out_file.write("group,time,total_peers,peers_training\n")
 
     for group in ["cohorts", "fl"]:
-        cohort_utilizations = {}
+        cohort_utilizations = {
+            "clients_training": defaultdict(lambda: 0),
+            "bytes_up": defaultdict(lambda: 0),
+            "bytes_down": defaultdict(lambda: 0),
+            "train_time": defaultdict(lambda: 0),
+            "network_time": defaultdict(lambda: 0),
+        }
         filepaths = glob.glob("../../data/%s_c*" % args.root_models_dir) if group == "cohorts" else ["../../data/%s_dfl" % args.root_models_dir]
         for full_filepath in filepaths:
             if group == "cohorts":
@@ -32,10 +39,21 @@ with open("../../data/client_utilizations.csv", "w") as out_file:
                 for row in csvreader:
                     time = int(row[0])
                     clients_training = int(row[3])
+                    bytes_up = int(row[4])
+                    bytes_down = int(row[5])
+                    train_time = float(row[6])
+                    network_time = float(row[6])
 
-                    if time not in cohort_utilizations:
-                        cohort_utilizations[time] = 0
-                    cohort_utilizations[time] += clients_training
+                    cohort_utilizations[time]["clients_training"] += clients_training
+                    cohort_utilizations[time]["bytes_up"] += bytes_up
+                    cohort_utilizations[time]["bytes_down"] += bytes_down
+                    cohort_utilizations[time]["train_time"] += train_time
+                    cohort_utilizations[time]["network_time"] += network_time
 
-        for time, clients_training in cohort_utilizations.items():
-            out_file.write("%s,%d,%d,%d\n" % (group, time, total_peers, clients_training))
+        for time, utilization_info in cohort_utilizations.items():
+            out_file.write("%s,%d,%d,%d,%d,%d,%f,%f\n" % (group, time, total_peers,
+                                                          utilization_info["clients_training"],
+                                                          utilization_info["bytes_up"],
+                                                          utilization_info["bytes_down"],
+                                                          utilization_info["train_time"],
+                                                          utilization_info["network_time"]))
