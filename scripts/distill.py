@@ -117,7 +117,6 @@ def read_teacher_models(args):
             for ind in range(len(cohort_models)):
                 if highest_ind is None or cohort_models[ind][1] <= args.distill_timestamp:
                     highest_ind = ind
-                    break
 
             model_to_load = cohort_models[highest_ind][2]
             model_timestamps.append(cohort_models[highest_ind][1])
