@@ -19,13 +19,7 @@ with open("../../data/client_utilizations.csv", "w") as out_file:
     out_file.write("group,time,total_peers,peers_training\n")
 
     for group in ["cohorts", "fl"]:
-        cohort_utilizations = {
-            "clients_training": defaultdict(lambda: 0),
-            "bytes_up": defaultdict(lambda: 0),
-            "bytes_down": defaultdict(lambda: 0),
-            "train_time": defaultdict(lambda: 0),
-            "network_time": defaultdict(lambda: 0),
-        }
+        cohort_utilizations = {}
         filepaths = glob.glob("../../data/%s_c*" % args.root_models_dir) if group == "cohorts" else ["../../data/%s_dfl" % args.root_models_dir]
         for full_filepath in filepaths:
             if group == "cohorts":
@@ -43,6 +37,15 @@ with open("../../data/client_utilizations.csv", "w") as out_file:
                     bytes_down = int(row[5])
                     train_time = float(row[6])
                     network_time = float(row[6])
+
+                    if time not in cohort_utilizations:
+                        cohort_utilizations[time] = {
+                            "clients_training": 0,
+                            "bytes_up": 0,
+                            "bytes_down": 0,
+                            "train_time": 0,
+                            "network_time": 0,
+                        }
 
                     cohort_utilizations[time]["clients_training"] += clients_training
                     cohort_utilizations[time]["bytes_up"] += bytes_up
