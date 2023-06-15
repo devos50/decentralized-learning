@@ -32,6 +32,7 @@ class ModelTrainer:
         self.fixed_simulated_training_time: Optional[float] = None
         self.total_training_time: float = 0
         self.is_training: bool = False
+        self.local_steps: int = self.settings.learning.local_steps
 
         if settings.dataset in ["cifar10", "mnist", "movielens", "spambase"]:
             self.train_dir = data_dir
@@ -48,19 +49,19 @@ class ModelTrainer:
         if not self.dataset:
             self.dataset = create_dataset(self.settings, participant_index=self.participant_index, train_dir=self.train_dir)
 
-        local_steps: int = self.settings.learning.local_steps
+        local_steps: int = self.local_steps
         device = torch.device(device_name)
         model = model.to(device)
         optimizer = SGDOptimizer(model, self.settings.learning.learning_rate, self.settings.learning.momentum, self.settings.learning.weight_decay)
 
-        if self.settings.learning.local_steps == 0:
+        if self.local_steps == 0:
             # Load the train set and determine the number of local steps we should take
             train_set = self.dataset.get_trainset(batch_size=self.settings.learning.batch_size, shuffle=True)
             train_set_it = iter(train_set)
             local_steps = len(train_set.dataset) // self.settings.learning.batch_size
             if len(train_set.dataset) % self.settings.learning.batch_size != 0:
                 local_steps += 1
-            self.settings.learning.local_steps = local_steps
+            self.local_steps = local_steps
 
         self.logger.info("Will perform %d local steps of training on device %s (batch size: %d, lr: %f, wd: %f)",
                          local_steps, device_name, self.settings.learning.batch_size,
