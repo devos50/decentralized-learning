@@ -215,7 +215,7 @@ class LearningSimulation(TaskManager):
 
         if self.args.activity_log_interval:
             with open(os.path.join(self.data_dir, "activities.csv"), "w") as out_file:
-                out_file.write("time,online,offline,training,min_nodes_in_view,max_nodes_in_view,avg_nodes_in_view,median_nodes_in_view\n")
+                out_file.write("time,online,offline,training,bytes_up,bytes_down,train_time,network_time,min_nodes_in_view,max_nodes_in_view,avg_nodes_in_view,median_nodes_in_view\n")
             self.register_task("check_activity", self.check_activity, interval=self.args.activity_log_interval)
 
         if self.args.flush_statistics_interval:
@@ -242,9 +242,11 @@ class LearningSimulation(TaskManager):
                 training += 1
 
         cur_time = asyncio.get_event_loop().time()
+        bytes_up, bytes_down, train_time, network_time = self.get_aggregated_statistics()
         with open(os.path.join(self.data_dir, "activities.csv"), "a") as out_file:
-            out_file.write("%d,%d,%d,%d,%d,%d,%f,%f\n" % (
-                cur_time, online, offline, training, min(active_nodes_in_view), max(active_nodes_in_view),
+            out_file.write("%d,%d,%d,%d,%d,%d,%f,%f,%d,%d,%f,%f\n" % (
+                cur_time, online, offline, training, bytes_up, bytes_down, train_time, network_time,
+                min(active_nodes_in_view), max(active_nodes_in_view),
                 sum(active_nodes_in_view) / len(active_nodes_in_view), median(active_nodes_in_view)))
 
     async def start_simulation(self) -> None:
