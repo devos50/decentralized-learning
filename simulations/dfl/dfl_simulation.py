@@ -249,7 +249,7 @@ class DFLSimulation(LearningSimulation):
 
     async def on_aggregate_complete(self, ind: int, round_nr: int, model):
         self.current_aggregated_model = model
-        self.current_aggregated_model_round = round
+        self.current_aggregated_model_round = round_nr
         tot_up, tot_down = 0, 0
         for node in self.nodes:
             tot_up += node.overlays[0].endpoint.bytes_up
