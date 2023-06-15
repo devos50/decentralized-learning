@@ -237,7 +237,7 @@ class LearningSimulation(TaskManager):
             else:
                 offline += 1
 
-            if node.overlays[0].is_training:
+            if node.overlays[0].model_manager.model_trainer.is_training:
                 training += 1
 
         cur_time = asyncio.get_event_loop().time()
