@@ -16,7 +16,7 @@ args = parser.parse_args()
 total_peers = int(args.root_models_dir.split("_")[1])
 
 with open("../../data/client_utilizations.csv", "w") as out_file:
-    out_file.write("group,time,total_peers,peers_training\n")
+    out_file.write("group,time,total_peers,peers_training,bytes_up,bytes_down,train_time,network_time\n")
 
     for group in ["cohorts", "fl"]:
         cohort_utilizations = {}
