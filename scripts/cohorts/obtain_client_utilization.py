@@ -39,4 +39,4 @@ with open("../../data/client_utilizations.csv", "w") as out_file:
                     cohort_utilizations[time] += clients_training
 
         for time, clients_training in cohort_utilizations.items():
-            out_file.write("%s,%d,%d\n" % (group, time, clients_training))
+            out_file.write("%s,%d,%d,%d\n" % (group, time, total_peers, clients_training))
