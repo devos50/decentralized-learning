@@ -12,7 +12,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('root_models_dir')
 args = parser.parse_args()
 
-total_peers = int(args.root_models_dir.split("_")[0][1:])
+total_peers = int(args.root_models_dir.split("_")[1])
 
 with open("../../data/client_utilizations.csv", "w") as out_file:
     out_file.write("group,time,total_peers,peers_training\n")
