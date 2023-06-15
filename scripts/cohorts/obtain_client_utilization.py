@@ -17,8 +17,8 @@ total_peers = int(args.root_models_dir.split("_")[1])
 with open("../../data/client_utilizations.csv", "w") as out_file:
     out_file.write("group,time,total_peers,peers_training\n")
 
-    cohort_utilizations = {}
     for group in ["cohorts", "fl"]:
+        cohort_utilizations = {}
         filepaths = glob.glob("../../data/%s_c*" % args.root_models_dir) if group == "cohorts" else ["../../data/%s_dfl" % args.root_models_dir]
         for full_filepath in filepaths:
             if group == "cohorts":
