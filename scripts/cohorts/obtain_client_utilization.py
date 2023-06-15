@@ -19,11 +19,10 @@ with open("../../data/client_utilizations.csv", "w") as out_file:
 
     cohort_utilizations = {}
     for group in ["cohorts", "fl"]:
-        pattern = "../../data/%s_c*" % args.root_models_dir if group == "cohorts" else "../../data/%s" % args.root_models_dir
-        for full_filepath in glob.glob(pattern):
-            dir_name = os.path.basename(full_filepath)
-
+        filepaths = glob.glob("../../data/%s_c*" % args.root_models_dir) if group == "cohorts" else ["../../data/%s_dfl" % args.root_models_dir]
+        for full_filepath in filepaths:
             if group == "cohorts":
+                dir_name = os.path.basename(full_filepath)
                 cohort_index = int(dir_name.split("_")[-2][1:])
                 print("Parsing client utilizations of cohort %d..." % cohort_index)
 
