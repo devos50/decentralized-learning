@@ -257,9 +257,11 @@ class DFLSimulation(LearningSimulation):
                 accuracy, loss = 0, 0
 
             with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
+                bytes_up, bytes_down, train_time, network_time = self.get_aggregated_statistics()
                 group = "\"s=%d, a=%d\"" % (self.args.sample_size, self.args.num_aggregators)
-                out_file.write("%s,%s,%f,%d,%d,%f,%f\n" % (self.args.dataset, group, get_event_loop().time(),
-                                                           ind, round_nr, accuracy, loss))
+                out_file.write("%s,%s,%f,%d,%d,%f,%f,%d,%d,%f,%f\n" % (self.args.dataset, group, get_event_loop().time(),
+                                                                       ind, round_nr, accuracy, loss,
+                                                                       bytes_up, bytes_down, train_time, network_time))
 
                 if not self.args.bypass_training and self.args.store_best_models and accuracy > self.best_accuracy:
                     self.best_accuracy = accuracy

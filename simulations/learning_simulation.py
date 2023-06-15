@@ -210,7 +210,7 @@ class LearningSimulation(TaskManager):
     async def setup_simulation(self) -> None:
         self.logger.info("Setting up simulation with %d peers..." % self.args.peers)
         with open(os.path.join(self.data_dir, "accuracies.csv"), "w") as out_file:
-            out_file.write("dataset,group,time,peer,round,accuracy,loss\n")
+            out_file.write("dataset,group,time,peer,round,accuracy,loss,bytes_up,bytes_down,train_time,network_time\n")
 
         if self.args.activity_log_interval:
             with open(os.path.join(self.data_dir, "activities.csv"), "w") as out_file:
@@ -414,6 +414,20 @@ export PYTHONPATH=%s
 
             results[ind] = (accuracy, loss)
         return results
+
+    def get_aggregated_statistics(self) -> Tuple[int, int, float, float]:
+        total_bytes_up: int = 0
+        total_bytes_down: int = 0
+        total_train_time: float = 0
+        total_network_time: float = 0
+
+        for ind, node in enumerate(self.nodes):
+            total_bytes_up += node.overlays[0].endpoint.bytes_up
+            total_bytes_down += node.overlays[0].endpoint.bytes_down
+            total_train_time += node.overlays[0].model_manager.model_trainer.total_training_time
+            total_network_time += node.overlays[0].bw_scheduler.total_time_transmitting
+
+        return total_bytes_up, total_bytes_down, total_train_time, total_network_time
 
     def get_statistics(self) -> Dict:
         # Determine both individual and aggregate statistics.
