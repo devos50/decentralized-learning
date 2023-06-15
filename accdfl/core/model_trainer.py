@@ -60,6 +60,7 @@ class ModelTrainer:
             local_steps = len(train_set.dataset) // self.settings.learning.batch_size
             if len(train_set.dataset) % self.settings.learning.batch_size != 0:
                 local_steps += 1
+            self.settings.learning.local_steps = local_steps
 
         self.logger.info("Will perform %d local steps of training on device %s (batch size: %d, lr: %f, wd: %f)",
                          local_steps, device_name, self.settings.learning.batch_size,
