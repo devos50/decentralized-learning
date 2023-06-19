@@ -101,3 +101,6 @@ class Dataset:
 
         """
         raise NotImplementedError
+
+    def get_num_classes(self):
+        raise NotImplementedError

@@ -156,11 +156,14 @@ def determine_cohort_weights(args):
     else:
         train_dir = os.path.join(args.private_data_dir, "per_user_data", "train")
 
+    # Get the number of classes in the dataset
+    dataset = create_dataset(full_settings, 0, train_dir=train_dir)
+
     grouped_samples_per_class = []
     weights = []
-    total_per_class = [0] * 10
+    total_per_class = [0] * dataset.get_num_classes()
     for cohort_ind in range(len(cohorts.keys())):
-        samples_per_class = [0] * 10
+        samples_per_class = [0] * dataset.get_num_classes()
         for peer_id in cohorts[cohort_ind]:
             start_time = time.time()
 
@@ -175,7 +178,7 @@ def determine_cohort_weights(args):
 
     print("Total per class: %s" % total_per_class)
     for cohort_ind in range(len(cohorts.keys())):
-        weights_this_group = [grouped_samples_per_class[cohort_ind][i] / total_per_class[i] for i in range(10)]
+        weights_this_group = [grouped_samples_per_class[cohort_ind][i] / total_per_class[i] for i in range(dataset.get_num_classes())]
         weights.append(weights_this_group)
         print("Weights for cohort %d: %s" % (cohort_ind, weights_this_group))
 
