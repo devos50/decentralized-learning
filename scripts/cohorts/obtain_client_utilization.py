@@ -36,7 +36,7 @@ with open("../../data/client_utilizations.csv", "w") as out_file:
                     bytes_up = int(row[4])
                     bytes_down = int(row[5])
                     train_time = float(row[6])
-                    network_time = float(row[6])
+                    network_time = float(row[7])
 
                     if time not in cohort_utilizations:
                         cohort_utilizations[time] = {
