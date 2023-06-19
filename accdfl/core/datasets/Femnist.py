@@ -155,7 +155,7 @@ class Femnist(Dataset):
         Loads the testing set.
 
         """
-        logging.info("Loading testing set.")
+        logging.info("Loading testing set at directory %s", self.test_dir)
         _, _, d = self.__read_dir__(self.test_dir)
         test_x = []
         test_y = []
