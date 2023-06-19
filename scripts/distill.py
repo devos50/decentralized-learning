@@ -63,7 +63,8 @@ def get_args():
     parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--acc-check-interval', type=int, default=1)
     parser.add_argument('--check-teachers-accuracy', action=argparse.BooleanOptionalAction)
-    parser.add_argument('--data-dir', type=str, default=os.path.join(os.environ["HOME"], "dfl-data"))
+    parser.add_argument('--private-data-dir', type=str, default=os.path.join(os.environ["HOME"], "dfl-data"))
+    parser.add_argument('--public-data-dir', type=str, default=os.path.join(os.environ["HOME"], "dfl-data"))
     return parser.parse_args()
 
 
@@ -157,7 +158,7 @@ def determine_cohort_weights(args):
         samples_per_class = [0] * 10
         for peer_id in cohorts[cohort_ind]:
             start_time = time.time()
-            dataset = create_dataset(full_settings, peer_id, train_dir=args.data_dir)
+            dataset = create_dataset(full_settings, peer_id, train_dir=args.private_data_dir)
             print("Creating dataset for peer %d took %f sec." % (peer_id, time.time() - start_time))
             for a, (b, clsses) in enumerate(dataset.get_trainset(500, shuffle=False)):
                 for cls in clsses:
@@ -229,13 +230,13 @@ async def run(args):
         target_participants=1,
     )
 
-    if settings.dataset in ["cifar10", "mnist"]:
-        test_dir = args.data_dir
+    if private_settings.dataset in ["cifar10", "mnist"]:
+        test_dir = args.private_data_dir
     else:
-        test_dir = os.path.join(args.data_dir, "data", "test")
+        test_dir = os.path.join(args.private_data_dir, "data", "test")
 
     private_testset = create_dataset(private_settings, test_dir=test_dir)
-    public_dataset = create_dataset(settings, train_dir=args.data_dir)
+    public_dataset = create_dataset(settings, train_dir=args.public_data_dir)
     public_dataset_loader = DataLoader(dataset=public_dataset.trainset, batch_size=args.batch_size, shuffle=False)
 
     read_teacher_models(args)
