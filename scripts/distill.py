@@ -154,7 +154,7 @@ def determine_cohort_weights(args):
     if full_settings.dataset in ["cifar10", "mnist"]:
         train_dir = args.private_dataset
     else:
-        train_dir = os.path.join(args.private_dataset, "per_user_data", "train")
+        train_dir = os.path.join(args.private_data_dir, "per_user_data", "train")
 
     grouped_samples_per_class = []
     weights = []
