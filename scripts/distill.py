@@ -245,9 +245,9 @@ async def run(args):
         test_dir = os.path.join(args.private_data_dir, "data", "test")
 
     if settings.dataset in ["cifar10", "mnist"]:
-        train_dir = args.private_dataset
+        train_dir = args.public_data_dir
     else:
-        train_dir = os.path.join(args.private_data_dir, "per_user_data", "train")
+        train_dir = os.path.join(args.public_data_dir, "per_user_data", "train")
 
     private_testset = create_dataset(private_settings, test_dir=test_dir)
     public_dataset = create_dataset(settings, train_dir=train_dir)
