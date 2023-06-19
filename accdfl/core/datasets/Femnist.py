@@ -371,7 +371,7 @@ class Femnist(Dataset):
                 accuracy = 100 * float(value) / total_pred[key]
             else:
                 accuracy = 100.0
-            logging.debug("Accuracy for class {} is: {:.1f} %".format(key, accuracy))
+            logging.info("Accuracy for class {} is: {:.1f} %".format(key, accuracy))
 
         accuracy = 100 * float(total_correct) / total_predicted
         loss_val = loss_val / count
