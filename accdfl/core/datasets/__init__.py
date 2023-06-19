@@ -27,6 +27,10 @@ def create_dataset(settings: SessionSettings, participant_index: int = 0, train_
         elif test_dir:
             img_dir = os.path.join(test_dir, "..", "raw", "img_align_celeba")
         return Celeba(participant_index, 0, mapping, train_dir=train_dir, test_dir=test_dir, images_dir=img_dir)
+    elif settings.dataset == "mnist":
+        from accdfl.core.datasets.MNIST import MNIST
+        return MNIST(participant_index, 0, mapping, settings.partitioner,
+                     train_dir=train_dir, test_dir=test_dir, shards=settings.target_participants, alpha=settings.alpha)
     elif settings.dataset == "femnist":
         from accdfl.core.datasets.Femnist import Femnist
         return Femnist(participant_index, 0, mapping, train_dir=train_dir, test_dir=test_dir)
