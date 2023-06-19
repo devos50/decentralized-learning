@@ -151,6 +151,11 @@ def determine_cohort_weights(args):
         alpha=args.alpha,
     )
 
+    if full_settings.dataset in ["cifar10", "mnist"]:
+        train_dir = args.private_dataset
+    else:
+        train_dir = os.path.join(args.private_dataset, "per_user_data", "train")
+
     grouped_samples_per_class = []
     weights = []
     total_per_class = [0] * 10
@@ -158,7 +163,8 @@ def determine_cohort_weights(args):
         samples_per_class = [0] * 10
         for peer_id in cohorts[cohort_ind]:
             start_time = time.time()
-            dataset = create_dataset(full_settings, peer_id, train_dir=args.private_data_dir)
+
+            dataset = create_dataset(full_settings, peer_id, train_dir=train_dir)
             print("Creating dataset for peer %d took %f sec." % (peer_id, time.time() - start_time))
             for a, (b, clsses) in enumerate(dataset.get_trainset(500, shuffle=False)):
                 for cls in clsses:
