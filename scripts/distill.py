@@ -229,7 +229,12 @@ async def run(args):
         target_participants=1,
     )
 
-    private_testset = create_dataset(private_settings, test_dir=args.data_dir)
+    if settings.dataset in ["cifar10", "mnist"]:
+        test_dir = args.data_dir
+    else:
+        test_dir = os.path.join(args.data_dir, "data", "test")
+
+    private_testset = create_dataset(private_settings, test_dir=test_dir)
     public_dataset = create_dataset(settings, train_dir=args.data_dir)
     public_dataset_loader = DataLoader(dataset=public_dataset.trainset, batch_size=args.batch_size, shuffle=False)
 
