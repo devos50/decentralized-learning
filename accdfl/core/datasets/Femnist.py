@@ -150,6 +150,8 @@ class Femnist(Dataset):
         assert self.train_x.shape[0] == self.train_y.shape[0]
         assert self.train_x.shape[0] > 0
 
+        self.trainset = Data(self.train_x, self.train_y)
+
     def load_testset(self):
         """
         Loads the testing set.
