@@ -375,3 +375,6 @@ class Femnist(Dataset):
         loss_val = loss_val / count
         logging.info("Overall accuracy is: {:.1f} %".format(accuracy))
         return accuracy, loss_val
+
+    def get_num_classes(self):
+        return NUM_CLASSES

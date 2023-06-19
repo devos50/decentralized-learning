@@ -233,3 +233,6 @@ class CIFAR10(Dataset):
         accuracy = float(correct) / float(example_number) * 100.0
         loss = total_loss / float(example_number)
         return accuracy, loss
+
+    def get_num_classes(self):
+        return NUM_CLASSES
