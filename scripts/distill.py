@@ -14,8 +14,6 @@ from torch import optim
 from torch.utils.data import DataLoader, Dataset
 
 from accdfl.core.datasets import create_dataset
-from accdfl.core.datasets.CIFAR10 import CIFAR10
-from accdfl.core.mappings import Linear
 from accdfl.core.models import create_model
 from accdfl.core.session_settings import SessionSettings, LearningSettings
 
@@ -28,7 +26,7 @@ learning_settings = None
 teacher_models = []
 cohorts: Dict[int, List[int]] = {}
 total_peers: int = 0
-cifar10_testset = None
+private_testset = None
 weights = None
 distill_timestamp = 0
 
@@ -56,8 +54,8 @@ def get_args():
     parser.add_argument('--distill-timestamp', type=int, default=None)  # The timestamp during the experiment at which we distill
     parser.add_argument('--partitioner', type=str, default="iid")
     parser.add_argument('--alpha', type=float, default=1)
-    parser.add_argument('--learning-rate', type=float, default=0.001)
-    parser.add_argument('--momentum', type=float, default=0.9)
+    parser.add_argument('--learning-rate', type=float, default=None)
+    parser.add_argument('--momentum', type=float, default=None)
     parser.add_argument('--weight-decay', type=float, default=0)
     parser.add_argument('--batch-size', type=int, default=512)
     parser.add_argument('--student-model', type=str, default=None)
@@ -129,7 +127,7 @@ def read_teacher_models(args):
 
         if args.check_teachers_accuracy:
             # Test accuracy of the teacher model
-            acc, loss = cifar10_testset.test(model, device_name=device)
+            acc, loss = private_testset.test(model, device_name=device)
             logger.info("Accuracy of teacher model %d: %f, %f", cohort_ind, acc, loss)
 
     distill_timestamp = args.distill_timestamp if args.distill_timestamp is not None else max(model_timestamps)
@@ -142,7 +140,7 @@ def determine_cohort_weights(args):
 
     # Determine the class distribution per cohort
     full_settings = SessionSettings(
-        dataset="cifar10",
+        dataset=args.private_dataset,
         work_dir="",
         learning=learning_settings,
         participants=["a"],
@@ -179,7 +177,18 @@ def determine_cohort_weights(args):
 
 
 async def run(args):
-    global device, learning_settings, cifar10_testset
+    global device, learning_settings, private_testset
+
+    # Set the learning parameters if they are not set already
+    if args.learning_rate is None:
+        if args.public_dataset == "cifar100":
+            args.learning_rate = 0.001
+            args.momentum = 0.9
+        elif args.public_dataset == "mnist":
+            args.learning_rate = 0.001
+            args.momentum = 0
+        else:
+            raise RuntimeError("Unknown public dataset - unable set learning rate")
 
     read_cohorts(args)
 
@@ -203,7 +212,7 @@ async def run(args):
 
     # Load the private testset and public dataset
     settings = SessionSettings(
-        dataset="cifar100",
+        dataset=args.public_dataset,
         work_dir="",
         learning=learning_settings,
         participants=["a"],
@@ -211,10 +220,18 @@ async def run(args):
         target_participants=1,
     )
 
-    mapping = Linear(1, 1)
-    cifar10_testset = CIFAR10(0, 0, mapping, "iid", test_dir=args.data_dir)
-    cifar100_dataset = create_dataset(settings, train_dir=args.data_dir)
-    cifar100_loader = DataLoader(dataset=cifar100_dataset.trainset, batch_size=args.batch_size, shuffle=False)
+    private_settings = SessionSettings(
+        dataset=args.private_dataset,
+        work_dir="",
+        learning=learning_settings,
+        participants=["a"],
+        all_participants=["a"],
+        target_participants=1,
+    )
+
+    private_testset = create_dataset(private_settings, test_dir=args.data_dir)
+    public_dataset = create_dataset(settings, train_dir=args.data_dir)
+    public_dataset_loader = DataLoader(dataset=public_dataset.trainset, batch_size=args.batch_size, shuffle=False)
 
     read_teacher_models(args)
 
@@ -229,7 +246,7 @@ async def run(args):
     for teacher_ind, teacher_model in enumerate(teacher_models):
         logger.info("Inferring outputs for cohort %d model", teacher_ind)
         teacher_logits = []
-        for i, (images, _) in enumerate(cifar100_loader):
+        for i, (images, _) in enumerate(public_dataset_loader):
             images = images.to(device)
             with torch.no_grad():
                 out = teacher_model.forward(images).detach()
@@ -247,7 +264,7 @@ async def run(args):
         aggregated_predictions.append(torch.sum(torch.stack(predictions), dim=0))
 
     # Reset loader
-    cifar100_loader = DataLoader(dataset=DatasetWithIndex(cifar100_dataset.trainset), batch_size=args.batch_size, shuffle=True)
+    public_dataset_loader = DataLoader(dataset=DatasetWithIndex(public_dataset.trainset), batch_size=args.batch_size, shuffle=True)
 
     with open(os.path.join("data", "distill_accuracies_%d.csv" % distill_timestamp), "w") as out_file:
         out_file.write("distill_time,epoch,accuracy,loss,best_acc,train_time,total_time\n")
@@ -257,7 +274,7 @@ async def run(args):
     criterion = torch.nn.L1Loss(reduce=True)
     best_acc = 0
     for epoch in range(args.epochs):
-        for i, (images, _, indices) in enumerate(cifar100_loader):
+        for i, (images, _, indices) in enumerate(public_dataset_loader):
             images = images.to(device)
 
             student_model.train()
@@ -272,7 +289,7 @@ async def run(args):
         # Compute the accuracy of the student model
         if epoch % args.acc_check_interval == 0:
             test_start_time = time.time()
-            acc, loss = cifar10_testset.test(student_model, device_name=device)
+            acc, loss = private_testset.test(student_model, device_name=device)
             if acc > best_acc:
                 best_acc = acc
             logger.info("Accuracy of student model after %d epochs: %f, %f (best: %f)", epoch + 1, acc, loss, best_acc)
