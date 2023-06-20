@@ -13,7 +13,7 @@ from accdfl.core.datasets.Dataset import Dataset
 from accdfl.core.datasets.Partitioner import DataPartitioner
 from accdfl.core.mappings.Mapping import Mapping
 
-NUM_CLASSES = 62
+NUM_CLASSES = 52
 IMAGE_SIZE = (28, 28)
 FLAT_SIZE = 28 * 28
 PIXEL_RANGE = 256.0
@@ -136,9 +136,18 @@ class Femnist(Dataset):
             )
             for cur_client in clients:
                 self.clients.append(cur_client)
+                client_x = train_data[cur_client]["x"]
+                client_y = train_data[cur_client]["y"]
+
+                # Only keep samples where the label is >= 10 and shift class labels down by 10
+                filtered_indices = [index for index, y in enumerate(client_y) if y >= 10]
+
+                my_train_data["x"].extend([client_x[i] for i in filtered_indices])
+                my_train_data["y"].extend([client_y[i] - 10 for i in filtered_indices])  # Shifting class labels
+
                 my_train_data["x"].extend(train_data[cur_client]["x"])
                 my_train_data["y"].extend(train_data[cur_client]["y"])
-                self.num_samples.append(len(train_data[cur_client]["y"]))
+                self.num_samples.append(len(filtered_indices))
         self.train_x = (
             np.array(my_train_data["x"], dtype=np.dtype("float32"))
             .reshape(-1, 28, 28, 1)
@@ -160,10 +169,14 @@ class Femnist(Dataset):
         test_x = []
         test_y = []
         for test_data in d.values():
-            for x in test_data["x"]:
-                test_x.append(x)
-            for y in test_data["y"]:
-                test_y.append(y)
+            client_x = test_data["x"]
+            client_y = test_data["y"]
+
+            # Only keep samples where the label is >= 10 and shift class labels down by 10
+            filtered_indices = [index for index, y in enumerate(client_y) if y >= 10]
+
+            test_x.extend([client_x[i] for i in filtered_indices])
+            test_y.extend([client_y[i] - 10 for i in filtered_indices])  # Shifting class labels
         self.test_x = (
             np.array(test_x, dtype=np.dtype("float32"))
             .reshape(-1, 28, 28, 1)
