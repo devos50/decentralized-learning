@@ -159,6 +159,8 @@ class Femnist(Dataset):
         assert self.train_x.shape[0] == self.train_y.shape[0]
         assert self.train_x.shape[0] > 0
 
+        self.trainset = Data(self.train_x, self.train_y)
+
     def load_testset(self):
         """
         Loads the testing set.
@@ -382,7 +384,7 @@ class Femnist(Dataset):
                 accuracy = 100 * float(value) / total_pred[key]
             else:
                 accuracy = 100.0
-            logging.debug("Accuracy for class {} is: {:.1f} %".format(key, accuracy))
+            logging.info("Accuracy for class {} is: {:.1f} %".format(key, accuracy))
 
         accuracy = 100 * float(total_correct) / total_predicted
         loss_val = loss_val / count
