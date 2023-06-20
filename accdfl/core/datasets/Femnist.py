@@ -144,9 +144,6 @@ class Femnist(Dataset):
 
                 my_train_data["x"].extend([client_x[i] for i in filtered_indices])
                 my_train_data["y"].extend([client_y[i] - 10 for i in filtered_indices])  # Shifting class labels
-
-                my_train_data["x"].extend(train_data[cur_client]["x"])
-                my_train_data["y"].extend(train_data[cur_client]["y"])
                 self.num_samples.append(len(filtered_indices))
         self.train_x = (
             np.array(my_train_data["x"], dtype=np.dtype("float32"))
