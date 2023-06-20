@@ -10,6 +10,7 @@ import time
 from typing import Dict, List
 
 import torch
+import torch.nn.functional as F
 from torch import optim
 from torch.utils.data import DataLoader, Dataset
 
@@ -29,6 +30,8 @@ total_peers: int = 0
 private_testset = None
 weights = None
 distill_timestamp = 0
+
+TEMPERATURE = 3
 
 
 class DatasetWithIndex(Dataset):
@@ -300,7 +303,12 @@ async def run(args):
             student_model.train()
             teacher_logits = torch.stack([aggregated_predictions[ind].clone() for ind in indices])
             student_logits = student_model.forward(images)
-            loss = criterion(teacher_logits, student_logits)
+
+            teacher_logits = teacher_logits / TEMPERATURE
+            student_logits = student_logits / TEMPERATURE
+
+            loss = F.kl_div(F.log_softmax(student_logits, dim=1), F.softmax(teacher_logits, dim=1), reduction='batchmean')
+            #loss = criterion(teacher_logits, student_logits)
 
             optimizer.zero_grad()
             loss.backward()
