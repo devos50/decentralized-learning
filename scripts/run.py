@@ -46,6 +46,7 @@ async def run(args, dataset: str):
         momentum=args.momentum,
         weight_decay=args.weight_decay,
         batch_size=args.batch_size,
+        local_steps=0,
     )
 
     settings = SessionSettings(
@@ -75,7 +76,12 @@ async def run(args, dataset: str):
 
 
 async def train_local(args, dataset: str, settings: SessionSettings, data_path: str):
-    test_dataset = create_dataset(settings, 0, test_dir=args.data_dir)
+    if settings.dataset in ["cifar10", "mnist", "fashionmnist", "movielens"]:
+        test_dir = args.data_dir
+    else:
+        test_dir = os.path.join(args.data_dir, "data", "test")
+
+    test_dataset = create_dataset(settings, 0, test_dir=test_dir)
 
     device = "cpu" if not torch.cuda.is_available() else "cuda:0"
     print("Device to train/determine accuracy: %s" % device)

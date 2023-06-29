@@ -1,5 +1,5 @@
-NUM_PEERS = 100
-COHORTS = 10
+NUM_PEERS = 355
+COHORTS = 5
 
 # TODO for now, we randomly assign peers to cohorts
 peers_per_cohort = NUM_PEERS // COHORTS

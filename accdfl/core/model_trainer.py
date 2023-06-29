@@ -33,7 +33,7 @@ class ModelTrainer:
         self.total_training_time: float = 0
         self.is_training: bool = False
 
-        if settings.dataset in ["cifar10", "mnist", "movielens", "spambase", "google_speech"]:
+        if settings.dataset in ["cifar10", "mnist", "fashionmnist", "movielens", "spambase", "google_speech"]:
             self.train_dir = data_dir
         else:
             self.train_dir = os.path.join(data_dir, "per_user_data", "train")
