@@ -69,7 +69,7 @@ class FashionMNIST(Dataset):
         self.shards = shards
         self.alpha = alpha
 
-        normalization_vectors = (0.1307,), (0.3081,)
+        normalization_vectors = (0.5,), (0.5,)
         self.train_transformer = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize(*normalization_vectors),
