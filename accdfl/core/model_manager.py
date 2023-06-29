@@ -27,7 +27,7 @@ class ModelManager:
         self.logger = logging.getLogger(self.__class__.__name__)
 
         dataset_base_path: str = self.settings.dataset_base_path or os.environ["HOME"]
-        if self.settings.dataset in ["cifar10", "mnist"]:
+        if self.settings.dataset in ["cifar10", "fashionmnist", "mnist"]:
             self.data_dir = os.path.join(dataset_base_path, "dfl-data")
         else:
             # The LEAF dataset
