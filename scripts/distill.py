@@ -151,7 +151,7 @@ def determine_cohort_weights(args):
         alpha=args.alpha,
     )
 
-    if full_settings.dataset in ["cifar10", "mnist", "fashionmnist"]:
+    if full_settings.dataset in ["cifar10", "mnist", "fashionmnist", "svhn"]:
         train_dir = args.private_dataset
     else:
         train_dir = os.path.join(args.private_data_dir, "per_user_data", "train")
@@ -194,7 +194,7 @@ async def run(args):
         if args.public_dataset == "cifar100":
             args.learning_rate = 0.001
             args.momentum = 0.9
-        elif args.public_dataset == "mnist" or args.public_dataset == "fashionmnist":
+        elif args.public_dataset == "mnist" or args.public_dataset == "fashionmnist" or args.public_dataset == "svhn":
             args.learning_rate = 0.001
             args.momentum = 0
         else:
@@ -239,12 +239,12 @@ async def run(args):
         target_participants=1,
     )
 
-    if private_settings.dataset in ["cifar10", "mnist", "fashionmnist"]:
+    if private_settings.dataset in ["cifar10", "mnist", "fashionmnist", "svhn"]:
         test_dir = args.private_data_dir
     else:
         test_dir = os.path.join(args.private_data_dir, "data", "test")
 
-    if settings.dataset in ["cifar10", "mnist", "fashionmnist"]:
+    if settings.dataset in ["cifar10", "mnist", "fashionmnist", "svhn"]:
         train_dir = args.public_data_dir
     else:
         train_dir = os.path.join(args.public_data_dir, "per_user_data", "train")

@@ -39,6 +39,9 @@ def create_dataset(settings: SessionSettings, participant_index: int = 0, train_
     elif settings.dataset == "femnist":
         from accdfl.core.datasets.Femnist import Femnist
         return Femnist(participant_index, 0, mapping, train_dir=train_dir, test_dir=test_dir)
+    elif settings.dataset == "svhn":
+        from accdfl.core.datasets.SVHN import SVHN
+        return SVHN(participant_index, 0, mapping, settings.partitioner, train_dir=train_dir, test_dir=test_dir)
     elif settings.dataset == "movielens":
         from accdfl.core.datasets.MovieLens import MovieLens
         data_dir = train_dir or test_dir
