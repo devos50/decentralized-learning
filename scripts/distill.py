@@ -286,7 +286,7 @@ async def run(args):
     # Reset loader
     public_dataset_loader = DataLoader(dataset=DatasetWithIndex(public_dataset.trainset), batch_size=args.batch_size, shuffle=True)
 
-    with open(os.path.join("data", "distill_accuracies_%d.csv" % distill_timestamp), "w") as out_file:
+    with open(os.path.join("data", "distill_accuracies_%s_%s_%d.csv" % (args.private_dataset, args.public_dataset, distill_timestamp)), "w") as out_file:
         out_file.write("distill_time,epoch,accuracy,loss,best_acc,train_time,total_time\n")
 
     # Distill \o/
@@ -314,7 +314,7 @@ async def run(args):
                 best_acc = acc
             logger.info("Accuracy of student model after %d epochs: %f, %f (best: %f)", epoch + 1, acc, loss, best_acc)
             time_for_testing += (time.time() - test_start_time)
-            with open(os.path.join("data", "distill_accuracies_%d.csv" % distill_timestamp), "a") as out_file:
+            with open(os.path.join("data", "distill_accuracies_%s_%s_%d.csv" % (args.private_dataset, args.public_dataset, distill_timestamp)), "a") as out_file:
                 out_file.write("%d,%d,%f,%f,%f,%f,%f\n" % (distill_timestamp, epoch + 1, acc, loss, best_acc, time.time() - start_time - time_for_testing, time.time() - start_time))
 
 logging.basicConfig(level=logging.INFO)
