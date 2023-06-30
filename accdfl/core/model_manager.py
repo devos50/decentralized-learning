@@ -12,7 +12,7 @@ import torch.nn as nn
 from accdfl.core.gradient_aggregation import GradientAggregationMethod
 from accdfl.core.gradient_aggregation.fedavg import FedAvg
 from accdfl.core.model_trainer import ModelTrainer
-from accdfl.core.models import unserialize_model, serialize_model
+from accdfl.core.models import create_model, unserialize_model, serialize_model
 from accdfl.core.session_settings import SessionSettings, dump_settings
 
 
@@ -22,7 +22,7 @@ class ModelManager:
     """
 
     def __init__(self, model: Optional[nn.Module], settings: SessionSettings, participant_index: int):
-        self.model: nn.Module = model
+        self.model: Optional[nn.Module] = model
         self.settings: SessionSettings = settings
         self.participant_index: int = participant_index
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -59,6 +59,10 @@ class ModelManager:
 
     async def train(self) -> int:
         samples_trained_on = await self.model_trainer.train(self.model, device_name=self.settings.train_device_name)
+
+        if not self.model:
+            self.logger.info("Initializing model of peer %d", self.participant_index)
+            self.model = create_model(self.settings.dataset, architecture=self.settings.model)
 
         # Detach the gradients
         self.model = unserialize_model(serialize_model(self.model), self.settings.dataset, architecture=self.settings.model)
