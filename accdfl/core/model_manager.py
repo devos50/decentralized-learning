@@ -12,6 +12,7 @@ import torch.nn as nn
 from accdfl.core.gradient_aggregation import GradientAggregationMethod
 from accdfl.core.gradient_aggregation.fedavg import FedAvg
 from accdfl.core.model_trainer import ModelTrainer
+from accdfl.core.models import create_model
 from accdfl.core.session_settings import SessionSettings, dump_settings
 
 
@@ -21,7 +22,7 @@ class ModelManager:
     """
 
     def __init__(self, model: Optional[nn.Module], settings: SessionSettings, participant_index: int):
-        self.model: nn.Module = model
+        self.model: Optional[nn.Module] = model
         self.settings: SessionSettings = settings
         self.participant_index: int = participant_index
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -57,6 +58,10 @@ class ModelManager:
         return self.get_aggregation_method().aggregate(models, weights=weights)
 
     async def train(self) -> int:
+        if not self.model:
+            self.logger.info("Initializing model of peer %d", self.participant_index)
+            self.model = create_model(self.settings.dataset, architecture=self.settings.model)
+
         if self.settings.train_in_subprocess:
             # Dump the model and settings to a file
             model_file_name = "%d.model" % random.randint(1, 1000000)
