@@ -287,7 +287,7 @@ async def run(args):
     public_dataset_loader = DataLoader(dataset=DatasetWithIndex(public_dataset.trainset), batch_size=args.batch_size, shuffle=True)
 
     with open(os.path.join("data", "distill_accuracies_%s_%s_%d.csv" % (args.private_dataset, args.public_dataset, distill_timestamp)), "w") as out_file:
-        out_file.write("distill_time,epoch,accuracy,loss,best_acc,train_time,total_time\n")
+        out_file.write("distill_time,public_dataset,epoch,accuracy,loss,best_acc,train_time,total_time\n")
 
     # Distill \o/
     optimizer = optim.Adam(student_model.parameters(), lr=args.learning_rate, betas=(args.momentum, 0.999), weight_decay=args.weight_decay)
@@ -315,7 +315,7 @@ async def run(args):
             logger.info("Accuracy of student model after %d epochs: %f, %f (best: %f)", epoch + 1, acc, loss, best_acc)
             time_for_testing += (time.time() - test_start_time)
             with open(os.path.join("data", "distill_accuracies_%s_%s_%d.csv" % (args.private_dataset, args.public_dataset, distill_timestamp)), "a") as out_file:
-                out_file.write("%d,%d,%f,%f,%f,%f,%f\n" % (distill_timestamp, epoch + 1, acc, loss, best_acc, time.time() - start_time - time_for_testing, time.time() - start_time))
+                out_file.write("%d,%s,%d,%f,%f,%f,%f,%f\n" % (distill_timestamp, args.public_dataset, epoch + 1, acc, loss, best_acc, time.time() - start_time - time_for_testing, time.time() - start_time))
 
 logging.basicConfig(level=logging.INFO)
 loop = asyncio.get_event_loop()
