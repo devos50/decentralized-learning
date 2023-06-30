@@ -69,10 +69,13 @@ class SVHN(Dataset):
         self.shards = shards
         self.alpha = alpha
 
-        normalization_vectors = (0.1307,), (0.3081,)
+        # This is only for knowledge distillation
+        normalization_vectors = (0.5,), (0.5,)
         self.train_transformer = transforms.Compose([
+            transforms.Grayscale(num_output_channels=1),
+            transforms.Resize((28, 28)),
             transforms.ToTensor(),
-            transforms.Normalize(*normalization_vectors),
+            transforms.Normalize(*normalization_vectors)
         ])
 
         self.test_transformer = transforms.Compose([
