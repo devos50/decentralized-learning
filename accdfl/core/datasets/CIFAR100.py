@@ -97,7 +97,7 @@ class CIFAR100(Dataset):
 
         """
         self.logger.info("Loading training set from directory %s and with alpha %f", self.train_dir, self.alpha)
-        trainset = torchvision.datasets.CIFAR10(
+        trainset = torchvision.datasets.CIFAR100(
             root=self.train_dir, train=True, download=True, transform=self.train_transformer
         )
         c_len = len(trainset)
