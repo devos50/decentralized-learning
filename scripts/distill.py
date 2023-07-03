@@ -60,6 +60,7 @@ def get_args():
     parser.add_argument('--batch-size', type=int, default=512)
     parser.add_argument('--student-model', type=str, default=None)
     parser.add_argument('--teacher-model', type=str, default=None)
+    parser.add_argument('--weighting-scheme', type=str, default="uniform", choices=["uniform", "label"])
     parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--acc-check-interval', type=int, default=1)
     parser.add_argument('--check-teachers-accuracy', action=argparse.BooleanOptionalAction)
@@ -134,7 +135,7 @@ def read_teacher_models(args):
     distill_timestamp = args.distill_timestamp if args.distill_timestamp is not None else max(model_timestamps)
 
 
-def determine_cohort_weights(args):
+def determine_label_cohort_weights(args):
     global weights
 
     logger.info("Determining cohort weights...")
@@ -180,7 +181,22 @@ def determine_cohort_weights(args):
     for cohort_ind in range(len(cohorts.keys())):
         weights_this_group = [grouped_samples_per_class[cohort_ind][i] / total_per_class[i] for i in range(dataset.get_num_classes())]
         weights.append(weights_this_group)
-        print("Weights for cohort %d: %s" % (cohort_ind, weights_this_group))
+
+
+def determine_cohort_weights(args):
+    global weights
+
+    if args.weighting_scheme == "uniform":
+        weights = []
+        num_cls = 10  # TODO hard-coded
+        for cohort_ind in range(len(cohorts)):
+            cohort_weights = [1 / num_cls] * num_cls
+            weights.append(cohort_weights)
+    elif args.weighting_scheme == "label":
+        determine_label_cohort_weights(args)
+
+    for cohort_ind in range(len(weights)):
+        print("Weights for cohort %d: %s" % (cohort_ind, weights[cohort_ind]))
 
     weights = torch.Tensor(weights)
     weights = weights.to(device)
