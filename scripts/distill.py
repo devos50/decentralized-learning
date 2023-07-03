@@ -60,13 +60,66 @@ def get_args():
     parser.add_argument('--batch-size', type=int, default=512)
     parser.add_argument('--student-model', type=str, default=None)
     parser.add_argument('--teacher-model', type=str, default=None)
-    parser.add_argument('--weighting-scheme', type=str, default="uniform", choices=["uniform", "label"])
+    parser.add_argument('--weighting-scheme', type=str, default="uniform", choices=["uniform", "label", "tuanahn"])
     parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--acc-check-interval', type=int, default=1)
     parser.add_argument('--check-teachers-accuracy', action=argparse.BooleanOptionalAction)
     parser.add_argument('--private-data-dir', type=str, default=os.path.join(os.environ["HOME"], "dfl-data"))
     parser.add_argument('--public-data-dir', type=str, default=os.path.join(os.environ["HOME"], "dfl-data"))
     return parser.parse_args()
+
+
+def tuanahn_loss(weights, raw_teacher_logits_batch, student_logits):
+    batch_size = len(student_logits)
+    cos = torch.nn.CosineSimilarity()
+    cur_sum = 0
+    for i in range(len(cohorts)):
+        for j in range(len(cohorts)):
+            if i == j:
+                continue
+
+            # Compute the average of cosine similarities
+            cos_avg = 0
+            for bi in range(batch_size):
+                xi = student_logits[bi] - raw_teacher_logits_batch[i][bi]
+                yi = student_logits[bi] - raw_teacher_logits_batch[j][bi]
+                cos_avg += cos(torch.stack([xi]), torch.stack([yi]))
+
+            cos_avg /= batch_size
+            cur_sum += weights[i] * weights[j] * cos_avg
+
+    return sum([(weights[i] ** 2 * 0.5 ** 2) for i in range(len(cohorts))]) + 4 * cur_sum
+
+
+def simplex_projection(v, z=1):
+    """
+    Project the vector `v` onto the simplex.
+
+    Parameters:
+    v (torch.Tensor): The input vector.
+    z (float, optional): The desired sum of the elements in the output vector.
+
+    Returns:
+    torch.Tensor: The projected vector.
+    """
+
+    # Sort the vector in decreasing order
+    u, _ = torch.sort(v, descending=True)
+
+    # Compute the cumulative sum of the sorted vector
+    cssv = torch.cumsum(u, dim=0)
+
+    # Determine the number of positive elements in the output vector
+    rho = torch.nonzero(u * torch.arange(1, v.shape[0] + 1, device=v.device, dtype=v.dtype) > (cssv - z),
+                        as_tuple=False).max() + 1
+
+    # Compute the Lagrange multiplier
+    theta = (cssv[rho - 1] - z) / rho
+
+    # Project the vector onto the simplex
+    w = torch.clamp(v - theta, min=0)
+
+    return w
 
 
 def read_cohorts(args) -> None:
@@ -186,14 +239,20 @@ def determine_label_cohort_weights(args):
 def determine_cohort_weights(args):
     global weights
 
+    num_cls = 10  # TODO hard-coded
+
     if args.weighting_scheme == "uniform":
         weights = []
-        num_cls = 10  # TODO hard-coded
         for cohort_ind in range(len(cohorts)):
-            cohort_weights = [1 / num_cls] * num_cls
+            cohort_weights = [1 / len(cohorts)] * num_cls
             weights.append(cohort_weights)
     elif args.weighting_scheme == "label":
         determine_label_cohort_weights(args)
+    elif args.weighting_scheme == "tuanahn":
+        weights = []
+        for cohort_ind in range(len(cohorts)):
+            cohort_weight = 1 / len(cohorts)
+            weights.append(cohort_weight)
 
     for cohort_ind in range(len(weights)):
         logger.info("Weights for cohort %d: %s", cohort_ind, weights[cohort_ind])
@@ -203,7 +262,7 @@ def determine_cohort_weights(args):
 
 
 async def run(args):
-    global device, learning_settings, private_testset
+    global device, learning_settings, private_testset, weights
 
     # Set the learning parameters if they are not set already
     if args.learning_rate is None:
@@ -278,7 +337,7 @@ async def run(args):
     student_model.to(device)
 
     # Generate the prediction logits that we will use to train the student model
-    logits = []
+    raw_teacher_logits = []
     for teacher_ind, teacher_model in enumerate(teacher_models):
         logger.info("Inferring outputs for cohort %d model", teacher_ind)
         teacher_logits = []
@@ -289,14 +348,20 @@ async def run(args):
                 out *= weights[teacher_ind]
             teacher_logits += out
 
-        logits.append(teacher_logits)
+        raw_teacher_logits.append(teacher_logits)
         logger.info("Inferred %d outputs for teacher model %d", len(teacher_logits), teacher_ind)
+
+    # Apply weights to the raw logits
+    weighted_logits = []
+    for teacher_ind, teacher_logits in enumerate(raw_teacher_logits):
+        weighted_teacher_logits = [logit * weights[teacher_ind] for logit in teacher_logits]
+        weighted_logits.append(weighted_teacher_logits)
 
     # Aggregate the logits
     logger.info("Aggregating logits...")
     aggregated_predictions = []
-    for sample_ind in range(len(logits[0])):
-        predictions = [logits[n][sample_ind] for n in range(len(cohorts.keys()))]
+    for sample_ind in range(len(weighted_logits[0])):
+        predictions = [weighted_logits[n][sample_ind] for n in range(len(cohorts.keys()))]
         aggregated_predictions.append(torch.sum(torch.stack(predictions), dim=0))
 
     # Reset loader
@@ -321,6 +386,42 @@ async def run(args):
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+
+            # TODO re-compute the student logits and use them for the weight optimization
+
+            # Update the weights if needed
+            if args.weighting_scheme == "tuanahn":
+                student_logits = student_logits.detach()
+                raw_teacher_logits_batch = []
+                for cohort_ind in range(len(cohorts)):
+                    logits = torch.stack([raw_teacher_logits[cohort_ind][ind].clone() for ind in indices])
+                    raw_teacher_logits_batch.append(logits)
+
+                weights_copy = weights.clone().detach().requires_grad_(True)
+                weights_optimizer = optim.SGD([weights_copy], lr=0.1, momentum=0, weight_decay=0)
+                weights_loss = tuanahn_loss(weights_copy, raw_teacher_logits_batch, student_logits)
+                weights_optimizer.zero_grad()
+                weights_loss.backward()
+                weights_optimizer.step()
+
+                # Normalize the weights
+                weights_copy = simplex_projection(weights_copy)
+                weights = weights_copy.clone().detach().requires_grad_(False)
+
+                # Apply weights to the raw logits
+                weighted_logits = []
+                for teacher_ind, teacher_logits in enumerate(raw_teacher_logits):
+                    weighted_teacher_logits = [logit * weights[teacher_ind] for logit in teacher_logits]
+                    weighted_logits.append(weighted_teacher_logits)
+
+                # Aggregate the logits
+                logger.info("Aggregating logits again...")
+                aggregated_predictions = []
+                for sample_ind in range(len(weighted_logits[0])):
+                    predictions = [weighted_logits[n][sample_ind] for n in range(len(cohorts.keys()))]
+                    aggregated_predictions.append(torch.sum(torch.stack(predictions), dim=0))
+
+
 
         # Compute the accuracy of the student model
         if epoch % args.acc_check_interval == 0:
