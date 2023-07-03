@@ -387,12 +387,11 @@ async def run(args):
             loss.backward()
             optimizer.step()
 
-            # re-compute the student logits and use them for the weight optimization
-            student_logits = student_model.forward(images)
-
             # Update the weights if needed
             if args.weighting_scheme == "tuanahn":
-                student_logits = student_logits.detach()
+                # re-compute the student logits and use them for the weight optimization
+                student_logits = student_model.forward(images)
+
                 raw_teacher_logits_batch = []
                 for cohort_ind in range(len(cohorts)):
                     logits = torch.stack([raw_teacher_logits[cohort_ind][ind].clone() for ind in indices])
