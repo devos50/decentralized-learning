@@ -169,15 +169,15 @@ def determine_label_cohort_weights(args):
             start_time = time.time()
 
             dataset = create_dataset(full_settings, peer_id, train_dir=train_dir)
-            print("Creating dataset for peer %d took %f sec." % (peer_id, time.time() - start_time))
+            logger.info("Creating dataset for peer %d took %f sec.", peer_id, time.time() - start_time)
             for a, (b, clsses) in enumerate(dataset.get_trainset(500, shuffle=False)):
                 for cls in clsses:
                     samples_per_class[cls] += 1
                     total_per_class[cls] += 1
-        print("Samples per class for cohort %d: %s" % (cohort_ind, samples_per_class))
+        logger.info("Samples per class for cohort %d: %s", cohort_ind, samples_per_class)
         grouped_samples_per_class.append(samples_per_class)
 
-    print("Total per class: %s" % total_per_class)
+    logger.info("Total per class: %s", total_per_class)
     for cohort_ind in range(len(cohorts.keys())):
         weights_this_group = [grouped_samples_per_class[cohort_ind][i] / total_per_class[i] for i in range(dataset.get_num_classes())]
         weights.append(weights_this_group)
@@ -196,7 +196,7 @@ def determine_cohort_weights(args):
         determine_label_cohort_weights(args)
 
     for cohort_ind in range(len(weights)):
-        print("Weights for cohort %d: %s" % (cohort_ind, weights[cohort_ind]))
+        logger.info("Weights for cohort %d: %s", cohort_ind, weights[cohort_ind])
 
     weights = torch.Tensor(weights)
     weights = weights.to(device)
