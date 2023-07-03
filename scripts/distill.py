@@ -387,7 +387,8 @@ async def run(args):
             loss.backward()
             optimizer.step()
 
-            # TODO re-compute the student logits and use them for the weight optimization
+            # re-compute the student logits and use them for the weight optimization
+            student_logits = student_model.forward(images)
 
             # Update the weights if needed
             if args.weighting_scheme == "tuanahn":
@@ -415,13 +416,10 @@ async def run(args):
                     weighted_logits.append(weighted_teacher_logits)
 
                 # Aggregate the logits
-                logger.info("Aggregating logits again...")
                 aggregated_predictions = []
                 for sample_ind in range(len(weighted_logits[0])):
                     predictions = [weighted_logits[n][sample_ind] for n in range(len(cohorts.keys()))]
                     aggregated_predictions.append(torch.sum(torch.stack(predictions), dim=0))
-
-
 
         # Compute the accuracy of the student model
         if epoch % args.acc_check_interval == 0:
