@@ -19,6 +19,9 @@ def create_dataset(settings: SessionSettings, participant_index: int = 0, train_
         from accdfl.core.datasets.CIFAR100 import CIFAR100
         return CIFAR100(participant_index, 0, mapping, settings.partitioner,
                         train_dir=train_dir, test_dir=test_dir, shards=settings.target_participants, alpha=settings.alpha)
+    elif settings.dataset == "stl10":
+        from accdfl.core.datasets.STL10 import STL10
+        return STL10(participant_index, 0, mapping, settings.partitioner, train_dir=train_dir, test_dir=test_dir)
     elif settings.dataset == "celeba":
         from accdfl.core.datasets.Celeba import Celeba
         img_dir = None
