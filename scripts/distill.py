@@ -6,6 +6,7 @@ import asyncio
 import glob
 import logging
 import os
+import random
 import time
 from typing import Dict, List
 
@@ -69,7 +70,8 @@ def get_args():
     return parser.parse_args()
 
 
-def tuanahn_loss(weights, raw_teacher_logits_batch, student_logits):
+def tuanahn_loss(weights_copy, raw_teacher_logits_batch, student_logits):
+    actual_weights = get_normalized_weights(weights_copy)
     batch_size = len(student_logits)
     cos = torch.nn.CosineSimilarity()
     cur_sum = 0
@@ -86,40 +88,17 @@ def tuanahn_loss(weights, raw_teacher_logits_batch, student_logits):
                 cos_avg += cos(torch.stack([xi]), torch.stack([yi]))
 
             cos_avg /= batch_size
-            cur_sum += weights[i] * weights[j] * cos_avg
+            cur_sum += actual_weights[i] * actual_weights[j] * cos_avg
 
-    return sum([(weights[i] ** 2 * 0.5 ** 2) for i in range(len(cohorts))]) + 4 * cur_sum
+    return sum([(actual_weights[i] ** 2 * 0.5 ** 2) for i in range(len(cohorts))]) + 4 * cur_sum
 
 
-def simplex_projection(v, z=1):
+def get_normalized_weights(weights_copy):
     """
-    Project the vector `v` onto the simplex.
-
-    Parameters:
-    v (torch.Tensor): The input vector.
-    z (float, optional): The desired sum of the elements in the output vector.
-
-    Returns:
-    torch.Tensor: The projected vector.
+    Since we can't use the weights being optimized directly, convert them here.
     """
-
-    # Sort the vector in decreasing order
-    u, _ = torch.sort(v, descending=True)
-
-    # Compute the cumulative sum of the sorted vector
-    cssv = torch.cumsum(u, dim=0)
-
-    # Determine the number of positive elements in the output vector
-    rho = torch.nonzero(u * torch.arange(1, v.shape[0] + 1, device=v.device, dtype=v.dtype) > (cssv - z),
-                        as_tuple=False).max() + 1
-
-    # Compute the Lagrange multiplier
-    theta = (cssv[rho - 1] - z) / rho
-
-    # Project the vector onto the simplex
-    w = torch.clamp(v - theta, min=0)
-
-    return w
+    weights_squared = weights_copy ** 2
+    return weights_squared / torch.sum(weights_squared)
 
 
 def read_cohorts(args) -> None:
@@ -249,10 +228,10 @@ def determine_cohort_weights(args):
     elif args.weighting_scheme == "label":
         determine_label_cohort_weights(args)
     elif args.weighting_scheme == "tuanahn":
+        # Initialize the weights randomly
         weights = []
         for cohort_ind in range(len(cohorts)):
-            cohort_weight = 1 / len(cohorts)
-            weights.append(cohort_weight)
+            weights.append(random.random())
 
     for cohort_ind in range(len(weights)):
         logger.info("Weights for cohort %d: %s", cohort_ind, weights[cohort_ind])
@@ -351,9 +330,10 @@ async def run(args):
         logger.info("Inferred %d outputs for teacher model %d", len(teacher_logits), teacher_ind)
 
     # Apply weights to the raw logits
+    weights_to_use = get_normalized_weights(weights) if args.weighting_scheme == "tuanahn" else weights
     weighted_logits = []
     for teacher_ind, teacher_logits in enumerate(raw_teacher_logits):
-        weighted_teacher_logits = [logit * weights[teacher_ind] for logit in teacher_logits]
+        weighted_teacher_logits = [logit * weights_to_use[teacher_ind] for logit in teacher_logits]
         weighted_logits.append(weighted_teacher_logits)
 
     # Aggregate the logits
@@ -381,6 +361,7 @@ async def run(args):
             teacher_logits = torch.stack([aggregated_predictions[ind].clone() for ind in indices])
             student_logits = student_model.forward(images)
             loss = criterion(teacher_logits, student_logits)
+            print("Model loss: %s" % loss)
 
             optimizer.zero_grad()
             loss.backward()
@@ -399,18 +380,21 @@ async def run(args):
                 weights_copy = weights.clone().detach().requires_grad_(True)
                 weights_optimizer = optim.SGD([weights_copy], lr=0.1, momentum=0, weight_decay=0)
                 weights_loss = tuanahn_loss(weights_copy, raw_teacher_logits_batch, student_logits)
+                print("Weights loss: %s" % weights_loss)
                 weights_optimizer.zero_grad()
+                print("Weights before: %s" % weights_copy)
                 weights_loss.backward()
                 weights_optimizer.step()
+                print("Weights after: %s" % weights_copy)
+                print("Weights normalized: %s" % get_normalized_weights(weights_copy))
 
-                # Normalize the weights
-                weights_copy = simplex_projection(weights_copy)
                 weights = weights_copy.clone().detach().requires_grad_(False)
 
                 # Apply weights to the raw logits
+                actual_weights = get_normalized_weights(weights)
                 weighted_logits = []
                 for teacher_ind, teacher_logits in enumerate(raw_teacher_logits):
-                    weighted_teacher_logits = [logit * weights[teacher_ind] for logit in teacher_logits]
+                    weighted_teacher_logits = [logit * actual_weights[teacher_ind] for logit in teacher_logits]
                     weighted_logits.append(weighted_teacher_logits)
 
                 # Aggregate the logits
