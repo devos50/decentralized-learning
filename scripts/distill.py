@@ -10,6 +10,7 @@ import random
 import time
 from typing import Dict, List
 
+import numpy as np
 import torch
 from torch import optim
 from torch.utils.data import DataLoader, Dataset
@@ -90,7 +91,7 @@ def tuanahn_loss(weights_copy, raw_teacher_logits_batch, student_logits):
             cos_avg /= batch_size
             cur_sum += actual_weights[i] * actual_weights[j] * cos_avg
 
-    return sum([(actual_weights[i] ** 2 * 0.5 ** 2) for i in range(len(cohorts))]) + 4 * cur_sum
+    return sum([(actual_weights[i] ** 2 * 2 ** 2) for i in range(len(cohorts))]) + 4 * cur_sum
 
 
 def get_normalized_weights(weights_copy):
@@ -228,10 +229,7 @@ def determine_cohort_weights(args):
     elif args.weighting_scheme == "label":
         determine_label_cohort_weights(args)
     elif args.weighting_scheme == "tuanahn":
-        # Initialize the weights randomly
-        weights = []
-        for cohort_ind in range(len(cohorts)):
-            weights.append(random.random())
+        weights = np.random.normal(0, 1, len(cohorts))
 
     for cohort_ind in range(len(weights)):
         logger.info("Weights for cohort %d: %s", cohort_ind, weights[cohort_ind])
@@ -281,7 +279,7 @@ async def run(args):
         learning=learning_settings,
         participants=["a"],
         all_participants=["a"],
-        target_participants=1,
+        target_participants=50,
     )
 
     private_settings = SessionSettings(
@@ -351,7 +349,7 @@ async def run(args):
 
     # Distill \o/
     optimizer = optim.Adam(student_model.parameters(), lr=args.learning_rate, betas=(args.momentum, 0.999), weight_decay=args.weight_decay)
-    criterion = torch.nn.L1Loss(reduce=True)
+    criterion = torch.nn.MSELoss(reduction="mean")
     best_acc = 0
     for epoch in range(args.epochs):
         for i, (images, _, indices) in enumerate(public_dataset_loader):
