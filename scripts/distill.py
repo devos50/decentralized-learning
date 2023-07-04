@@ -207,7 +207,7 @@ async def run(args):
 
     # Set the learning parameters if they are not set already
     if args.learning_rate is None:
-        if args.public_dataset == "cifar100":
+        if args.public_dataset in ["cifar100", "stl10"]:
             args.learning_rate = 0.001
             args.momentum = 0.9
         elif args.public_dataset == "mnist" or args.public_dataset == "fashionmnist" or args.public_dataset == "svhn":
@@ -260,7 +260,7 @@ async def run(args):
     else:
         test_dir = os.path.join(args.private_data_dir, "data", "test")
 
-    if settings.dataset in ["cifar10", "mnist", "fashionmnist", "svhn"]:
+    if settings.dataset in ["cifar10", "cifar100", "stl10", "mnist", "fashionmnist", "svhn"]:
         train_dir = args.public_data_dir
     else:
         train_dir = os.path.join(args.public_data_dir, "per_user_data", "train")
