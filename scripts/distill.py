@@ -345,7 +345,6 @@ async def run(args):
             images = images.to(device)
             with torch.no_grad():
                 out = teacher_model.forward(images).detach()
-                out *= weights[teacher_ind]
             teacher_logits += out
 
         raw_teacher_logits.append(teacher_logits)
