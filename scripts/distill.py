@@ -30,6 +30,7 @@ total_peers: int = 0
 private_testset = None
 weights = None
 distill_timestamp = 0
+raw_teacher_logits = []
 
 
 class DatasetWithIndex(Dataset):
@@ -235,6 +236,58 @@ def determine_cohort_weights(args):
     weights = weights.to(device)
 
 
+def infer_teacher_logits(public_dataset_loader):
+    global raw_teacher_logits
+
+    # Generate the prediction logits that we will use to train the student model
+    for teacher_ind, teacher_model in enumerate(teacher_models):
+        logger.info("Inferring outputs for cohort %d model", teacher_ind)
+        teacher_logits = []
+        for i, (images, _) in enumerate(public_dataset_loader):
+            images = images.to(device)
+            with torch.no_grad():
+                out = teacher_model.forward(images).detach()
+            teacher_logits += out
+
+        teacher_logits_tensor = torch.stack(teacher_logits, dim=0)
+        raw_teacher_logits.append(teacher_logits_tensor)
+        logger.info("Inferred %d outputs for teacher model %d", len(teacher_logits), teacher_ind)
+
+    raw_teacher_logits = torch.stack(raw_teacher_logits, dim=0)
+
+
+def compute_aggregated_predictions(args):
+    start_time = time.time()
+
+    weights_to_use = get_normalized_weights(weights) if args.weighting_scheme == "tuanahn" else weights
+
+    # Reshape weights_to_use for broadcasting
+    weights_to_use = weights_to_use.view(-1, 1, 1)
+
+    # Element-wise multiplication of raw_teacher_logits_tensor with weights_to_use
+    weighted_logits = raw_teacher_logits * weights_to_use
+
+    # Sum across the teacher dimension to aggregate the logits
+    aggregated_predictions = torch.sum(weighted_logits, dim=0)
+
+    # # Apply weights to the raw logits
+    # weights_to_use = get_normalized_weights(weights) if args.weighting_scheme == "tuanahn" else weights
+    # weighted_logits = []
+    # for teacher_ind, teacher_logits in enumerate(raw_teacher_logits):
+    #     weighted_teacher_logits = [logit * weights_to_use[teacher_ind] for logit in teacher_logits]
+    #     weighted_logits.append(weighted_teacher_logits)
+    #
+    # # Aggregate the logits
+    # aggregated_predictions = []
+    # for sample_ind in range(len(weighted_logits[0])):
+    #     predictions = [weighted_logits[n][sample_ind] for n in range(len(cohorts.keys()))]
+    #     aggregated_predictions.append(torch.sum(torch.stack(predictions), dim=0))
+
+    logger.debug("Logit aggregation took %f sec", time.time() - start_time)
+
+    return aggregated_predictions
+
+
 async def run(args):
     global device, learning_settings, private_testset, weights
 
@@ -310,36 +363,9 @@ async def run(args):
     student_model = create_model(args.private_dataset, architecture=args.student_model)
     student_model.to(device)
 
-    # Generate the prediction logits that we will use to train the student model
-    raw_teacher_logits = []
-    for teacher_ind, teacher_model in enumerate(teacher_models):
-        logger.info("Inferring outputs for cohort %d model", teacher_ind)
-        teacher_logits = []
-        for i, (images, _) in enumerate(public_dataset_loader):
-            images = images.to(device)
-            with torch.no_grad():
-                out = teacher_model.forward(images).detach()
-            teacher_logits += out
+    infer_teacher_logits(public_dataset_loader)
 
-        raw_teacher_logits.append(teacher_logits)
-        logger.info("Inferred %d outputs for teacher model %d", len(teacher_logits), teacher_ind)
-
-    # Apply weights to the raw logits
-    start_time = time.time()
-    weights_to_use = get_normalized_weights(weights) if args.weighting_scheme == "tuanahn" else weights
-    weighted_logits = []
-    for teacher_ind, teacher_logits in enumerate(raw_teacher_logits):
-        weighted_teacher_logits = [logit * weights_to_use[teacher_ind] for logit in teacher_logits]
-        weighted_logits.append(weighted_teacher_logits)
-
-    # Aggregate the logits
-    logger.info("Aggregating logits...")
-    aggregated_predictions = []
-    for sample_ind in range(len(weighted_logits[0])):
-        predictions = [weighted_logits[n][sample_ind] for n in range(len(cohorts.keys()))]
-        aggregated_predictions.append(torch.sum(torch.stack(predictions), dim=0))
-
-    logger.debug("Initial logit aggregation took %f sec", time.time() - start_time)
+    aggregated_predictions = compute_aggregated_predictions(args)
 
     # Reset loader
     public_dataset_loader = DataLoader(dataset=DatasetWithIndex(public_dataset.trainset), batch_size=args.batch_size, shuffle=True)
@@ -397,21 +423,7 @@ async def run(args):
                 weights_optimizer.step()
                 weights = weights_copy.clone().detach().requires_grad_(False)
 
-                # Apply weights to the raw logits
-                start_time = time.time()
-                actual_weights = get_normalized_weights(weights)
-                weighted_logits = []
-                for teacher_ind, teacher_logits in enumerate(raw_teacher_logits):
-                    weighted_teacher_logits = [logit * actual_weights[teacher_ind] for logit in teacher_logits]
-                    weighted_logits.append(weighted_teacher_logits)
-
-                # Aggregate the logits
-                aggregated_predictions = []
-                for sample_ind in range(len(weighted_logits[0])):
-                    predictions = [weighted_logits[n][sample_ind] for n in range(len(cohorts.keys()))]
-                    aggregated_predictions.append(torch.sum(torch.stack(predictions), dim=0))
-
-                logger.debug("Logit aggregation took %f sec", time.time() - start_time)
+                aggregated_predictions = compute_aggregated_predictions(args)
 
         # Compute the accuracy of the student model
         if epoch % args.acc_check_interval == 0:
