@@ -19,7 +19,7 @@ from accdfl.core.models import create_model
 from accdfl.core.session_settings import SessionSettings, LearningSettings
 
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger("distiller")
 
 device = None
@@ -353,12 +353,20 @@ async def run(args):
             images = images.to(device)
 
             student_model.train()
+            start_time = time.time()
             teacher_logits = torch.stack([aggregated_predictions[ind].clone() for ind in indices])
             student_logits = student_model.forward(images)
+            logger.debug("Inference took %f sec", time.time() - start_time)
+
+            start_time = time.time()
             loss = criterion(teacher_logits, student_logits)
+            logger.debug("Computing distillation loss took %f sec", time.time() - start_time)
 
             optimizer.zero_grad()
+            start_time = time.time()
             loss.backward()
+            logger.debug("Backpropagation of distillation took %f sec", time.time() - start_time)
+
             optimizer.step()
 
             # Update the weights if needed
@@ -381,8 +389,9 @@ async def run(args):
 
                 start_time = time.time()
                 weights_loss.backward()
-                logger.debug("Backpropagation took %f sec", time.time() - start_time)
+                logger.debug("Backpropagation of weights took %f sec", time.time() - start_time)
 
+                start_time = time.time()
                 weights_optimizer.step()
                 weights = weights_copy.clone().detach().requires_grad_(False)
 
