@@ -72,25 +72,23 @@ def get_args():
 
 def tuanahn_loss(weights_copy, raw_teacher_logits_batch, student_logits):
     actual_weights = get_normalized_weights(weights_copy)
-    batch_size = len(student_logits)
-    cos = torch.nn.CosineSimilarity()
+    cos = torch.nn.CosineSimilarity(dim=1)
+
+    n_cohorts = len(raw_teacher_logits_batch)
     cur_sum = 0
-    for i in range(len(cohorts)):
-        for j in range(len(cohorts)):
+
+    for i in range(n_cohorts):
+        for j in range(n_cohorts):
             if i == j:
                 continue
 
-            # Compute the average of cosine similarities
-            cos_avg = 0
-            for bi in range(batch_size):
-                xi = student_logits[bi] - raw_teacher_logits_batch[i][bi]
-                yi = student_logits[bi] - raw_teacher_logits_batch[j][bi]
-                cos_avg += cos(torch.stack([xi]), torch.stack([yi]))
+            # Using the mean instead of explicit summation for computing the average
+            cos_avg = torch.mean(cos(student_logits - raw_teacher_logits_batch[i],
+                                     student_logits - raw_teacher_logits_batch[j]), dim=0)
 
-            cos_avg /= batch_size
             cur_sum += actual_weights[i] * actual_weights[j] * cos_avg
 
-    return sum([(actual_weights[i] ** 2 * 2 ** 2) for i in range(len(cohorts))]) + 4 * cur_sum
+    return torch.sum(actual_weights ** 2) * (2 ** 2) + 4 * cur_sum
 
 
 def get_normalized_weights(weights_copy):
@@ -358,7 +356,6 @@ async def run(args):
             teacher_logits = torch.stack([aggregated_predictions[ind].clone() for ind in indices])
             student_logits = student_model.forward(images)
             loss = criterion(teacher_logits, student_logits)
-            print("Model loss: %s" % loss)
 
             optimizer.zero_grad()
             loss.backward()
@@ -376,15 +373,17 @@ async def run(args):
 
                 weights_copy = weights.clone().detach().requires_grad_(True)
                 weights_optimizer = optim.SGD([weights_copy], lr=0.1, momentum=0, weight_decay=0)
-                weights_loss = tuanahn_loss(weights_copy, raw_teacher_logits_batch, student_logits)
-                print("Weights loss: %s" % weights_loss)
-                weights_optimizer.zero_grad()
-                print("Weights before: %s" % weights_copy)
-                weights_loss.backward()
-                weights_optimizer.step()
-                print("Weights after: %s" % weights_copy)
-                print("Weights normalized: %s" % get_normalized_weights(weights_copy))
 
+                start_time = time.time()
+                weights_loss = tuanahn_loss(weights_copy, raw_teacher_logits_batch, student_logits)
+                logger.debug("Loss computation took %f sec", time.time() - start_time)
+                weights_optimizer.zero_grad()
+
+                start_time = time.time()
+                weights_loss.backward()
+                logger.debug("Backpropagation took %f sec", time.time() - start_time)
+
+                weights_optimizer.step()
                 weights = weights_copy.clone().detach().requires_grad_(False)
 
                 # Apply weights to the raw logits
