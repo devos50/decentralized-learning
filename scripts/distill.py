@@ -325,6 +325,7 @@ async def run(args):
         logger.info("Inferred %d outputs for teacher model %d", len(teacher_logits), teacher_ind)
 
     # Apply weights to the raw logits
+    start_time = time.time()
     weights_to_use = get_normalized_weights(weights) if args.weighting_scheme == "tuanahn" else weights
     weighted_logits = []
     for teacher_ind, teacher_logits in enumerate(raw_teacher_logits):
@@ -337,6 +338,8 @@ async def run(args):
     for sample_ind in range(len(weighted_logits[0])):
         predictions = [weighted_logits[n][sample_ind] for n in range(len(cohorts.keys()))]
         aggregated_predictions.append(torch.sum(torch.stack(predictions), dim=0))
+
+    logger.debug("Initial logit aggregation took %f sec", time.time() - start_time)
 
     # Reset loader
     public_dataset_loader = DataLoader(dataset=DatasetWithIndex(public_dataset.trainset), batch_size=args.batch_size, shuffle=True)
@@ -391,11 +394,11 @@ async def run(args):
                 weights_loss.backward()
                 logger.debug("Backpropagation of weights took %f sec", time.time() - start_time)
 
-                start_time = time.time()
                 weights_optimizer.step()
                 weights = weights_copy.clone().detach().requires_grad_(False)
 
                 # Apply weights to the raw logits
+                start_time = time.time()
                 actual_weights = get_normalized_weights(weights)
                 weighted_logits = []
                 for teacher_ind, teacher_logits in enumerate(raw_teacher_logits):
@@ -407,6 +410,8 @@ async def run(args):
                 for sample_ind in range(len(weighted_logits[0])):
                     predictions = [weighted_logits[n][sample_ind] for n in range(len(cohorts.keys()))]
                     aggregated_predictions.append(torch.sum(torch.stack(predictions), dim=0))
+
+                logger.debug("Logit aggregation took %f sec", time.time() - start_time)
 
         # Compute the accuracy of the student model
         if epoch % args.acc_check_interval == 0:
