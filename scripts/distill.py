@@ -69,6 +69,7 @@ def get_args():
     parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--acc-check-interval', type=int, default=1)
     parser.add_argument('--check-teachers-accuracy', action=argparse.BooleanOptionalAction)
+    parser.add_argument('--monitor-weights', action=argparse.BooleanOptionalAction)
     parser.add_argument('--private-data-dir', type=str, default=os.path.join(os.environ["HOME"], "dfl-data"))
     parser.add_argument('--public-data-dir', type=str, default=os.path.join(os.environ["HOME"], "dfl-data"))
     return parser.parse_args()
@@ -355,6 +356,10 @@ async def run(args):
     # Reset loader
     public_dataset_loader = DataLoader(dataset=DatasetWithIndex(public_dataset.trainset), batch_size=args.batch_size, shuffle=True)
 
+    if args.monitor_weights:
+        with open(os.path.join("data", "weights.csv"), "w") as out_file:
+            out_file.write("iteration,cohort,raw_weight,weight\n")
+
     with open(os.path.join("data", "distill_accuracies_%s_%s_%s_%d.csv" % (args.private_dataset, args.public_dataset, args.weighting_scheme, distill_timestamp)), "w") as out_file:
         out_file.write("cohorts,distill_time,public_dataset,weighting_scheme,epoch,accuracy,loss,best_acc,train_time,total_time\n")
 
@@ -362,6 +367,7 @@ async def run(args):
     optimizer = optim.Adam(student_model.parameters(), lr=args.learning_rate, betas=(args.momentum, 0.999), weight_decay=args.weight_decay)
     criterion = torch.nn.MSELoss(reduction="mean")
     best_acc = 0
+    iteration = 1
     for epoch in range(args.epochs):
         for i, (images, _, indices) in enumerate(public_dataset_loader):
             images = images.to(device)
@@ -408,7 +414,15 @@ async def run(args):
                 weights_optimizer.step()
                 weights = weights_copy.clone().detach().requires_grad_(False)
 
+                if args.monitor_weights:
+                    normalized_weights = get_normalized_weights(weights)
+                    with open(os.path.join("data", "weights.csv"), "a") as out_file:
+                        for cohort_ind in range(len(cohorts)):
+                            out_file.write("%d,%d,%f,%f\n" % (iteration, cohort_ind, weights[cohort_ind], normalized_weights[cohort_ind]))
+
                 aggregated_predictions = compute_aggregated_predictions(args)
+
+            iteration += 1
 
         # Compute the accuracy of the student model
         if epoch % args.acc_check_interval == 0:
