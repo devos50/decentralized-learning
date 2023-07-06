@@ -274,6 +274,8 @@ def compute_aggregated_predictions(args):
 async def run(args):
     global device, learning_settings, private_testset, weights
 
+    train_start_time = time.time()
+
     # Set the learning parameters if they are not set already
     if args.learning_rate is None:
         if args.public_dataset in ["cifar100", "stl10"]:
@@ -417,7 +419,7 @@ async def run(args):
             logger.info("Accuracy of student model after %d epochs: %f, %f (best: %f)", epoch + 1, acc, loss, best_acc)
             time_for_testing += (time.time() - test_start_time)
             with open(os.path.join("data", "distill_accuracies_%s_%s_%s_%d.csv" % (args.private_dataset, args.public_dataset, args.weighting_scheme, distill_timestamp)), "a") as out_file:
-                out_file.write("%s,%d,%s,%s,%d,%f,%f,%f,%f,%f\n" % (len(cohorts), distill_timestamp, args.public_dataset, args.weighting_scheme, epoch + 1, acc, loss, best_acc, time.time() - start_time - time_for_testing, time.time() - start_time))
+                out_file.write("%s,%d,%s,%s,%d,%f,%f,%f,%f,%f\n" % (len(cohorts), distill_timestamp, args.public_dataset, args.weighting_scheme, epoch + 1, acc, loss, best_acc, time.time() - train_start_time - time_for_testing, time.time() - train_start_time))
 
 logging.basicConfig(level=logging.INFO)
 loop = asyncio.get_event_loop()
