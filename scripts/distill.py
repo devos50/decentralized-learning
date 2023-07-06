@@ -37,6 +37,31 @@ distill_timestamp = 0
 raw_teacher_logits = []
 
 
+class WeightLoss(torch.nn.Module):
+    def __init__(self,) -> None:
+        super(WeightLoss, self).__init__()
+
+    def forward(self, weights_copy, raw_teacher_logits_batch, student_logits):
+        actual_weights = get_normalized_weights(weights_copy)
+        cos = torch.nn.CosineSimilarity(dim=1)
+
+        n_cohorts = len(raw_teacher_logits_batch)
+        cur_sum = 0
+
+        for i in range(n_cohorts):
+            for j in range(n_cohorts):
+                if i == j:
+                    continue
+
+                # Using the mean instead of explicit summation for computing the average
+                cos_avg = torch.mean(cos(student_logits - raw_teacher_logits_batch[i],
+                                         student_logits - raw_teacher_logits_batch[j]), dim=0)
+
+                cur_sum += actual_weights[i] * actual_weights[j] * cos_avg
+
+        return torch.sum(actual_weights ** 2) * (2 ** 2) + 4 * cur_sum
+
+
 class DatasetWithIndex(Dataset):
 
     def __init__(self, dataset):
@@ -75,27 +100,6 @@ def get_args():
     parser.add_argument('--private-data-dir', type=str, default=os.path.join(os.environ["HOME"], "dfl-data"))
     parser.add_argument('--public-data-dir', type=str, default=os.path.join(os.environ["HOME"], "dfl-data"))
     return parser.parse_args()
-
-
-def tuanahn_loss(weights_copy, raw_teacher_logits_batch, student_logits):
-    actual_weights = get_normalized_weights(weights_copy)
-    cos = torch.nn.CosineSimilarity(dim=1)
-
-    n_cohorts = len(raw_teacher_logits_batch)
-    cur_sum = 0
-
-    for i in range(n_cohorts):
-        for j in range(n_cohorts):
-            if i == j:
-                continue
-
-            # Using the mean instead of explicit summation for computing the average
-            cos_avg = torch.mean(cos(student_logits - raw_teacher_logits_batch[i],
-                                     student_logits - raw_teacher_logits_batch[j]), dim=0)
-
-            cur_sum += actual_weights[i] * actual_weights[j] * cos_avg
-
-    return torch.sum(actual_weights ** 2) * (2 ** 2) + 4 * cur_sum
 
 
 def get_normalized_weights(weights_copy):
@@ -397,6 +401,7 @@ async def run(args):
     # Distill \o/
     optimizer = optim.Adam(student_model.parameters(), lr=args.learning_rate, betas=(args.momentum, 0.999), weight_decay=args.weight_decay)
     criterion = torch.nn.MSELoss(reduction="mean")
+    weight_loss = WeightLoss()
     best_acc = 0
     iteration = 1
     for epoch in range(args.epochs):
@@ -434,12 +439,12 @@ async def run(args):
                 weights_optimizer = optim.SGD([weights_copy], lr=0.1, momentum=0, weight_decay=0)
 
                 start_time = time.time()
-                weights_loss = tuanahn_loss(weights_copy, raw_teacher_logits_batch, student_logits)
+                loss = weight_loss(weights_copy, raw_teacher_logits_batch, student_logits)
                 logger.debug("Loss computation took %f sec", time.time() - start_time)
                 weights_optimizer.zero_grad()
 
                 start_time = time.time()
-                weights_loss.backward()
+                loss.backward()
                 logger.debug("Backpropagation of weights took %f sec", time.time() - start_time)
 
                 weights_optimizer.step()
