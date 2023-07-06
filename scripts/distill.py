@@ -3,6 +3,7 @@ Script to distill from n student models into a teacher model.
 """
 import argparse
 import asyncio
+import csv
 import glob
 import logging
 import os
@@ -66,6 +67,7 @@ def get_args():
     parser.add_argument('--student-model', type=str, default=None)
     parser.add_argument('--teacher-model', type=str, default=None)
     parser.add_argument('--weighting-scheme', type=str, default="uniform", choices=["uniform", "label", "tuanahn"])
+    parser.add_argument('--model-selection', type=str, default="latest", choices=["latest", "lowest_test_loss"])
     parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--acc-check-interval', type=int, default=1)
     parser.add_argument('--check-teachers-accuracy', action=argparse.BooleanOptionalAction)
@@ -123,10 +125,12 @@ def read_teacher_models(args):
     logger.info("Reading teacher models...")
 
     model_timestamps: List[int] = []
+    models_to_load = []
 
     # Load the teacher models
     for cohort_ind in range(len(cohorts.keys())):
         cohort_models = []
+        available_timestamps = []
         dir_name = "%s_c%d_dfl" % (args.models_base_name, cohort_ind)
         data_dir = os.path.join(args.root_models_dir, dir_name, "models")
         if not os.path.exists(data_dir):
@@ -138,27 +142,54 @@ def read_teacher_models(args):
             parts = model_name.split("_")
             model_round = int(parts[0])
             model_time = int(parts[1])
+            available_timestamps.append(model_time)
             cohort_models.append((model_round, model_time, full_model_path))
 
         # Sort the models based on their timestamp
         cohort_models.sort(key=lambda x: x[1])
 
-        # Find the right model given the distillation timestamp
-        if args.distill_timestamp is None:
-            model_to_load = cohort_models[-1][2]
-            model_timestamps.append(cohort_models[-1][1])
-        else:
-            highest_ind = None
-            for ind in range(len(cohort_models)):
-                if highest_ind is None or cohort_models[ind][1] <= args.distill_timestamp:
-                    highest_ind = ind
+        if args.model_selection == "latest":
+            # Find the right model given the distillation timestamp
+            if args.distill_timestamp is None:
+                models_to_load.append(cohort_models[-1][2])
+                model_timestamps.append(cohort_models[-1][1])
+            else:
+                highest_ind = None
+                for ind in range(len(cohort_models)):
+                    if highest_ind is None or cohort_models[ind][1] <= args.distill_timestamp:
+                        highest_ind = ind
 
-            model_to_load = cohort_models[highest_ind][2]
-            model_timestamps.append(cohort_models[highest_ind][1])
+                models_to_load.append(cohort_models[highest_ind][2])
+                model_timestamps.append(cohort_models[highest_ind][1])
+        elif args.model_selection == "lowest_test_loss":
+            lowest_test_loss = 10000000
+            timestamp_lowest_loss = -1
 
-        logger.info("Using model %s for cohort %d", os.path.basename(model_to_load), cohort_ind)
+            # Read the test losses and select the lowest ones
+            with open(os.path.join(args.root_models_dir, dir_name, "accuracies.csv")) as accuracies_file:
+                csv_reader = csv.reader(accuracies_file)
+                next(csv_reader)
+                for row in csv_reader:
+                    acc_time = int(float(row[2]))
+                    if acc_time not in available_timestamps or (args.distill_timestamp is not None and acc_time > args.distill_timestamp):
+                        continue
+
+                    loss = float(row[6])
+                    if loss < lowest_test_loss:
+                        lowest_test_loss = loss
+                        timestamp_lowest_loss = acc_time
+
+                # Find the model with this lowest loss
+                for model_info in cohort_models:
+                    if model_info[1] == timestamp_lowest_loss:
+                        models_to_load.append(model_info[2])
+                        model_timestamps.append(model_info[1])
+                        break
+
+    for cohort_ind in range(len(models_to_load)):
+        logger.info("Using model %s for cohort %d", os.path.basename(models_to_load[cohort_ind]), cohort_ind)
         model = create_model(args.private_dataset, architecture=args.teacher_model)
-        model.load_state_dict(torch.load(model_to_load, map_location=torch.device('cpu')))
+        model.load_state_dict(torch.load(models_to_load[cohort_ind], map_location=torch.device('cpu')))
         model.to(device)
         teacher_models.append(model)
 
