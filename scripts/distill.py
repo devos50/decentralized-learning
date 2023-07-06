@@ -19,6 +19,9 @@ from accdfl.core.models import create_model
 from accdfl.core.session_settings import SessionSettings, LearningSettings
 
 
+NUM_CLS = 10
+
+
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger("distiller")
 
@@ -217,12 +220,10 @@ def determine_label_cohort_weights(args):
 def determine_cohort_weights(args):
     global weights
 
-    num_cls = 10  # TODO hard-coded
-
     if args.weighting_scheme == "uniform":
         weights = []
         for cohort_ind in range(len(cohorts)):
-            cohort_weights = [1 / len(cohorts)] * num_cls
+            cohort_weights = [1 / len(cohorts)] * NUM_CLS
             weights.append(cohort_weights)
     elif args.weighting_scheme == "label":
         determine_label_cohort_weights(args)
@@ -258,31 +259,13 @@ def infer_teacher_logits(public_dataset_loader):
 
 def compute_aggregated_predictions(args):
     start_time = time.time()
+    if args.weighting_scheme == "tuanahn":
+        weights_to_use = get_normalized_weights(weights)
+        weights_to_use = weights_to_use.unsqueeze(1).expand(len(weights_to_use), NUM_CLS)
+    else:
+        weights_to_use = weights
 
-    weights_to_use = get_normalized_weights(weights) if args.weighting_scheme == "tuanahn" else weights
-
-    # Reshape weights_to_use for broadcasting
-    weights_to_use = weights_to_use.view(-1, 1, 1)
-
-    # Element-wise multiplication of raw_teacher_logits_tensor with weights_to_use
-    weighted_logits = raw_teacher_logits * weights_to_use
-
-    # Sum across the teacher dimension to aggregate the logits
-    aggregated_predictions = torch.sum(weighted_logits, dim=0)
-
-    # # Apply weights to the raw logits
-    # weights_to_use = get_normalized_weights(weights) if args.weighting_scheme == "tuanahn" else weights
-    # weighted_logits = []
-    # for teacher_ind, teacher_logits in enumerate(raw_teacher_logits):
-    #     weighted_teacher_logits = [logit * weights_to_use[teacher_ind] for logit in teacher_logits]
-    #     weighted_logits.append(weighted_teacher_logits)
-    #
-    # # Aggregate the logits
-    # aggregated_predictions = []
-    # for sample_ind in range(len(weighted_logits[0])):
-    #     predictions = [weighted_logits[n][sample_ind] for n in range(len(cohorts.keys()))]
-    #     aggregated_predictions.append(torch.sum(torch.stack(predictions), dim=0))
-
+    aggregated_predictions = torch.einsum('ijk, ik -> jk', raw_teacher_logits, weights_to_use)
     logger.debug("Logit aggregation took %f sec", time.time() - start_time)
 
     return aggregated_predictions
