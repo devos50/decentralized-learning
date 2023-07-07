@@ -264,7 +264,7 @@ def determine_cohort_weights(args):
     elif args.weighting_scheme == "label":
         determine_label_cohort_weights(args)
     elif args.weighting_scheme == "tuanahn":
-        weights = np.random.normal(0, 1, len(cohorts))
+        weights = np.random.normal(4, 1, len(cohorts))
 
     for cohort_ind in range(len(weights)):
         logger.info("Weights for cohort %d: %s", cohort_ind, weights[cohort_ind])
