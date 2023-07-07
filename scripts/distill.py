@@ -403,7 +403,7 @@ async def run(args):
     criterion = torch.nn.MSELoss(reduction="mean")
     weight_loss = WeightLoss()
     best_acc = 0
-    iteration = 1
+    iteration = 0
     for epoch in range(args.epochs):
         for i, (images, _, indices) in enumerate(public_dataset_loader):
             images = images.to(device)
@@ -427,6 +427,12 @@ async def run(args):
 
             # Update the weights if needed
             if args.weighting_scheme == "tuanahn":
+                if args.monitor_weights:
+                    normalized_weights = get_normalized_weights(weights)
+                    with open(os.path.join("data", "weights.csv"), "a") as out_file:
+                        for cohort_ind in range(len(cohorts)):
+                            out_file.write("%d,%d,%f,%f\n" % (iteration, cohort_ind, weights[cohort_ind], normalized_weights[cohort_ind]))
+
                 # re-compute the student logits and use them for the weight optimization
                 student_logits = student_model.forward(images)
 
@@ -449,12 +455,6 @@ async def run(args):
 
                 weights_optimizer.step()
                 weights = weights_copy.clone().detach().requires_grad_(False)
-
-                if args.monitor_weights:
-                    normalized_weights = get_normalized_weights(weights)
-                    with open(os.path.join("data", "weights.csv"), "a") as out_file:
-                        for cohort_ind in range(len(cohorts)):
-                            out_file.write("%d,%d,%f,%f\n" % (iteration, cohort_ind, weights[cohort_ind], normalized_weights[cohort_ind]))
 
                 aggregated_predictions = compute_aggregated_predictions(args)
 
