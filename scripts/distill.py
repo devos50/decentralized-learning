@@ -394,6 +394,8 @@ async def run(args):
     if args.monitor_weights:
         with open(os.path.join("data", "weights.csv"), "w") as out_file:
             out_file.write("iteration,cohort,raw_weight,weight\n")
+        with open(os.path.join("data", "weight_loss.csv"), "w") as out_file:
+            out_file.write("iteration,loss\n")
 
     with open(os.path.join("data", "distill_accuracies_%s_%s_%s_%d.csv" % (args.private_dataset, args.public_dataset, args.weighting_scheme, distill_timestamp)), "w") as out_file:
         out_file.write("cohorts,distill_time,public_dataset,weighting_scheme,epoch,accuracy,loss,best_acc,train_time,total_time\n")
@@ -446,6 +448,9 @@ async def run(args):
 
                 start_time = time.time()
                 loss = weight_loss(weights_copy, raw_teacher_logits_batch, student_logits)
+                if args.monitor_weights:
+                    with open(os.path.join("data", "weight_loss.csv"), "a") as out_file:
+                        out_file.write("%d,%f\n" % (iteration, loss))
                 logger.debug("Loss computation took %f sec", time.time() - start_time)
                 weights_optimizer.zero_grad()
 
