@@ -50,6 +50,7 @@ class GLSimulation(LearningSimulation):
                               self.nodes],
             target_participants=len(self.nodes),
             dataset_base_path=self.args.dataset_base_path,
+            validation_set_fraction=self.args.validation_set_fraction,
             gl=gl_settings,
             partitioner=self.args.partitioner,
             eva_block_size=1000,

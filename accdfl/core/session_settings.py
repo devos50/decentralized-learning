@@ -64,6 +64,7 @@ class SessionSettings:
     all_participants: List[str]
     target_participants: int
     dataset_base_path: str = None
+    validation_set_fraction: float = 0
     dfl: Optional[DFLSettings] = None
     dl: Optional[DLSettings] = None
     gl: Optional[GLSettings] = None
