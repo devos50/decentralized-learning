@@ -3,7 +3,7 @@ from argparse import Namespace
 from asyncio import get_event_loop
 from binascii import hexlify
 from random import Random
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 
 import torch
 
@@ -24,13 +24,28 @@ class DFLSimulation(LearningSimulation):
         self.latest_accuracy_check_round: int = 0
         self.last_round_complete_time: Optional[float] = None
         self.current_aggregated_model = None
+        self.current_aggregated_model_per_cohort: Dict = {}
         self.current_aggregated_model_round: int = 0
+        self.current_aggregated_model_round_per_cohort: Dict = {}
         self.last_checkpoint_time: float = 0
         self.round_durations: List[float] = []
         self.best_accuracy: float = 0.0
+        self.data_dir = None
+        self.cohorts: Dict[int, List[int]] = {}
+        self.aggregator_per_cohort: Dict[int, int] = {}
+
+        if self.args.cohort_file is not None:
+            # Read the cohort organisations
+            with open(os.path.join("data", self.args.cohort_file)) as cohort_file:
+                for line in cohort_file.readlines():
+                    parts = line.strip().split(",")
+                    self.cohorts[int(parts[0])] = [int(n) for n in parts[1].split("-")]
+
         partitioner_str = self.args.partitioner if self.args.partitioner != "dirichlet" else "dirichlet%f" % self.args.alpha
         datadir_name = "n_%d_%s_%s_sd%d" % (
             self.args.peers, self.args.dataset, partitioner_str, self.args.seed)
+        if self.cohorts:
+            datadir_name += "_ct%d" % len(self.cohorts)
         if self.args.cohort is not None:
             datadir_name += "_c%d" % self.args.cohort
         datadir_name += "_dfl"
@@ -54,16 +69,8 @@ class DFLSimulation(LearningSimulation):
             participants_pks = [hexlify(self.nodes[ind].overlays[0].my_peer.public_key.key_to_bin()).decode()
                             for ind in range(start_ind, end_ind)]
             participants_ids = list(range(start_ind, end_ind))
-        elif self.args.cohort_file:
-            cohorts: Dict[int, str] = {}
-
-            # Read the cohort organisations and set the active participants accordingly.
-            with open(os.path.join("data", self.args.cohort_file)) as cohort_file:
-                for line in cohort_file.readlines():
-                    parts = line.strip().split(",")
-                    cohorts[int(parts[0])] = parts[1]
-
-            participants_ids = [int(n) for n in cohorts[self.args.cohort].split("-")]
+        elif self.args.cohort_file and self.args.cohort is not None:  # We're just running a single cohort
+            participants_ids = self.cohorts[self.args.cohort]
             participants_pks = [hexlify(self.nodes[ind].overlays[0].my_peer.public_key.key_to_bin()).decode()
                                 for ind in participants_ids]
         else:
@@ -75,54 +82,115 @@ class DFLSimulation(LearningSimulation):
             self.logger.info("Setting sample size to %d" % self.args.sample_size)
 
         # Determine who will be the aggregator
-        peer_pk = None
+        aggregator_peer_pk = None
         lowest_latency_peer_id = -1
         if self.args.fix_aggregator:
-            lowest_latency_peer_id = self.determine_peer_with_lowest_median_latency(participants_ids)
-            peer_pk = self.nodes[lowest_latency_peer_id].overlays[0].my_peer.public_key.key_to_bin()
+            if self.args.cohort_file is not None and self.args.cohort is None:
+                for cohort_ind, cohort_peers in self.cohorts.items():
+                    lowest_latency_peer_id = self.determine_peer_with_lowest_median_latency(cohort_peers)
+                    self.aggregator_per_cohort[cohort_ind] = lowest_latency_peer_id
+            else:
+                lowest_latency_peer_id = self.determine_peer_with_lowest_median_latency(participants_ids)
+                aggregator_peer_pk = self.nodes[lowest_latency_peer_id].overlays[0].my_peer.public_key.key_to_bin()
 
-        # Setup the training process
-        learning_settings = LearningSettings(
-            learning_rate=self.args.learning_rate,
-            momentum=self.args.momentum,
-            batch_size=self.args.batch_size,
-            weight_decay=self.args.weight_decay,
-            local_steps=self.args.local_steps,
-        )
+        if self.args.cohort_file is not None and self.args.cohort is None:
+            # Setup cohorts
 
-        dfl_settings = DFLSettings(
-            sample_size=self.args.sample_size,
-            num_aggregators=self.args.num_aggregators,
-            success_fraction=self.args.success_fraction,
-            liveness_success_fraction=self.args.liveness_success_fraction,
-            ping_timeout=5,
-            inactivity_threshold=1000,
-            fixed_aggregator=peer_pk if self.args.fix_aggregator else None,
-            aggregation_timeout=self.args.aggregation_timeout,
-        )
+            # Fix the sample size
+            self.args.sample_size = len(self.cohorts[0])
 
-        self.session_settings = SessionSettings(
-            work_dir=self.data_dir,
-            dataset=self.args.dataset,
-            learning=learning_settings,
-            participants=participants_pks,
-            all_participants=[hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
-            target_participants=len(self.nodes),
-            dataset_base_path=self.args.dataset_base_path,
-            dfl=dfl_settings,
-            model=self.args.model,
-            alpha=self.args.alpha,
-            partitioner=self.args.partitioner,
-            eva_block_size=1000,
-            is_simulation=True,
-            train_device_name=self.args.train_device_name,
-            bypass_training=self.args.bypass_training,
-        )
+            for cohort_ind, cohort_peers in self.cohorts.items():
+                aggregator_peer_pk = self.nodes[self.aggregator_per_cohort[cohort_ind]].overlays[0].my_peer.public_key.key_to_bin()
+                self.logger.info("Setting up cohort %d with %d peers and aggregator %d...", cohort_ind, len(cohort_peers), self.aggregator_per_cohort[cohort_ind])
+                learning_settings = LearningSettings(
+                    learning_rate=self.args.learning_rate,
+                    momentum=self.args.momentum,
+                    batch_size=self.args.batch_size,
+                    weight_decay=self.args.weight_decay,
+                    local_steps=self.args.local_steps,
+                )
 
-        for ind, node in enumerate(self.nodes):
-            node.overlays[0].aggregate_complete_callback = lambda round_nr, model, i=ind: self.on_aggregate_complete(i, round_nr, model)
-            node.overlays[0].setup(self.session_settings)
-            node.overlays[0].model_manager.model_trainer.logger = SimulationLoggerAdapter(node.overlays[0].model_manager.model_trainer.logger, {})
+                dfl_settings = DFLSettings(
+                    sample_size=self.args.sample_size,
+                    num_aggregators=self.args.num_aggregators,
+                    success_fraction=self.args.success_fraction,
+                    liveness_success_fraction=self.args.liveness_success_fraction,
+                    ping_timeout=5,
+                    inactivity_threshold=1000,
+                    fixed_aggregator=aggregator_peer_pk,
+                    aggregation_timeout=self.args.aggregation_timeout,
+                )
+
+                cohort_nodes = [self.nodes[i] for i in cohort_peers]
+                cohort_peer_pks = [hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in cohort_nodes]
+                session_settings = SessionSettings(
+                    work_dir=self.data_dir,
+                    dataset=self.args.dataset,
+                    learning=learning_settings,
+                    participants=cohort_peer_pks,
+                    all_participants=[hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
+                    target_participants=len(self.nodes),
+                    dataset_base_path=self.args.dataset_base_path,
+                    dfl=dfl_settings,
+                    model=self.args.model,
+                    alpha=self.args.alpha,
+                    partitioner=self.args.partitioner,
+                    eva_block_size=1000,
+                    is_simulation=True,
+                    train_device_name=self.args.train_device_name,
+                    bypass_training=self.args.bypass_training,
+                )
+
+                for ind, node in enumerate(cohort_nodes):
+                    node.overlays[0].aggregate_complete_callback = lambda round_nr, model, i=ind: self.on_aggregate_complete(i, round_nr, model)
+                    node.overlays[0].setup(session_settings)
+                    node.overlays[0].model_manager.model_trainer.logger = SimulationLoggerAdapter(node.overlays[0].model_manager.model_trainer.logger, {})
+
+                if cohort_ind == 0:
+                    self.session_settings = session_settings  # Store one instantiation of these settings for other purposes
+        else:
+            # Setup the training process
+            learning_settings = LearningSettings(
+                learning_rate=self.args.learning_rate,
+                momentum=self.args.momentum,
+                batch_size=self.args.batch_size,
+                weight_decay=self.args.weight_decay,
+                local_steps=self.args.local_steps,
+            )
+
+            dfl_settings = DFLSettings(
+                sample_size=self.args.sample_size,
+                num_aggregators=self.args.num_aggregators,
+                success_fraction=self.args.success_fraction,
+                liveness_success_fraction=self.args.liveness_success_fraction,
+                ping_timeout=5,
+                inactivity_threshold=1000,
+                fixed_aggregator=aggregator_peer_pk if self.args.fix_aggregator else None,
+                aggregation_timeout=self.args.aggregation_timeout,
+            )
+
+            self.session_settings = SessionSettings(
+                work_dir=self.data_dir,
+                dataset=self.args.dataset,
+                learning=learning_settings,
+                participants=participants_pks,
+                all_participants=[hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() for node in self.nodes],
+                target_participants=len(self.nodes),
+                dataset_base_path=self.args.dataset_base_path,
+                dfl=dfl_settings,
+                model=self.args.model,
+                alpha=self.args.alpha,
+                partitioner=self.args.partitioner,
+                eva_block_size=1000,
+                is_simulation=True,
+                train_device_name=self.args.train_device_name,
+                bypass_training=self.args.bypass_training,
+            )
+
+            for ind, node in enumerate(self.nodes):
+                node.overlays[0].aggregate_complete_callback = lambda round_nr, model, i=ind: self.on_aggregate_complete(i, round_nr, model)
+                node.overlays[0].setup(self.session_settings)
+                node.overlays[0].model_manager.model_trainer.logger = SimulationLoggerAdapter(node.overlays[0].model_manager.model_trainer.logger, {})
 
         # If we fix the aggregator, we assume unlimited upload/download slots
         if self.args.fix_aggregator:
@@ -164,8 +232,12 @@ class DFLSimulation(LearningSimulation):
 
         # Start the model accuracy check process
         if self.args.accuracy_logging_interval and self.args.accuracy_logging_interval_is_in_sec:
-            self.logger.info("Starting model accuracy check loop every %d sec", self.args.checkpoint_interval)
-            self.register_task("accuracy_check", self.check_accuracy_interval, interval=self.args.accuracy_logging_interval)
+            self.logger.info("Starting model accuracy check loop every %d sec", self.args.accuracy_logging_interval)
+
+            if self.args.cohort_file and self.args.cohort is None:
+                self.register_task("accuracy_check", self.check_cohorts_accuracy_interval, interval=self.args.accuracy_logging_interval)
+            else:
+                self.register_task("accuracy_check", self.check_accuracy_interval, interval=self.args.accuracy_logging_interval)
 
     def check_liveness(self):
         # Condition 1: At least one online node is training their model
@@ -209,15 +281,15 @@ class DFLSimulation(LearningSimulation):
         # active peers. If we use our sampling function, training might not start at all if many offline nodes
         # are selected for the first round.
         rand_sampler = Random(self.args.seed)
-        activated_nodes = rand_sampler.sample(active_nodes, min(len(active_nodes), self.args.sample_size))
+
+        if self.args.cohort_file and self.args.cohort is None:
+            activated_nodes = active_nodes
+        else:
+            activated_nodes = rand_sampler.sample(active_nodes, min(len(active_nodes), self.args.sample_size))
         for initial_active_node in activated_nodes:
             overlay = initial_active_node.overlays[0]
             self.logger.info("Activating peer %s in round 1", overlay.peer_manager.get_my_short_id())
             overlay.received_aggregated_model(overlay.my_peer, 1, overlay.model_manager.model)
-
-        activated_peers_pks = [node.overlays[0].my_peer.public_key.key_to_bin() for node in activated_nodes]
-        for node in self.nodes:
-            node.overlays[0].peers_first_round = activated_peers_pks
 
     def checkpoint_model_interval(self):
         self.logger.info("Checkpointing model...")
@@ -247,9 +319,62 @@ class DFLSimulation(LearningSimulation):
                                                                   self.current_aggregated_model_round, accuracy, loss,
                                                                   bytes_up, bytes_down, train_time, network_time))
 
+    def get_aggregated_statistics_per_cohort(self) -> Dict[int, Tuple[int, int, float, float]]:
+        statistics = {}
+        for cohort_ind, cohort_peers in self.cohorts.items():
+            total_bytes_up: int = 0
+            total_bytes_down: int = 0
+            total_train_time: float = 0
+            total_network_time: float = 0
+
+            for ind in cohort_peers:
+                total_bytes_up += self.nodes[ind].overlays[0].endpoint.bytes_up
+                total_bytes_down += self.nodes[ind].overlays[0].endpoint.bytes_down
+                total_train_time += self.nodes[ind].overlays[0].model_manager.model_trainer.total_training_time
+                total_network_time += self.nodes[ind].overlays[0].bw_scheduler.total_time_transmitting
+
+            statistics[cohort_ind] = (total_bytes_up, total_bytes_down, total_train_time, total_network_time)
+
+        return statistics
+
+    def check_cohorts_accuracy_interval(self):
+        cohort_statistics = self.get_aggregated_statistics_per_cohort()
+        for cohort_ind in range(len(self.cohorts)):
+            if cohort_ind not in self.current_aggregated_model_per_cohort:
+                continue
+
+            self.logger.info("Checking accuracy of model of cohort %d...", cohort_ind)
+
+            if not self.args.bypass_training:
+                accuracy, loss = self.evaluator.evaluate_accuracy(self.current_aggregated_model_per_cohort[cohort_ind], device_name=self.args.accuracy_device_name)
+            else:
+                accuracy, loss = 0, 0
+
+            with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
+                bytes_up, bytes_down, train_time, network_time = cohort_statistics[cohort_ind]
+                out_file.write("%s,%d,%f,0,%d,%f,%f,%d,%d,%f,%f\n" % (self.args.dataset, cohort_ind, get_event_loop().time(),
+                                                                      self.current_aggregated_model_round_per_cohort[cohort_ind], accuracy, loss,
+                                                                      bytes_up, bytes_down, train_time, network_time))
+
     async def on_aggregate_complete(self, ind: int, round_nr: int, model):
-        self.current_aggregated_model = model
-        self.current_aggregated_model_round = round_nr
+        if self.args.cohort_file and self.args.cohort is None:
+            # Which cohort are we in?
+            agg_cohort_ind = -1
+            for cohort_ind, agg_ind in self.aggregator_per_cohort.items():
+                if ind == agg_ind:
+                    agg_cohort_ind = cohort_ind
+                    break
+
+            if agg_cohort_ind == -1:
+                raise RuntimeError("Couldn't associate node %d with any cohort!", ind)
+
+            self.current_aggregated_model_per_cohort[agg_cohort_ind] = model
+            self.current_aggregated_model_round_per_cohort[agg_cohort_ind] = round_nr
+            self.logger.info("Cohort %d completed round %d", agg_cohort_ind, round_nr)
+        else:
+            self.current_aggregated_model = model
+            self.current_aggregated_model_round = round_nr
+
         tot_up, tot_down = 0, 0
         for node in self.nodes:
             tot_up += node.overlays[0].endpoint.bytes_up
