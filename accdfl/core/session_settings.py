@@ -65,6 +65,8 @@ class SessionSettings:
     target_participants: int
     dataset_base_path: str = None
     validation_set_fraction: float = 0
+    compute_validation_loss_global_model: bool = False
+    compute_validation_loss_updated_model: bool = False
     dfl: Optional[DFLSettings] = None
     dl: Optional[DLSettings] = None
     gl: Optional[GLSettings] = None

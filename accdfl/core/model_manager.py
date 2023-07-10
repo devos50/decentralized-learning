@@ -57,7 +57,7 @@ class ModelManager:
         models = [model for model in self.incoming_trained_models.values()]
         return self.get_aggregation_method().aggregate(models, weights=weights)
 
-    async def train(self) -> int:
+    async def train(self, round_nr) -> int:
         if not self.model:
             self.logger.info("Initializing model of peer %d", self.participant_index)
             self.model = create_model(self.settings.dataset, architecture=self.settings.model)
@@ -95,7 +95,7 @@ class ModelManager:
             self.model.load_state_dict(torch.load(model_path))
             os.unlink(model_path)
         else:
-            samples_trained_on = await self.model_trainer.train(self.model, device_name=self.settings.train_device_name)
+            samples_trained_on = await self.model_trainer.train(self.model, round_nr, device_name=self.settings.train_device_name)
             return samples_trained_on
 
     async def compute_accuracy(self, model: nn.Module):
