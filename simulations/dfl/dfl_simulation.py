@@ -323,7 +323,7 @@ class DFLSimulation(LearningSimulation):
 
             models_dir = os.path.join(self.data_dir, "models")
             os.makedirs(models_dir, exist_ok=True)
-            torch.save(self.current_aggregated_model.state_dict(), os.path.join(models_dir, "c%d_%d_%d.model" % (cohort_ind, self.current_aggregated_model_round, cur_time)))
+            torch.save(self.current_aggregated_model_per_cohort[cohort_ind].state_dict(), os.path.join(models_dir, "c%d_%d_%d.model" % (cohort_ind, self.current_aggregated_model_round_per_cohort[cohort_ind], cur_time)))
 
     def check_accuracy_interval(self):
         self.logger.info("Checking accuracy of model...")
