@@ -35,7 +35,6 @@ class DFLCommunity(LearningCommunity):
         super().__init__(*args, **kwargs)
 
         self.random = Random(int.from_bytes(self.my_peer.public_key.key_to_bin(), 'big'))
-        self.peers_first_round: List[bytes] = []
 
         # Statistics
         self.active_peers_history = []

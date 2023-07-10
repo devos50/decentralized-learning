@@ -252,7 +252,7 @@ class LearningSimulation(TaskManager):
     async def start_simulation(self) -> None:
         active_nodes: List = []
         for ind, node in enumerate(self.nodes):
-            if hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() not in self.session_settings.participants:
+            if not self.args.cohort_file and hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() not in self.session_settings.participants:
                 continue
 
             if not node.overlays[0].traces or (node.overlays[0].traces and node.overlays[0].traces["active"][0] == 0):
