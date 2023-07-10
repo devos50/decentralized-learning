@@ -440,7 +440,7 @@ class DFLCommunity(LearningCommunity):
         self.log_event(round, "start_train")
 
         # 1. Train the model
-        await self.model_manager.train()
+        await self.model_manager.train(round)
 
         self.log_event(round, "done_train")
 

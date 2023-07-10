@@ -1,8 +1,7 @@
 import logging
 import os
-import time
 from asyncio import sleep, CancelledError, get_event_loop
-from typing import Optional
+from typing import Optional, Dict
 
 import torch
 from torch.autograd import Variable
@@ -32,6 +31,9 @@ class ModelTrainer:
         self.fixed_simulated_training_time: Optional[float] = None
         self.total_training_time: float = 0
         self.is_training: bool = False
+        self.training_losses: Dict[int, float] = {}
+        self.validation_loss_global_model: Dict[int, float] = {}
+        self.validation_loss_updated_model: Dict[int, float] = {}
 
         if settings.dataset in ["cifar10", "mnist", "fashionmnist", "movielens", "spambase", "google_speech"]:
             self.train_dir = data_dir
@@ -39,7 +41,35 @@ class ModelTrainer:
             self.train_dir = os.path.join(data_dir, "per_user_data", "train")
         self.dataset: Optional[Dataset] = None
 
-    async def train(self, model, device_name: str = "cpu") -> int:
+    def get_validation_loss(self, model) -> float:
+        validation_set = self.dataset.get_validationset()
+        total_loss = 0.0
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model.to(device)
+        model.eval()  # set model to evaluation mode
+
+        with torch.no_grad():
+            for data, target in validation_set:
+                data, target = data.to(device), target.to(device)
+                output = model(data)
+
+                if self.settings.dataset == "movielens":
+                    loss_func = MSELoss()
+                elif self.settings.dataset == "cifar10":
+                    if self.settings.model == "resnet8":
+                        loss_func = CrossEntropyLoss()
+                    else:
+                        loss_func = NLLLoss()
+                else:
+                    loss_func = CrossEntropyLoss()
+
+                loss = loss_func(output, target)
+                total_loss += loss.item()
+
+        avg_loss = total_loss / len(validation_set)
+        return float(avg_loss)
+
+    async def train(self, model, round_nr, device_name: str = "cpu") -> int:
         """
         Train the model on a batch. Return an integer that indicates how many local steps we have done.
         """
@@ -47,6 +77,9 @@ class ModelTrainer:
 
         if not self.dataset:
             self.dataset = create_dataset(self.settings, participant_index=self.participant_index, train_dir=self.train_dir)
+
+        if self.settings.compute_validation_loss_global_model:
+            self.validation_loss_global_model[round_nr] = self.get_validation_loss(model)
 
         local_steps: int = self.settings.learning.local_steps
         device = torch.device(device_name)
@@ -123,11 +156,15 @@ class ModelTrainer:
                     lossf = CrossEntropyLoss()
 
                 loss = lossf(output, target)
+                self.training_losses[round_nr] = float(loss)
                 self.logger.debug('d-sgd.next node backward propagation (step %d/%d)', local_step, local_steps)
                 loss.backward()
                 optimizer.optimizer.step()
             except StopIteration:
                 pass
+
+        if self.settings.compute_validation_loss_updated_model:
+            self.validation_loss_updated_model[round_nr] = self.get_validation_loss(model)
 
         self.is_training = False
         model.to("cpu")

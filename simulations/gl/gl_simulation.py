@@ -51,6 +51,8 @@ class GLSimulation(LearningSimulation):
             target_participants=len(self.nodes),
             dataset_base_path=self.args.dataset_base_path,
             validation_set_fraction=self.args.validation_set_fraction,
+            compute_validation_loss_global_model=self.args.compute_validation_loss_global_model,
+            compute_validation_loss_updated_model=self.args.compute_validation_loss_updated_model,
             gl=gl_settings,
             partitioner=self.args.partitioner,
             eva_block_size=1000,

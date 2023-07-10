@@ -26,7 +26,7 @@ def model_manager(tmpdir, settings):
 @pytest.mark.timeout(10)
 @pytest.mark.asyncio
 async def test_train(model_manager):
-    await model_manager.train()
+    await model_manager.train(1)
 
 
 @pytest.mark.timeout(15)

@@ -69,6 +69,8 @@ class DLSimulation(LearningSimulation):
             target_participants=len(self.nodes),
             dataset_base_path=self.args.dataset_base_path,
             validation_set_fraction=self.args.validation_set_fraction,
+            compute_validation_loss_global_model=self.args.compute_validation_loss_global_model,
+            compute_validation_loss_updated_model=self.args.compute_validation_loss_updated_model,
             dl=dl_settings,
             model=self.args.model,
             alpha=self.args.alpha,
