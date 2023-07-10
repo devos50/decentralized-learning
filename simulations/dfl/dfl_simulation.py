@@ -27,7 +27,6 @@ class DFLSimulation(LearningSimulation):
         self.current_aggregated_model_per_cohort: Dict = {}
         self.current_aggregated_model_round: int = 0
         self.current_aggregated_model_round_per_cohort: Dict = {}
-        self.last_checkpoint_time: float = 0
         self.round_durations: List[float] = []
         self.best_accuracy: float = 0.0
         self.data_dir = None
@@ -237,7 +236,11 @@ class DFLSimulation(LearningSimulation):
         # Start the model checkpointing process
         if self.args.checkpoint_interval and self.args.checkpoint_interval_is_in_sec:
             self.logger.info("Starting model checkpoint loop every %d sec", self.args.checkpoint_interval)
-            self.register_task("checkpoint", self.checkpoint_model_interval, interval=self.args.checkpoint_interval)
+
+            if self.args.cohort_file and self.args.cohort is None:
+                self.register_task("checkpoint", self.checkpoint_cohort_models_interval, interval=self.args.checkpoint_interval)
+            else:
+                self.register_task("checkpoint", self.checkpoint_model_interval, interval=self.args.checkpoint_interval)
 
         # Start the model accuracy check process
         if self.args.accuracy_logging_interval and self.args.accuracy_logging_interval_is_in_sec:
@@ -306,10 +309,20 @@ class DFLSimulation(LearningSimulation):
             return
 
         cur_time = get_event_loop().time()
-        self.last_checkpoint_time += self.args.checkpoint_interval
         models_dir = os.path.join(self.data_dir, "models")
         os.makedirs(models_dir, exist_ok=True)
         torch.save(self.current_aggregated_model.state_dict(), os.path.join(models_dir, "%d_%d_0.model" % (self.current_aggregated_model_round, cur_time)))
+
+    def checkpoint_cohort_models_interval(self):
+        cur_time = get_event_loop().time()
+        for cohort_ind in range(len(self.cohorts)):
+            self.logger.info("Checkpointing cohort model %d...", cohort_ind)
+            if cohort_ind not in self.current_aggregated_model_per_cohort:
+                continue
+
+            models_dir = os.path.join(self.data_dir, "models")
+            os.makedirs(models_dir, exist_ok=True)
+            torch.save(self.current_aggregated_model.state_dict(), os.path.join(models_dir, "c%d_%d_%d.model" % (cohort_ind, self.current_aggregated_model_round, cur_time)))
 
     def check_accuracy_interval(self):
         self.logger.info("Checking accuracy of model...")
