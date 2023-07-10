@@ -143,8 +143,9 @@ class DFLSimulation(LearningSimulation):
                     bypass_training=self.args.bypass_training,
                 )
 
-                for ind, node in enumerate(cohort_nodes):
-                    node.overlays[0].aggregate_complete_callback = lambda round_nr, model, i=ind: self.on_aggregate_complete(i, round_nr, model)
+                for cohort_peer_ind in cohort_peers:
+                    node = self.nodes[cohort_peer_ind]
+                    node.overlays[0].aggregate_complete_callback = lambda round_nr, model, i=cohort_peer_ind: self.on_aggregate_complete(i, round_nr, model)
                     node.overlays[0].setup(session_settings)
                     node.overlays[0].model_manager.model_trainer.logger = SimulationLoggerAdapter(node.overlays[0].model_manager.model_trainer.logger, {})
 
