@@ -27,6 +27,9 @@ class DFLSimulation(LearningSimulation):
         self.current_aggregated_model_per_cohort: Dict = {}
         self.current_aggregated_model_round: int = 0
         self.current_aggregated_model_round_per_cohort: Dict = {}
+        self.cumsums_per_cohort = {}
+        self.rolling_avgs_per_cohort = {}
+        self.min_val_loss_per_cohort: Dict[int, float] = {}
         self.round_durations: List[float] = []
         self.best_accuracy: float = 0.0
         self.data_dir = None
@@ -39,6 +42,7 @@ class DFLSimulation(LearningSimulation):
                 for line in cohort_file.readlines():
                     parts = line.strip().split(",")
                     self.cohorts[int(parts[0])] = [int(n) for n in parts[1].split("-")]
+                    self.min_val_loss_per_cohort[int(parts[0])] = 1000000
 
         partitioner_str = self.args.partitioner if self.args.partitioner != "dirichlet" else "dirichlet%f" % self.args.alpha
         datadir_name = "n_%d_%s_%s_sd%d" % (
@@ -145,7 +149,7 @@ class DFLSimulation(LearningSimulation):
 
                 for cohort_peer_ind in cohort_peers:
                     node = self.nodes[cohort_peer_ind]
-                    node.overlays[0].aggregate_complete_callback = lambda round_nr, model, i=cohort_peer_ind: self.on_aggregate_complete(i, round_nr, model)
+                    node.overlays[0].aggregate_complete_callback = lambda round_nr, model, train_info, i=cohort_peer_ind: self.on_aggregate_complete(i, round_nr, model, train_info)
                     node.overlays[0].setup(session_settings)
                     node.overlays[0].model_manager.model_trainer.logger = SimulationLoggerAdapter(node.overlays[0].model_manager.model_trainer.logger, {})
 
@@ -379,7 +383,42 @@ class DFLSimulation(LearningSimulation):
                                                                       self.current_aggregated_model_round_per_cohort[cohort_ind], accuracy, loss,
                                                                       bytes_up, bytes_down, train_time, network_time))
 
-    async def on_aggregate_complete(self, ind: int, round_nr: int, model):
+    def on_new_validation_loss(self, cohort, loss) -> bool:
+        """
+        Process a new validation loss. Return True if converged.
+        """
+        if cohort not in self.cumsums_per_cohort:
+            self.cumsums_per_cohort[cohort] = [loss]
+        else:
+            self.cumsums_per_cohort[cohort].append(self.cumsums_per_cohort[cohort][-1] + loss)
+
+        if cohort not in self.rolling_avgs_per_cohort:
+            self.rolling_avgs_per_cohort[cohort] = [loss]
+        else:
+            if len(self.rolling_avgs_per_cohort[cohort]) < self.args.stop_criteria_window_size:
+                self.rolling_avgs_per_cohort[cohort].append(
+                    sum(self.rolling_avgs_per_cohort[cohort]) / len(self.rolling_avgs_per_cohort[cohort]))
+            else:
+                list_len = len(self.rolling_avgs_per_cohort[cohort])
+                self.rolling_avgs_per_cohort[cohort].append(
+                    (self.cumsums_per_cohort[cohort][-1] - self.cumsums_per_cohort[cohort][list_len - self.args.stop_criteria_window_size]) / float(self.args.stop_criteria_window_size))
+
+        # Determine the round where the minimum validation loss stops decreasing
+        min_loss = float('inf')
+        count_patience = 0
+        for avg_loss in self.rolling_avgs_per_cohort[cohort]:
+            if avg_loss < min_loss:
+                min_loss = avg_loss
+                count_patience = 0
+            else:
+                count_patience += 1
+
+            if count_patience >= self.args.stop_criteria_patience:
+                return True
+        else:
+            return False
+
+    async def on_aggregate_complete(self, ind: int, round_nr: int, model, train_info: Dict[str, float]):
         if self.args.cohort_file and self.args.cohort is None:
             # Which cohort are we in?
             agg_cohort_ind = -1
@@ -394,6 +433,25 @@ class DFLSimulation(LearningSimulation):
             self.current_aggregated_model_per_cohort[agg_cohort_ind] = model
             self.current_aggregated_model_round_per_cohort[agg_cohort_ind] = round_nr
             self.logger.info("Cohort %d completed round %d", agg_cohort_ind, round_nr)
+
+            if self.args.compute_validation_loss_global_model:
+                new_avg_loss = train_info["val_loss_global_model"]
+                should_stop = self.on_new_validation_loss(agg_cohort_ind, new_avg_loss)
+
+                new_rolling_avg_loss = self.rolling_avgs_per_cohort[agg_cohort_ind][-1]
+                if new_rolling_avg_loss < self.min_val_loss_per_cohort[agg_cohort_ind]:
+                    self.logger.info("Cohort %d has a lower validation loss: %f - checkpointing model", agg_cohort_ind, new_rolling_avg_loss)
+                    self.min_val_loss_per_cohort[agg_cohort_ind] = new_rolling_avg_loss
+
+                    cur_time = get_event_loop().time()
+                    models_dir = os.path.join(self.data_dir, "models")
+                    os.makedirs(models_dir, exist_ok=True)
+                    torch.save(model, os.path.join(models_dir, "c%d_%d_%d_0_best.model" % (agg_cohort_ind, round_nr, cur_time)))
+
+                if should_stop:
+                    self.logger.info("Validation loss of cohort %d not decreasing - stopping it", agg_cohort_ind)
+                    for cohort_peer_ind in self.cohorts[agg_cohort_ind]:
+                        self.nodes[cohort_peer_ind].overlays[0].go_offline(graceful=False)
         else:
             self.current_aggregated_model = model
             self.current_aggregated_model_round = round_nr

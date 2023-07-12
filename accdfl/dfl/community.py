@@ -86,6 +86,7 @@ class DFLCommunity(LearningCommunity):
         self.aggregations: Dict = {}
         self.aggregation_timeouts = set()
         self.aggregations_completed = set()
+        self.train_infos = []
         self.completed_training = False
         self.train_future: Optional[Future] = None
 
@@ -440,7 +441,8 @@ class DFLCommunity(LearningCommunity):
         self.log_event(round, "start_train")
 
         # 1. Train the model
-        await self.model_manager.train(round)
+        train_info = await self.model_manager.train(round)
+        train_info_dict = {"val_loss_global_model": train_info[1], "val_loss_updated_model": train_info[2]}
 
         self.log_event(round, "done_train")
 
@@ -449,9 +451,9 @@ class DFLCommunity(LearningCommunity):
             self.logger.warning("Participant %s went offline during model training in round %d - not proceeding", self.peer_manager.get_my_short_id(), round)
             return
 
-        await self.forward_trained_model(round)
+        await self.forward_trained_model(round, train_info_dict)
 
-    async def forward_trained_model(self, round: int):
+    async def forward_trained_model(self, round: int, train_info: Dict[str, float]):
         # 2. Determine the aggregators of the next sample that are available
         aggregators = await self.determine_available_peers_for_sample(round + 1, self.settings.dfl.num_aggregators,
                                                                       getting_aggregators=True)
@@ -462,7 +464,7 @@ class DFLCommunity(LearningCommunity):
 
         # 3. Send the trained model to the aggregators in the next sample
         self.train_future = Future()
-        await self.send_trained_model_to_aggregators(aggregators, round + 1)
+        await self.send_trained_model_to_aggregators(aggregators, round + 1, train_info)
 
         if self.train_future:  # Could be interrupted
             await self.train_future
@@ -507,7 +509,7 @@ class DFLCommunity(LearningCommunity):
         res = await asyncio.gather(*futures)
         return res
 
-    async def send_trained_model_to_aggregators(self, aggregators: List[bytes], sample_index: int) -> None:
+    async def send_trained_model_to_aggregators(self, aggregators: List[bytes], sample_index: int, train_info: Dict[str, float]) -> None:
         """
         Send the current model to the aggregators in a particular sample.
         """
@@ -537,7 +539,7 @@ class DFLCommunity(LearningCommunity):
                 detached_model = unserialize_model(serialize_model(self.model_manager.model),
                                                    self.settings.dataset, architecture=self.settings.model)
 
-                ensure_future(self.received_trained_model(self.my_peer, sample_index, detached_model))
+                ensure_future(self.received_trained_model(self.my_peer, sample_index, detached_model, train_info))
                 continue
 
             peer = self.get_peer_by_pk(aggregator)
@@ -545,14 +547,14 @@ class DFLCommunity(LearningCommunity):
                 self.logger.warning("Could not find aggregator peer with public key %s", hexlify(aggregator).decode())
                 continue
 
-            futures.append(self.eva_send_model(sample_index, self.model_manager.model, "trained_model", population_view, peer))
+            futures.append(self.eva_send_model(sample_index, self.model_manager.model, "trained_model", population_view, peer, metadata=train_info))
 
         # Flush pending changes to the local view
         self.peer_manager.flush_last_active_pending()
 
         await asyncio.gather(*futures)
 
-    def eva_send_model(self, round, model, type, population_view, peer):
+    def eva_send_model(self, round, model, type, population_view, peer, metadata={}):
         start_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
         serialized_model = serialize_model(model)
         serialized_population_view = pickle.dumps(population_view)
@@ -562,6 +564,7 @@ class DFLCommunity(LearningCommunity):
         self.bw_out_stats["num"]["view"] += 1
         binary_data = serialized_model + serialized_population_view
         response = {"round": round, "type": type, "model_data_len": len(serialized_model)}
+        response.update(metadata)
         serialized_response = json.dumps(response).encode()
         return self.schedule_eva_send_model(peer, serialized_response, binary_data, start_time)
 
@@ -597,7 +600,11 @@ class DFLCommunity(LearningCommunity):
 
         if json_data["type"] == "trained_model":
             self.log_event(json_data["round"], "received_trained_model")
-            await self.received_trained_model(result.peer, json_data["round"], incoming_model)
+            train_info = {
+                "val_loss_global_model": json_data["val_loss_global_model"],
+                "val_loss_updated_model": json_data["val_loss_updated_model"]
+            }
+            await self.received_trained_model(result.peer, json_data["round"], incoming_model, train_info)
         elif json_data["type"] == "aggregated_model":
             self.log_event(json_data["round"], "received_aggregated_model")
             self.received_aggregated_model(result.peer, json_data["round"], incoming_model)
@@ -609,7 +616,7 @@ class DFLCommunity(LearningCommunity):
     def has_enough_trained_models_for_liveness(self, agg_round: int) -> bool:
         return len(self.aggregations[agg_round].incoming_trained_models) >= 3
 
-    async def received_trained_model(self, peer: Peer, index: int, model: nn.Module) -> None:
+    async def received_trained_model(self, peer: Peer, index: int, model: nn.Module, train_info: Dict[str, float]) -> None:
         model_round = index - 1  # The round associated with this model is one smaller than the sample index
         if self.shutting_down:
             self.logger.warning("Participant %s ignoring incoming trained model due to shutdown",
@@ -644,6 +651,7 @@ class DFLCommunity(LearningCommunity):
 
         if index not in self.aggregations_completed:
             self.aggregations[index].process_incoming_trained_model(peer_pk, model)
+            self.train_infos.append(train_info)
 
             # Check whether we received enough incoming models
             if self.has_enough_trained_models(index):
@@ -673,7 +681,18 @@ class DFLCommunity(LearningCommunity):
         avg_model = model_manager.aggregate_trained_models()
 
         if self.aggregate_complete_callback:
-            ensure_future(self.aggregate_complete_callback(model_round, avg_model))
+            # Compute the avg. losses
+            val_loss_global_tot, val_loss_updated_tot = 0, 0
+            for train_info in self.train_infos:
+                val_loss_global_tot += train_info["val_loss_global_model"]
+                val_loss_updated_tot += train_info["val_loss_updated_model"]
+
+            val_loss_global_tot /= len(model_manager.incoming_trained_models)
+            val_loss_updated_tot /= len(model_manager.incoming_trained_models)
+
+            ensure_future(self.aggregate_complete_callback(model_round, avg_model, {"val_loss_global_model": val_loss_global_tot, "val_loss_updated_model": val_loss_updated_tot}))
+
+        self.train_infos = []
 
         # Capture the peers
         peers_that_sent_trained_model: List[bytes] = list(model_manager.incoming_trained_models.keys())

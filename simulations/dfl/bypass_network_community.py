@@ -20,7 +20,7 @@ class DFLBypassNetworkCommunity(DFLCommunity):
         self.bw_scheduler: BWScheduler = BWScheduler(self.my_peer.public_key.key_to_bin(),
                                                      self.peer_manager.get_my_short_id())
 
-    async def eva_send_model(self, round, model, type, population_view, peer):
+    async def eva_send_model(self, round, model, type, population_view, peer, metadata={}):
         serialized_model = serialize_model(model)
         serialized_population_view = pickle.dumps(population_view)
         self.bw_out_stats["bytes"]["model"] += len(serialized_model)
@@ -29,6 +29,7 @@ class DFLBypassNetworkCommunity(DFLCommunity):
         self.bw_out_stats["num"]["view"] += 1
         binary_data = serialized_model + serialized_population_view
         response = {"round": round, "type": type, "model_data_len": len(serialized_model)}
+        response.update(metadata)
         serialized_response = json.dumps(response).encode()
 
         found: bool = False
