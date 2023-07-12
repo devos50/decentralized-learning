@@ -4,7 +4,7 @@ import os
 import random
 import sys
 import time
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Tuple
 
 import torch
 import torch.nn as nn
@@ -57,19 +57,19 @@ class ModelManager:
         models = [model for model in self.incoming_trained_models.values()]
         return self.get_aggregation_method().aggregate(models, weights=weights)
 
-    async def train(self, round_nr) -> int:
+    async def train(self, round_nr) -> Tuple[int, float, float]:
         if not self.model:
             self.logger.info("Initializing model of peer %d", self.participant_index)
             self.model = create_model(self.settings.dataset, architecture=self.settings.model)
 
-        samples_trained_on = await self.model_trainer.train(self.model, round_nr, device_name=self.settings.train_device_name)
+        train_info = await self.model_trainer.train(self.model, round_nr, device_name=self.settings.train_device_name)
 
         # Detach the gradients
         self.model = unserialize_model(serialize_model(self.model), self.settings.dataset, architecture=self.settings.model)
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-        return samples_trained_on
+        return train_info
 
     async def compute_accuracy(self, model: nn.Module):
         """

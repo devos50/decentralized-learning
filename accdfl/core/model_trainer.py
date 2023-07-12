@@ -1,7 +1,7 @@
 import logging
 import os
 from asyncio import sleep, CancelledError, get_event_loop
-from typing import Optional, Dict
+from typing import Optional, Dict, Tuple
 
 import torch
 from torch.autograd import Variable
@@ -69,7 +69,7 @@ class ModelTrainer:
         avg_loss = total_loss / len(validation_set)
         return float(avg_loss)
 
-    async def train(self, model, round_nr, device_name: str = "cpu") -> int:
+    async def train(self, model, round_nr, device_name: str = "cpu") -> Tuple[int, float, float]:
         """
         Train the model on a batch. Return an integer that indicates how many local steps we have done.
         """
@@ -78,8 +78,10 @@ class ModelTrainer:
         if not self.dataset:
             self.dataset = create_dataset(self.settings, participant_index=self.participant_index, train_dir=self.train_dir)
 
+        validation_loss_global_model = 0
         if self.settings.compute_validation_loss_global_model:
-            self.validation_loss_global_model[round_nr] = self.get_validation_loss(model)
+            validation_loss_global_model = self.get_validation_loss(model)
+            self.validation_loss_global_model[round_nr] = validation_loss_global_model
 
         local_steps: int = self.settings.learning.local_steps
         device = torch.device(device_name)
@@ -163,10 +165,12 @@ class ModelTrainer:
             except StopIteration:
                 pass
 
+        validation_loss_updated_model = 0
         if self.settings.compute_validation_loss_updated_model:
-            self.validation_loss_updated_model[round_nr] = self.get_validation_loss(model)
+            validation_loss_updated_model = self.get_validation_loss(model)
+            self.validation_loss_updated_model[round_nr] = validation_loss_updated_model
 
         self.is_training = False
         model.to("cpu")
 
-        return samples_trained_on
+        return samples_trained_on, validation_loss_global_model, validation_loss_updated_model
