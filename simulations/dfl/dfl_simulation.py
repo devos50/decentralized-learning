@@ -34,6 +34,7 @@ class DFLSimulation(LearningSimulation):
         self.best_accuracy: float = 0.0
         self.data_dir = None
         self.cohorts: Dict[int, List[int]] = {}
+        self.cohorts_completed = set()
         self.aggregator_per_cohort: Dict[int, int] = {}
 
         if self.args.cohort_file is not None:
@@ -395,13 +396,11 @@ class DFLSimulation(LearningSimulation):
         if cohort not in self.rolling_avgs_per_cohort:
             self.rolling_avgs_per_cohort[cohort] = [loss]
         else:
-            if len(self.rolling_avgs_per_cohort[cohort]) < self.args.stop_criteria_window_size:
-                self.rolling_avgs_per_cohort[cohort].append(
-                    sum(self.rolling_avgs_per_cohort[cohort]) / len(self.rolling_avgs_per_cohort[cohort]))
+            list_len = len(self.rolling_avgs_per_cohort[cohort])
+            if list_len < self.args.stop_criteria_window_size:
+                self.rolling_avgs_per_cohort[cohort].append(self.cumsums_per_cohort[cohort][-1] / len(self.cumsums_per_cohort[cohort]))
             else:
-                list_len = len(self.rolling_avgs_per_cohort[cohort])
-                self.rolling_avgs_per_cohort[cohort].append(
-                    (self.cumsums_per_cohort[cohort][-1] - self.cumsums_per_cohort[cohort][list_len - self.args.stop_criteria_window_size]) / float(self.args.stop_criteria_window_size))
+                self.rolling_avgs_per_cohort[cohort].append((self.cumsums_per_cohort[cohort][-1] - self.cumsums_per_cohort[cohort][list_len - self.args.stop_criteria_window_size]) / float(self.args.stop_criteria_window_size))
 
         # Determine the round where the minimum validation loss stops decreasing
         min_loss = float('inf')
@@ -439,6 +438,7 @@ class DFLSimulation(LearningSimulation):
                 should_stop = self.on_new_validation_loss(agg_cohort_ind, new_avg_loss)
 
                 new_rolling_avg_loss = self.rolling_avgs_per_cohort[agg_cohort_ind][-1]
+                self.logger.info("Avg. validation loss of cohort %d: %f, unaveraged: %f", agg_cohort_ind, new_rolling_avg_loss, new_avg_loss)
                 if new_rolling_avg_loss < self.min_val_loss_per_cohort[agg_cohort_ind]:
                     self.logger.info("Cohort %d has a lower validation loss: %f - checkpointing model", agg_cohort_ind, new_rolling_avg_loss)
                     self.min_val_loss_per_cohort[agg_cohort_ind] = new_rolling_avg_loss
@@ -452,6 +452,10 @@ class DFLSimulation(LearningSimulation):
                     self.logger.info("Validation loss of cohort %d not decreasing - stopping it", agg_cohort_ind)
                     for cohort_peer_ind in self.cohorts[agg_cohort_ind]:
                         self.nodes[cohort_peer_ind].overlays[0].go_offline(graceful=False)
+                    self.cohorts_completed.add(agg_cohort_ind)
+
+                    if len(self.cohorts_completed) == len(self.cohorts):
+                        exit(0)
         else:
             self.current_aggregated_model = model
             self.current_aggregated_model_round = round_nr
