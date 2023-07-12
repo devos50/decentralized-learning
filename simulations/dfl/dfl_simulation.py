@@ -1,3 +1,4 @@
+import glob
 import os
 from argparse import Namespace
 from asyncio import get_event_loop
@@ -446,6 +447,11 @@ class DFLSimulation(LearningSimulation):
                     cur_time = get_event_loop().time()
                     models_dir = os.path.join(self.data_dir, "models")
                     os.makedirs(models_dir, exist_ok=True)
+
+                    # Remove old models
+                    old_models = glob.glob(os.path.join(models_dir, "c%d_*_best.model" % agg_cohort_ind))
+                    for old_model_path in old_models:
+                        os.remove(old_model_path)
                     torch.save(model, os.path.join(models_dir, "c%d_%d_%d_0_best.model" % (agg_cohort_ind, round_nr, cur_time)))
 
                 if should_stop:
