@@ -98,7 +98,7 @@ def read_teacher_models(args):
             raise RuntimeError("Models directory %s does not exist!" % data_dir)
 
         # Gather all models in this directory
-        for full_model_path in glob.glob("%s/*.model" % data_dir):
+        for full_model_path in glob.glob("%s/*_best.model" % data_dir):
             model_name = os.path.basename(full_model_path).split(".")[0]
             parts = model_name.split("_")
             model_round = int(parts[0])
