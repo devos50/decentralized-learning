@@ -90,19 +90,19 @@ def read_teacher_models(args):
     model_timestamps: List[int] = []
 
     # Load the teacher models
+    data_dir = os.path.join(args.models_base_name, "models")
+    if not os.path.exists(data_dir):
+        raise RuntimeError("Models directory %s does not exist!" % data_dir)
+
     for cohort_ind in range(len(cohorts.keys())):
         cohort_models = []
-        dir_name = "%s_c%d_dfl" % (args.models_base_name, cohort_ind)
-        data_dir = os.path.join(args.root_models_dir, dir_name, "models")
-        if not os.path.exists(data_dir):
-            raise RuntimeError("Models directory %s does not exist!" % data_dir)
 
         # Gather all models in this directory
-        for full_model_path in glob.glob("%s/*_best.model" % data_dir):
+        for full_model_path in glob.glob("%s/c%d_*_best.model" % (data_dir, cohort_ind)):
             model_name = os.path.basename(full_model_path).split(".")[0]
             parts = model_name.split("_")
-            model_round = int(parts[0])
-            model_time = int(parts[1])
+            model_round = int(parts[1])
+            model_time = int(parts[2])
             cohort_models.append((model_round, model_time, full_model_path))
 
         # Sort the models based on their timestamp
