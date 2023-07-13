@@ -116,7 +116,7 @@ class DFLSimulation(LearningSimulation):
                 )
 
                 dfl_settings = DFLSettings(
-                    sample_size=self.args.sample_size,
+                    sample_size=len(cohort_peers),
                     num_aggregators=self.args.num_aggregators,
                     success_fraction=self.args.success_fraction,
                     liveness_success_fraction=self.args.liveness_success_fraction,
