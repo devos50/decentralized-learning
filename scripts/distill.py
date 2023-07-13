@@ -90,7 +90,7 @@ def read_teacher_models(args):
     model_timestamps: List[int] = []
 
     # Load the teacher models
-    data_dir = os.path.join(args.models_base_name, "models")
+    data_dir = os.path.join(args.root_models_dir, args.models_base_name, "models")
     if not os.path.exists(data_dir):
         raise RuntimeError("Models directory %s does not exist!" % data_dir)
 
