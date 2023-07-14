@@ -241,6 +241,9 @@ class DFLSimulation(LearningSimulation):
             with open(os.path.join(self.data_dir, "cohorts_info.csv"), "w") as out_file:
                 out_file.write("cohort,time,round,loss,ongoing_cohorts,finished_cohorts\n")
 
+            with open(os.path.join(self.data_dir, "cohorts_data.csv"), "w") as out_file:
+                out_file.write("cohort,class,num_samples\n")
+
         # Start the liveness check (every 5 minutes)
         self.register_task("check_liveness", self.check_liveness, interval=600)
 
@@ -470,6 +473,19 @@ class DFLSimulation(LearningSimulation):
                                                                 new_rolling_avg_loss,
                                                                 len(self.cohorts) - num_cohorts_finished,
                                                                 num_cohorts_finished))
+
+                    # Determine the number of data samples per class
+                    dataset = self.nodes[0].overlays[0].model_manager.model_trainer.dataset
+                    samples_per_class = [0] * dataset.get_num_classes()
+                    for cohort_peer_ind in self.cohorts[agg_cohort_ind]:
+                        peer_dataset = self.nodes[cohort_peer_ind].overlays[0].model_manager.model_trainer.dataset
+                        for a, (b, clsses) in enumerate(peer_dataset.get_trainset(500, shuffle=False)):
+                            for cls in clsses:
+                                samples_per_class[cls] += 1
+
+                    with open(os.path.join(self.data_dir, "cohorts_data.csv"), "a") as out_file:
+                        for cls_idx, num_samples in enumerate(samples_per_class):
+                            out_file.write("%d,%d,%d\n" % (agg_cohort_ind, cls_idx, num_samples))
 
                     if len(self.cohorts_completed) == len(self.cohorts):
                         exit(0)
