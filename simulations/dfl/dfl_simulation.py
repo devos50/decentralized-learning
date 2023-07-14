@@ -237,6 +237,10 @@ class DFLSimulation(LearningSimulation):
         with open(os.path.join(self.data_dir, "events.csv"), "w") as out_file:
             out_file.write("time,peer,round,event\n")
 
+        if self.args.cohort_file and self.args.cohort is None:
+            with open(os.path.join(self.data_dir, "cohorts_info.csv"), "w") as out_file:
+                out_file.write("cohort,time,round,loss\n")
+
         # Start the liveness check (every 5 minutes)
         self.register_task("check_liveness", self.check_liveness, interval=600)
 
@@ -459,6 +463,9 @@ class DFLSimulation(LearningSimulation):
                     for cohort_peer_ind in self.cohorts[agg_cohort_ind]:
                         self.nodes[cohort_peer_ind].overlays[0].go_offline(graceful=False)
                     self.cohorts_completed.add(agg_cohort_ind)
+
+                    with open(os.path.join(self.data_dir, "cohorts_info.csv"), "a") as out_file:
+                        out_file.write("%d,%f,%d,%f\n" % (agg_cohort_ind, int(get_event_loop().time()), round_nr, new_rolling_avg_loss))
 
                     if len(self.cohorts_completed) == len(self.cohorts):
                         exit(0)
