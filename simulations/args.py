@@ -22,7 +22,7 @@ def get_args(dataset: str, default_lr: float, default_momentum: float = 0):
     parser.add_argument('--dl-accuracy-method', type=str, default="individual")  # individual or aggregate
     parser.add_argument('--compute-validation-loss-global-model', action=argparse.BooleanOptionalAction)
     parser.add_argument('--compute-validation-loss-updated-model', action=argparse.BooleanOptionalAction)
-    parser.add_argument('--stop-criteria-patience', type=int, default=50)
+    parser.add_argument('--stop-criteria-patience', type=int, default=100)
     parser.add_argument('--stop-criteria-window-size', type=int, default=20)
 
     # Traces and capabilities
