@@ -32,6 +32,7 @@ class CIFAR10(Dataset):
         shards=1,
         alpha: float = 1,
         validation_size=0,
+        seed: int = 42,
     ):
         """
         Constructor which reads the data files, instantiates and partitions the dataset
@@ -71,6 +72,7 @@ class CIFAR10(Dataset):
         self.partitioner = partitioner
         self.shards = shards
         self.alpha = alpha
+        self.seed = seed
 
         normalization_vectors = (0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.201)
         self.train_transformer = transforms.Compose([
@@ -131,7 +133,7 @@ class CIFAR10(Dataset):
                 all_trainset.extend([(a, y) for a in x])
             self.trainset = KShardDataPartitioner(all_trainset, self.sizes, shards=self.shards).use(self.uid)
         elif self.partitioner == "dirichlet":
-            self.trainset = DirichletDataPartitioner(trainset, self.sizes, alpha=self.alpha).use(self.uid)
+            self.trainset = DirichletDataPartitioner(trainset, self.sizes, seed=self.seed, alpha=self.alpha).use(self.uid)
         else:
             raise RuntimeError("Unknown partitioner %s for CIFAR10 dataset", self.partitioner)
 

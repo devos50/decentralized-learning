@@ -147,6 +147,7 @@ class DFLSimulation(LearningSimulation):
                     is_simulation=True,
                     train_device_name=self.args.train_device_name,
                     bypass_training=self.args.bypass_training,
+                    seed=self.args.seed,
                 )
 
                 for cohort_peer_ind in cohort_peers:
@@ -197,6 +198,7 @@ class DFLSimulation(LearningSimulation):
                 is_simulation=True,
                 train_device_name=self.args.train_device_name,
                 bypass_training=self.args.bypass_training,
+                seed=self.args.seed,
             )
 
             for ind, node in enumerate(self.nodes):
