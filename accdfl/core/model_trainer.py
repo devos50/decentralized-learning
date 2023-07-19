@@ -69,7 +69,7 @@ class ModelTrainer:
         avg_loss = total_loss / len(validation_set)
         return float(avg_loss)
 
-    async def train(self, model, round_nr, device_name: str = "cpu") -> Tuple[int, float, float]:
+    async def train(self, model, round_nr, device_name: str = "cpu") -> Tuple[int, Optional[float], Optional[float]]:
         """
         Train the model on a batch. Return an integer that indicates how many local steps we have done.
         """
@@ -78,8 +78,8 @@ class ModelTrainer:
         if not self.dataset:
             self.dataset = create_dataset(self.settings, participant_index=self.participant_index, train_dir=self.train_dir)
 
-        validation_loss_global_model = 0
-        if self.settings.compute_validation_loss_global_model:
+        validation_loss_global_model: Optional[float] = None
+        if self.settings.compute_validation_loss_global_model and len(self.dataset.validationset) > 0:
             validation_loss_global_model = self.get_validation_loss(model)
             self.validation_loss_global_model[round_nr] = validation_loss_global_model
 
@@ -162,8 +162,8 @@ class ModelTrainer:
             except StopIteration:
                 pass
 
-        validation_loss_updated_model = 0
-        if self.settings.compute_validation_loss_updated_model:
+        validation_loss_updated_model: Optional[float] = None
+        if self.settings.compute_validation_loss_updated_model and len(self.dataset.validationset) > 0:
             validation_loss_updated_model = self.get_validation_loss(model)
             self.validation_loss_updated_model[round_nr] = validation_loss_updated_model
 
