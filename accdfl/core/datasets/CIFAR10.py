@@ -158,9 +158,11 @@ class CIFAR10(Dataset):
         """
         self.logger.info("Creating validation set.")
 
+        dataset_len = len(self.trainset)
+        val_len = int(self.validation_size * dataset_len) if dataset_len >= 10 else 0
+
         self.validationset, self.trainset = torch.utils.data.random_split(
-            self.trainset,
-            [self.validation_size, 1 - self.validation_size], torch.Generator().manual_seed(42),
+            self.trainset, [val_len, dataset_len - val_len], torch.Generator().manual_seed(42),
         )
 
     def get_trainset(self, batch_size=1, shuffle=False):
