@@ -16,7 +16,7 @@ logger = logging.getLogger("cohort_creator")
 parser = argparse.ArgumentParser()
 parser.add_argument('num_peers', type=int)
 parser.add_argument('cohorts', type=int)
-parser.add_argument('--method', type=str, default="uniform", choices=["uniform", "data"])
+parser.add_argument('--method', type=str, default="uniform", choices=["uniform", "data", "class"])
 parser.add_argument('--seed', type=int, default=42)
 parser.add_argument('--dataset', type=str, default="cifar10")
 parser.add_argument('--partitioner', type=str, default="iid")
@@ -47,6 +47,7 @@ full_settings = SessionSettings(
     target_participants=args.num_peers,
     partitioner=args.partitioner,
     alpha=args.alpha,
+    seed=args.seed,
 )
 
 if full_settings.dataset in ["cifar10", "mnist", "fashionmnist", "svhn"]:
@@ -64,6 +65,9 @@ for peer_id in range(args.num_peers):
         for cls in clsses:
             samples_per_peer[cls] += 1
     client_data[peer_id] = samples_per_peer
+
+    assert sum(samples_per_peer) > 0, "Peer %d has no samples!" % peer_id
+
     logger.info("Samples per class for peer %d: %s", peer_id, samples_per_peer)
 
 
@@ -117,12 +121,32 @@ def cluster_on_data():
     return cohorts
 
 
-cohorts = None
+def cluster_on_class():
+    print(client_data)
+    num_classes = len(client_data[0])
+    cohorts = {i: [] for i in range(args.cohorts)}
+    for peer_id, peer_data in client_data.items():
+        # Get the dominant class of this peer
+        cls_with_most = -1
+        num_most = 0
+        for cls_idx in range(num_classes):
+            if peer_data[cls_idx] > num_most:
+                num_most = peer_data[cls_idx]
+                cls_with_most = cls_idx
 
+        cohorts[cls_with_most].append(peer_id)
+
+    return cohorts
+
+
+cohorts = None
 if args.method == "uniform":
     cohorts = cluster_uniform()
 elif args.method == "data":
     cohorts = cluster_on_data()
+elif args.method == "class":
+    cohorts = cluster_on_class()
+
 
 # Count the number of data samples per cohort
 totals_per_cohort = []
