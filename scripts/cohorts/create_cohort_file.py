@@ -122,7 +122,6 @@ def cluster_on_data():
 
 
 def cluster_on_class():
-    print(client_data)
     num_classes = len(client_data[0])
     cohorts = {i: [] for i in range(args.cohorts)}
     for peer_id, peer_data in client_data.items():
