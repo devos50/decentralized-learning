@@ -442,7 +442,11 @@ class DFLCommunity(LearningCommunity):
 
         # 1. Train the model
         train_info = await self.model_manager.train(round)
-        train_info_dict = {"val_loss_global_model": train_info[1], "val_loss_updated_model": train_info[2]}
+        train_info_dict = {}
+        if train_info[1] is not None:
+            train_info_dict["val_loss_global_model"] = train_info[1]
+        if train_info[2] is not None:
+            train_info_dict["val_loss_updated_model"] = train_info[2]
 
         self.log_event(round, "done_train")
 
@@ -600,10 +604,10 @@ class DFLCommunity(LearningCommunity):
 
         if json_data["type"] == "trained_model":
             self.log_event(json_data["round"], "received_trained_model")
-            train_info = {
-                "val_loss_global_model": json_data["val_loss_global_model"],
-                "val_loss_updated_model": json_data["val_loss_updated_model"]
-            }
+            train_info = {}
+            for key, item in json_data.items():
+                if key in ["val_loss_global_model", "val_loss_updated_model"]:
+                    train_info[key] = item
             await self.received_trained_model(result.peer, json_data["round"], incoming_model, train_info)
         elif json_data["type"] == "aggregated_model":
             self.log_event(json_data["round"], "received_aggregated_model")
@@ -683,12 +687,19 @@ class DFLCommunity(LearningCommunity):
         if self.aggregate_complete_callback:
             # Compute the avg. losses
             val_loss_global_tot, val_loss_updated_tot = 0, 0
+            val_loss_global_cnt, val_loss_updated_cnt = 0, 0
             for train_info in self.train_infos:
-                val_loss_global_tot += train_info["val_loss_global_model"]
-                val_loss_updated_tot += train_info["val_loss_updated_model"]
+                if "val_loss_global_model" in train_info:
+                    val_loss_global_tot += train_info["val_loss_global_model"]
+                    val_loss_global_cnt += 1
+                if "val_loss_updated_model" in train_info:
+                    val_loss_updated_tot += train_info["val_loss_updated_model"]
+                    val_loss_updated_cnt += 1
 
-            val_loss_global_tot /= len(model_manager.incoming_trained_models)
-            val_loss_updated_tot /= len(model_manager.incoming_trained_models)
+            if val_loss_global_cnt > 0:
+                val_loss_global_tot /= val_loss_global_cnt
+            if val_loss_updated_cnt > 0:
+                val_loss_updated_tot /= val_loss_updated_cnt
 
             ensure_future(self.aggregate_complete_callback(model_round, avg_model, {"val_loss_global_model": val_loss_global_tot, "val_loss_updated_model": val_loss_updated_tot}))
 

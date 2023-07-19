@@ -57,7 +57,7 @@ class ModelManager:
         models = [model for model in self.incoming_trained_models.values()]
         return self.get_aggregation_method().aggregate(models, weights=weights)
 
-    async def train(self, round_nr) -> Tuple[int, float, float]:
+    async def train(self, round_nr) -> Tuple[int, Optional[float], Optional[float]]:
         if not self.model:
             self.logger.info("Initializing model of peer %d", self.participant_index)
             self.model = create_model(self.settings.dataset, architecture=self.settings.model)
