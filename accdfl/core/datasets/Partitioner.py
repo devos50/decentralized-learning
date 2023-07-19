@@ -235,3 +235,11 @@ class DirichletDataPartitioner(DataPartitioner):
 
         for i in range(len(self.partitions)):
             self.partitions[i] = list(self.partitions[i])
+
+        # Ensure that each partition has at least one data sample
+        empty_partitions = [i for i, partition in enumerate(self.partitions) if len(partition) == 0]
+        for empty_partition in empty_partitions:
+            non_empty_partitions = [i for i, partition in enumerate(self.partitions) if len(partition) > 1]
+            donor_partition = np.random.choice(non_empty_partitions)
+            donated_instance = self.partitions[donor_partition].pop()
+            self.partitions[empty_partition].append(donated_instance)
