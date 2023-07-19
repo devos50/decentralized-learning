@@ -66,6 +66,7 @@ def get_args():
     parser.add_argument('--check-teachers-accuracy', action=argparse.BooleanOptionalAction)
     parser.add_argument('--private-data-dir', type=str, default=os.path.join(os.environ["HOME"], "dfl-data"))
     parser.add_argument('--public-data-dir', type=str, default=os.path.join(os.environ["HOME"], "dfl-data"))
+    parser.add_argument('--seed', type=int, default=42)
     return parser.parse_args()
 
 
@@ -150,6 +151,7 @@ def determine_label_cohort_weights(args):
         target_participants=total_peers,
         partitioner=args.partitioner,
         alpha=args.alpha,
+        seed=args.seed,
     )
 
     if full_settings.dataset in ["cifar10", "mnist", "fashionmnist", "svhn"]:
