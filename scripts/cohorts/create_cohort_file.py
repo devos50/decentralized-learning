@@ -7,7 +7,10 @@ import time
 from accdfl.core.datasets import create_dataset
 from accdfl.core.session_settings import SessionSettings, LearningSettings
 
-from sklearn.cluster import KMeans
+from scipy.stats import entropy
+from sklearn_extra.cluster import KMedoids
+from sklearn.metrics import pairwise_distances
+
 import numpy as np
 
 logging.basicConfig(level=logging.INFO)
@@ -103,20 +106,32 @@ def cluster_uniform():
 
 
 def cluster_on_data():
-    client_ids = list(client_data.keys())
-    feature_vectors = np.array(list(client_data.values()))
+    client_distributions = np.array(list(client_data.values()))
 
-    # Apply k-means clustering
-    kmeans = KMeans(n_clusters=args.cohorts, random_state=0, n_init=10).fit(feature_vectors)
+    # Normalize the client distributions
+    client_distributions = client_distributions / client_distributions.sum(axis=1, keepdims=True)
 
-    # Get cluster assignments
-    clusters = kmeans.predict(feature_vectors)
+    # Define the Jensen-Shannon divergence
+    def JSD(P, Q):
+        _P = P / np.linalg.norm(P, ord=1)
+        _Q = Q / np.linalg.norm(Q, ord=1)
+        _M = 0.5 * (_P + _Q)
+        return 0.5 * (entropy(_P, _M) + entropy(_Q, _M))
+
+    # We calculate pairwise Jensen-Shannon divergence
+    distances = pairwise_distances(client_distributions, metric=JSD)
+
+    # Using K-Medoids clustering with precomputed distances
+    kmedoids = KMedoids(n_clusters=args.cohorts, metric='precomputed', random_state=0)
+
+    # Fit and predict the clusters
+    clusters = kmedoids.fit_predict(distances)
 
     # Create a dictionary to store the client IDs of each cohort
     cohorts = {i: [] for i in range(args.cohorts)}
 
-    for i, client_id in enumerate(client_ids):
-        cohorts[clusters[i]].append(client_id)
+    for peer_id, peer_cohort in enumerate(clusters):
+        cohorts[peer_cohort].append(peer_id)
 
     return cohorts
 
