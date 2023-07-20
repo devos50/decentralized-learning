@@ -60,7 +60,7 @@ def get_args():
     parser.add_argument('--batch-size', type=int, default=512)
     parser.add_argument('--student-model', type=str, default=None)
     parser.add_argument('--teacher-model', type=str, default=None)
-    parser.add_argument('--weighting-scheme', type=str, default="uniform", choices=["uniform", "label"])
+    parser.add_argument('--weighting-scheme', type=str, default="uniform", choices=["uniform", "label", "class"])
     parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--acc-check-interval', type=int, default=1)
     parser.add_argument('--check-teachers-accuracy', action=argparse.BooleanOptionalAction)
@@ -185,6 +185,39 @@ def determine_label_cohort_weights(args):
         weights.append(weights_this_group)
 
 
+def determine_class_cohort_weights(args):
+    global weights
+
+    # Determine the class distribution per cohort
+    full_settings = SessionSettings(
+        dataset=args.private_dataset,
+        work_dir="",
+        learning=learning_settings,
+        participants=["a"],
+        all_participants=["a"],
+        target_participants=total_peers,
+        partitioner=args.partitioner,
+        alpha=args.alpha,
+        seed=args.seed,
+    )
+
+    if full_settings.dataset in ["cifar10", "mnist", "fashionmnist", "svhn"]:
+        train_dir = args.private_data_dir
+    else:
+        train_dir = os.path.join(args.private_data_dir, "per_user_data", "train")
+
+    # Get the number of classes in the dataset
+    dataset = create_dataset(full_settings, 0, train_dir=train_dir)
+
+    assert len(cohorts) == dataset.get_num_classes(), "The number of cohorts should match the number of classes in the dataset"
+
+    weights = []
+    for cohort_ind in range(len(cohorts.keys())):
+        weights_for_cohort = [0] * dataset.get_num_classes()
+        weights_for_cohort[cohort_ind] = 1
+        weights.append(weights_for_cohort)
+
+
 def determine_cohort_weights(args):
     global weights
 
@@ -196,6 +229,10 @@ def determine_cohort_weights(args):
             weights.append(cohort_weights)
     elif args.weighting_scheme == "label":
         determine_label_cohort_weights(args)
+    elif args.weighting_scheme == "class":
+        determine_class_cohort_weights(args)
+    else:
+        raise RuntimeError("Unknown weight strategy %s" % args.weighting_scheme)
 
     for cohort_ind in range(len(weights)):
         logger.info("Weights for cohort %d: %s", cohort_ind, weights[cohort_ind])
