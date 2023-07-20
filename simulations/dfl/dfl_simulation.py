@@ -476,6 +476,11 @@ class DFLSimulation(LearningSimulation):
                                                                 len(self.cohorts) - num_cohorts_finished,
                                                                 num_cohorts_finished))
 
+                    # Store the last model
+                    cur_time = get_event_loop().time()
+                    models_dir = os.path.join(self.data_dir, "models")
+                    torch.save(model.state_dict(), os.path.join(models_dir, "c%d_%d_%d_0_last.model" % (agg_cohort_ind, round_nr, cur_time)))
+
                     # Determine the number of data samples per class
                     dataset = self.nodes[0].overlays[0].model_manager.model_trainer.dataset
                     samples_per_class = [0] * dataset.get_num_classes()
