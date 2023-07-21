@@ -61,6 +61,7 @@ def get_args():
     parser.add_argument('--student-model', type=str, default=None)
     parser.add_argument('--teacher-model', type=str, default=None)
     parser.add_argument('--weighting-scheme', type=str, default="uniform", choices=["uniform", "label", "class"])
+    parser.add_argument('--model-selection', type=str, default="best", choices=["best", "last"])
     parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--acc-check-interval', type=int, default=1)
     parser.add_argument('--check-teachers-accuracy', action=argparse.BooleanOptionalAction)
@@ -99,7 +100,7 @@ def read_teacher_models(args):
         cohort_models = []
 
         # Gather all models in this directory
-        for full_model_path in glob.glob("%s/c%d_*_best.model" % (data_dir, cohort_ind)):
+        for full_model_path in glob.glob("%s/c%d_*_%s.model" % (data_dir, cohort_ind, args.model_selection)):
             model_name = os.path.basename(full_model_path).split(".")[0]
             parts = model_name.split("_")
             model_round = int(parts[1])
