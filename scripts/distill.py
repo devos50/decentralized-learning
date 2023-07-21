@@ -352,7 +352,7 @@ async def run(args):
     iteration = 0
 
     def compute_student_accuracy():
-        global best_acc, time_for_testing
+        nonlocal best_acc, time_for_testing
 
         # Compute the accuracy of the student model
         test_start_time = time.time()
