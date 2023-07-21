@@ -310,6 +310,10 @@ async def run(args):
 
     read_teacher_models(args)
 
+    if len(teacher_models) == 1:
+        logger.info("Only one teacher model - no need for distillation")
+        exit(0)
+
     determine_cohort_weights(args)
 
     # Create the student model
