@@ -210,7 +210,7 @@ class DFLSimulation(LearningSimulation):
         if self.args.fix_aggregator:
             if self.args.bypass_model_transfers:
                 print("Overriding bandwidth limit for peer %d" % lowest_latency_peer_id)
-                self.nodes[lowest_latency_peer_id].overlays[0].bw_limit = 10000000000
+                self.nodes[lowest_latency_peer_id].overlays[0].bw_limit = -1
             else:
                 print("Overriding max. EVA transfers for peer %d" % lowest_latency_peer_id)
                 self.nodes[lowest_latency_peer_id].overlays[0].eva.settings.max_simultaneous_transfers = 100000
