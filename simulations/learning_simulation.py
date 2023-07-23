@@ -140,10 +140,13 @@ class LearningSimulation(TaskManager):
             for ind, node in enumerate(self.nodes):
                 node.overlays[0].model_manager.model_trainer.simulated_speed = data[device_ids[ind]]["computation"]
                 if self.args.bypass_model_transfers and not self.args.instant_network:
-                    # Also apply the network latencies
-                    bw_limit: int = int(data[ind + 1]["communication"]) * 1024 // 8
-                    node.overlays[0].bw_scheduler.bw_limit = bw_limit
-                    nodes_bws[node.overlays[0].my_peer.public_key.key_to_bin()] = bw_limit
+                    if node.overlays[0].bw_scheduler.bw_limit == -1:
+                        node.overlays[0].bw_scheduler.bw_limit = 10000000000000
+                    else:
+                        # Also apply the network latencies
+                        bw_limit: int = int(data[ind + 1]["communication"]) * 1024 // 8
+                        node.overlays[0].bw_scheduler.bw_limit = bw_limit
+                        nodes_bws[node.overlays[0].my_peer.public_key.key_to_bin()] = bw_limit
 
             for node in self.nodes:
                 node.overlays[0].other_nodes_bws = nodes_bws
