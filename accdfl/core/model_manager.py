@@ -60,6 +60,7 @@ class ModelManager:
     async def train(self, round_nr) -> Tuple[int, Optional[float], Optional[float]]:
         if not self.model:
             self.logger.info("Initializing model of peer %d", self.participant_index)
+            torch.manual_seed(self.settings.model_seed)
             self.model = create_model(self.settings.dataset, architecture=self.settings.model)
 
         train_info = await self.model_trainer.train(self.model, round_nr, device_name=self.settings.train_device_name)
