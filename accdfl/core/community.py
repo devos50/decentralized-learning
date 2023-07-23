@@ -100,7 +100,6 @@ class LearningCommunity(Community):
             self.peer_manager.add_peer(unhexlify(participant))
 
         # Initialize the model
-        torch.manual_seed(settings.model_seed)
         participant_index = settings.all_participants.index(hexlify(self.my_id).decode())
         self.model_manager = ModelManager(None, settings, participant_index)
 
