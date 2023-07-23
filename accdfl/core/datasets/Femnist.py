@@ -309,7 +309,6 @@ class Femnist(Dataset):
                 Data(self.train_x, self.train_y),
                 batch_size=batch_size,
                 shuffle=shuffle,
-                drop_last=True,  # needed for resnet
             )
         raise RuntimeError("Training set not initialized!")
 
