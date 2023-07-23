@@ -300,7 +300,7 @@ class DFLSimulation(LearningSimulation):
         # Update the membership status of inactive peers in all peer managers. This assumption should be
         # reasonable as availability at the very start of the training process can easily be synchronized using an
         # out-of-band mechanism (e.g., published on a website).
-        active_nodes_pks = [node.overlays[0].my_peer.public_key.key_to_bin() for node in active_nodes]
+        active_nodes_pks = set(node.overlays[0].my_peer.public_key.key_to_bin() for node in active_nodes)
         for node in self.nodes:
             peer_manager: PeerManager = node.overlays[0].peer_manager
             for peer_pk in peer_manager.last_active:
