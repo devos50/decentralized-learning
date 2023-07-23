@@ -187,6 +187,7 @@ class Femnist(Dataset):
         test_dir="",
         sizes="",
         test_batch_size=1024,
+        validation_size=0,
     ):
         """
         Constructor which reads the data files, instantiates and partitions the dataset
@@ -220,6 +221,7 @@ class Femnist(Dataset):
             test_dir,
             sizes,
             test_batch_size,
+            validation_size,
         )
 
         if self.__training__:
@@ -228,7 +230,8 @@ class Femnist(Dataset):
         if self.__testing__:
             self.load_testset()
 
-        # TODO: Add Validation
+        if self.__training__ and self.__validating__:
+            self.load_validationset()
 
     def get_client_ids(self):
         """
@@ -268,6 +271,19 @@ class Femnist(Dataset):
                 return self.clients[j]
 
         raise IndexError("i is out of bounds!")
+
+    def load_validationset(self):
+        """
+        Loads the validation set
+        """
+        self.logger.info("Creating validation set.")
+
+        dataset_len = len(self.trainset)
+        val_len = int(self.validation_size * dataset_len) if dataset_len >= 10 else 0
+
+        self.validationset, self.trainset = torch.utils.data.random_split(
+            self.trainset, [val_len, dataset_len - val_len], torch.Generator().manual_seed(42),
+        )
 
     def get_trainset(self, batch_size=1, shuffle=False):
         """
@@ -316,6 +332,21 @@ class Femnist(Dataset):
                 Data(self.test_x, self.test_y), batch_size=self.test_batch_size
             )
         raise RuntimeError("Test set not initialized!")
+
+    def get_validationset(self):
+        """
+        Function to get the validation set
+        Returns
+        -------
+        torch.utils.Dataset(decentralizepy.datasets.Data)
+        Raises
+        ------
+        RuntimeError
+            If the test set was not initialized
+        """
+        if self.__validating__:
+            return DataLoader(self.validationset, batch_size=self.test_batch_size)
+        raise RuntimeError("Validation set not initialized!")
 
     def test(self, model, device_name: str = "cpu"):
         """
