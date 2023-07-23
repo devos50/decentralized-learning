@@ -102,7 +102,7 @@ class DFLSimulation(LearningSimulation):
             # Setup cohorts
 
             # Fix the sample size
-            self.args.sample_size = len(self.cohorts[0])
+            self.args.sample_size = len(self.cohorts[0]) * self.args.cohort_participation_fraction
 
             for cohort_ind, cohort_peers in self.cohorts.items():
                 aggregator_peer_pk = self.nodes[self.aggregator_per_cohort[cohort_ind]].overlays[0].my_peer.public_key.key_to_bin()
@@ -120,7 +120,7 @@ class DFLSimulation(LearningSimulation):
                 )
 
                 dfl_settings = DFLSettings(
-                    sample_size=len(cohort_peers),
+                    sample_size=len(cohort_peers) * self.args.cohort_participation_fraction,
                     num_aggregators=self.args.num_aggregators,
                     success_fraction=self.args.success_fraction,
                     liveness_success_fraction=self.args.liveness_success_fraction,
