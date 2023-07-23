@@ -59,10 +59,13 @@ else:
     train_dir = os.path.join(args.data_dir, "per_user_data", "train")
 
 client_data = {}
+num_cls = 0
 for peer_id in range(args.num_peers):
     start_time = time.time()
     dataset = create_dataset(full_settings, peer_id, train_dir=train_dir)
     logger.info("Creating dataset for peer %d took %f sec.", peer_id, time.time() - start_time)
+    if num_cls == 0:
+        num_cls = dataset.get_num_classes()
     samples_per_peer = [0] * dataset.get_num_classes()
     for a, (b, clsses) in enumerate(dataset.get_trainset(500, shuffle=False)):
         for cls in clsses:
@@ -165,7 +168,7 @@ elif args.method == "class":
 # Count the number of data samples per cohort
 totals_per_cohort = []
 for cohort_ind in range(args.cohorts):
-    totals = [0] * 10
+    totals = [0] * num_cls
     for peer_id_in_cohort in cohorts[cohort_ind]:
         for cls_idx, num_samples in enumerate(client_data[peer_id_in_cohort]):
             totals[cls_idx] += num_samples
