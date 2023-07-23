@@ -211,7 +211,7 @@ class DFLSimulation(LearningSimulation):
             )
 
             for ind, node in enumerate(self.nodes):
-                node.overlays[0].aggregate_complete_callback = lambda round_nr, model, i=ind: self.on_aggregate_complete(i, round_nr, model)
+                node.overlays[0].aggregate_complete_callback = lambda round_nr, model, train_info, i=ind: self.on_aggregate_complete(i, round_nr, model, train_info)
                 node.overlays[0].setup(self.session_settings)
                 node.overlays[0].model_manager.model_trainer.logger = SimulationLoggerAdapter(node.overlays[0].model_manager.model_trainer.logger, {})
 
