@@ -42,7 +42,8 @@ def create_dataset(settings: SessionSettings, participant_index: int = 0, train_
                             alpha=settings.alpha)
     elif settings.dataset == "femnist":
         from accdfl.core.datasets.Femnist import Femnist
-        return Femnist(participant_index, 0, mapping, train_dir=train_dir, test_dir=test_dir)
+        return Femnist(participant_index, 0, mapping, train_dir=train_dir, test_dir=test_dir,
+                       validation_size=settings.validation_set_fraction)
     elif settings.dataset == "svhn":
         from accdfl.core.datasets.SVHN import SVHN
         return SVHN(participant_index, 0, mapping, settings.partitioner, train_dir=train_dir, test_dir=test_dir)
