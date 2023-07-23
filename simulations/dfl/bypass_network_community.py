@@ -46,10 +46,11 @@ class DFLBypassNetworkCommunity(DFLCommunity):
                     transfer_size: int = len(binary_data) + len(serialized_response)
                     transfer = self.bw_scheduler.add_transfer(node.overlays[0].bw_scheduler, transfer_size)
                     transfer.metadata = response
-                    self.logger.info("Model transfer %s => %s started at t=%f",
+                    self.logger.info("Model transfer %s => %s started at t=%f (bw sender: %d, bw receiver: %d)",
                                      self.peer_manager.get_my_short_id(),
                                      node.overlays[0].peer_manager.get_my_short_id(),
-                                     transfer_start_time)
+                                     transfer_start_time, self.bw_scheduler.bw_limit,
+                                     node.overlays[0].bw_scheduler.bw_limit)
                     try:
                         await transfer.complete_future
                     except RuntimeError:
