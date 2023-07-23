@@ -37,6 +37,7 @@ class DFLSimulation(LearningSimulation):
         self.cohorts: Dict[int, List[int]] = {}
         self.cohorts_completed = set()
         self.aggregator_per_cohort: Dict[int, int] = {}
+        self.sample_size_per_cohort: Dict[int, int] = {}
 
         if self.args.cohort_file is not None:
             # Read the cohort organisations
@@ -111,6 +112,10 @@ class DFLSimulation(LearningSimulation):
                 # Set the bandwidth of the aggregating peer to unlimited
                 self.nodes[self.aggregator_per_cohort[cohort_ind]].overlays[0].bw_scheduler.bw_limit = -1
 
+                # Fix the sample size
+                cohort_sample_size = int(len(cohort_peers) * self.args.cohort_participation_fraction)
+                self.sample_size_per_cohort[cohort_ind] = cohort_sample_size
+
                 learning_settings = LearningSettings(
                     learning_rate=self.args.learning_rate,
                     momentum=self.args.momentum,
@@ -120,7 +125,7 @@ class DFLSimulation(LearningSimulation):
                 )
 
                 dfl_settings = DFLSettings(
-                    sample_size=int(len(cohort_peers) * self.args.cohort_participation_fraction),
+                    sample_size=cohort_sample_size,
                     num_aggregators=self.args.num_aggregators,
                     success_fraction=self.args.success_fraction,
                     liveness_success_fraction=self.args.liveness_success_fraction,
@@ -314,10 +319,19 @@ class DFLSimulation(LearningSimulation):
         # are selected for the first round.
         rand_sampler = Random(self.args.seed)
 
+        activated_nodes = []
+
         if self.args.cohort_file and self.args.cohort is None:
-            activated_nodes = active_nodes
+            # We have to activate some nodes per cohort
+            for cohort_ind, cohort_peers in range(len(self.cohorts)):
+                sample_size = self.sample_size_per_cohort[cohort_ind]
+                peers_to_pick = min(len(cohort_peers), sample_size)
+                self.logger.info("Activating %d peers in cohort %d", peers_to_pick, cohort_ind)
+                activated_peer_ids = rand_sampler.sample(cohort_peers, peers_to_pick)
+                activated_nodes += [self.nodes[peer_id] for peer_id in activated_peer_ids]
         else:
             activated_nodes = rand_sampler.sample(active_nodes, min(len(active_nodes), self.args.sample_size))
+
         for initial_active_node in activated_nodes:
             overlay = initial_active_node.overlays[0]
             self.logger.info("Activating peer %s in round 1", overlay.peer_manager.get_my_short_id())
