@@ -107,6 +107,10 @@ class DFLSimulation(LearningSimulation):
             for cohort_ind, cohort_peers in self.cohorts.items():
                 aggregator_peer_pk = self.nodes[self.aggregator_per_cohort[cohort_ind]].overlays[0].my_peer.public_key.key_to_bin()
                 self.logger.info("Setting up cohort %d with %d peers and aggregator %d...", cohort_ind, len(cohort_peers), self.aggregator_per_cohort[cohort_ind])
+
+                # Set the bandwidth of the aggregating peer to unlimited
+                self.nodes[self.aggregator_per_cohort[cohort_ind]].overlays[0].bw_scheduler.bw_limit = -1
+
                 learning_settings = LearningSettings(
                     learning_rate=self.args.learning_rate,
                     momentum=self.args.momentum,
