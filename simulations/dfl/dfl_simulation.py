@@ -323,7 +323,7 @@ class DFLSimulation(LearningSimulation):
 
         if self.args.cohort_file and self.args.cohort is None:
             # We have to activate some nodes per cohort
-            for cohort_ind, cohort_peers in range(len(self.cohorts)):
+            for cohort_ind, cohort_peers in self.cohorts.items():
                 sample_size = self.sample_size_per_cohort[cohort_ind]
                 peers_to_pick = min(len(cohort_peers), sample_size)
                 self.logger.info("Activating %d peers in cohort %d", peers_to_pick, cohort_ind)
