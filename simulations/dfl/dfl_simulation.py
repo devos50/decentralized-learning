@@ -103,7 +103,7 @@ class DFLSimulation(LearningSimulation):
             # Setup cohorts
 
             # Fix the sample size
-            self.args.sample_size = int(len(self.cohorts[0]) * self.args.cohort_participation_fraction)
+            self.args.sample_size = max(int(len(self.cohorts[0]) * self.args.cohort_participation_fraction), 1)
 
             for cohort_ind, cohort_peers in self.cohorts.items():
                 aggregator_peer_pk = self.nodes[self.aggregator_per_cohort[cohort_ind]].overlays[0].my_peer.public_key.key_to_bin()
@@ -113,7 +113,7 @@ class DFLSimulation(LearningSimulation):
                 self.nodes[self.aggregator_per_cohort[cohort_ind]].overlays[0].bw_scheduler.bw_limit = -1
 
                 # Fix the sample size
-                cohort_sample_size = int(len(cohort_peers) * self.args.cohort_participation_fraction)
+                cohort_sample_size = max(int(len(cohort_peers) * self.args.cohort_participation_fraction), 1)
                 self.sample_size_per_cohort[cohort_ind] = cohort_sample_size
 
                 learning_settings = LearningSettings(
