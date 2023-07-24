@@ -101,7 +101,7 @@ class SVHN(Dataset):
             trainset = SVHN.SVHN_trainset
         else:
             trainset = torchvision.datasets.SVHN(
-                root=self.train_dir, split="train", download=True, transform=self.train_transformer
+                root=self.train_dir, split="train+extra", download=True, transform=self.train_transformer
             )
             SVHN.SVHN_trainset = trainset
 
