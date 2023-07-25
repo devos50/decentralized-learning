@@ -78,33 +78,9 @@ class Femnist(Dataset):
             data.update(d)
         return clients, num_samples, data
 
-    def file_per_user(self, dir, write_dir):
-        """
-        Function to read all the FEMNIST data files and write one file per user
-
-        Parameters
-        ----------
-        dir : str
-            Path to the folder containing the data files
-        write_dir : str
-            Path to the folder to write the files
-
-        """
-        clients, num_samples, train_data = self.__read_dir__(dir)
-        for index, client in enumerate(clients):
-            my_data = dict()
-            my_data["users"] = [client]
-            my_data["num_samples"] = num_samples[index]
-            my_samples = {"x": train_data[client]["x"], "y": train_data[client]["y"]}
-            my_data["user_data"] = {client: my_samples}
-            with open(os.path.join(write_dir, client + ".json"), "w") as of:
-                json.dump(my_data, of)
-                print("Created File: ", client + ".json")
-
     def load_trainset(self):
         """
         Loads the training set. Partitions it if needed.
-
         """
         logging.info("Loading training set.")
         files = os.listdir(self.train_dir)
@@ -114,31 +90,22 @@ class Femnist(Dataset):
 
         # clients, num_samples, train_data = self.__read_dir__(self.train_dir)
 
-        if self.sizes == None:  # Equal distribution of data among processes
-            e = c_len // self.n_procs
-            frac = e / c_len
-            self.sizes = [frac] * self.n_procs
-            self.sizes[-1] += 1.0 - frac * self.n_procs
-            logging.debug("Size fractions: {}".format(self.sizes))
-
         self.uid = self.mapping.get_uid(self.rank, self.machine_id)
-        my_clients = DataPartitioner(files, self.sizes).use(self.uid)
         my_train_data = {"x": [], "y": []}
         self.clients = []
         self.num_samples = []
         logging.debug("Clients Length: %d", c_len)
-        logging.debug("My_clients_len: %d", my_clients.__len__())
-        for i in range(my_clients.__len__()):
-            cur_file = my_clients.__getitem__(i)
 
-            clients, _, train_data = self.__read_file__(
-                os.path.join(self.train_dir, cur_file)
-            )
-            for cur_client in clients:
-                self.clients.append(cur_client)
-                my_train_data["x"].extend(train_data[cur_client]["x"])
-                my_train_data["y"].extend(train_data[cur_client]["y"])
-                self.num_samples.append(len(train_data[cur_client]["y"]))
+        file_name = files[self.uid]
+        clients, _, train_data = self.__read_file__(
+            os.path.join(self.train_dir, file_name)
+        )
+        for cur_client in clients:
+            self.clients.append(cur_client)
+            my_train_data["x"].extend(train_data[cur_client]["x"])
+            my_train_data["y"].extend(train_data[cur_client]["y"])
+            self.num_samples.append(len(train_data[cur_client]["y"]))
+
         self.train_x = (
             np.array(my_train_data["x"], dtype=np.dtype("float32"))
             .reshape(-1, 28, 28, 1)
