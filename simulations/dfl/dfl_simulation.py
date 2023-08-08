@@ -644,17 +644,17 @@ class DFLSimulation(LearningSimulation):
                 for ind_in_seq, cohort_peer_ind in enumerate(self.cohorts[cohort_ind]):
                     trainer = self.nodes[cohort_peer_ind].overlays[0].model_manager.model_trainer
                     for round_nr, train_loss in trainer.training_losses.items():
-                        out_file.write("%d,%d,%f,%d,%d,%s,%d,%d,%f\n" % (len(self.cohorts), self.args.seed, self.args.alpha, cohort_ind, ind_in_seq, "train", int(cur_time), round_nr, train_loss))
+                        out_file.write("%d,%d,%.1f,%d,%d,%s,%d,%d,%f\n" % (len(self.cohorts), self.args.seed, self.args.alpha, cohort_ind, ind_in_seq, "train", int(cur_time), round_nr, train_loss))
                     trainer.training_losses = {}
 
                     if self.args.compute_validation_loss_global_model:
                         for round_nr, val_loss in trainer.validation_loss_global_model.items():
-                            out_file.write("%d,%d,%f,%d,%d,%s,%d,%d,%f\n" % (len(self.cohorts), self.args.seed, self.args.alpha, cohort_ind, ind_in_seq, "val_global", int(cur_time), round_nr, val_loss))
+                            out_file.write("%d,%d,%.1f,%d,%d,%s,%d,%d,%f\n" % (len(self.cohorts), self.args.seed, self.args.alpha, cohort_ind, ind_in_seq, "val_global", int(cur_time), round_nr, val_loss))
                         trainer.validation_loss_global_model = {}
 
                     if self.args.compute_validation_loss_updated_model:
                         for round_nr, val_loss in trainer.validation_loss_updated_model.items():
-                            out_file.write("%d,%d,%f,%d,%d,%s,%d,%d,%f\n" % (len(self.cohorts), self.args.seed, self.args.alpha, cohort_ind, ind_in_seq, "val_updated", int(cur_time), round_nr, val_loss))
+                            out_file.write("%d,%d,%.1f,%d,%d,%s,%d,%d,%f\n" % (len(self.cohorts), self.args.seed, self.args.alpha, cohort_ind, ind_in_seq, "val_updated", int(cur_time), round_nr, val_loss))
                         trainer.validation_loss_updated_model = {}
 
         if self.args.log_events:
