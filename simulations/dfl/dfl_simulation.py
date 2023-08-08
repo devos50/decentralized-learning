@@ -461,6 +461,25 @@ class DFLSimulation(LearningSimulation):
             self.current_aggregated_model_round_per_cohort[agg_cohort_ind] = round_nr
             self.logger.info("Cohort %d completed round %d", agg_cohort_ind, round_nr)
 
+            # Write away the losses in the model managers of the peers in this cohort
+            cur_time = get_event_loop().time()
+            with open(os.path.join(self.data_dir, "losses.csv"), "a") as out_file:
+                for ind_in_seq, cohort_peer_ind in enumerate(self.cohorts[agg_cohort_ind]):
+                    trainer = self.nodes[cohort_peer_ind].overlays[0].model_manager.model_trainer
+                    for round_nr, train_loss in trainer.training_losses.items():
+                        out_file.write("%d,%d,%.1f,%d,%d,%s,%d,%d,%f\n" % (len(self.cohorts), self.args.seed, self.args.alpha, agg_cohort_ind, ind_in_seq, "train", int(cur_time), round_nr, train_loss))
+                    trainer.training_losses = {}
+
+                    if self.args.compute_validation_loss_global_model:
+                        for round_nr, val_loss in trainer.validation_loss_global_model.items():
+                            out_file.write("%d,%d,%.1f,%d,%d,%s,%d,%d,%f\n" % (len(self.cohorts), self.args.seed, self.args.alpha, agg_cohort_ind, ind_in_seq, "val_global", int(cur_time), round_nr, val_loss))
+                        trainer.validation_loss_global_model = {}
+
+                    if self.args.compute_validation_loss_updated_model:
+                        for round_nr, val_loss in trainer.validation_loss_updated_model.items():
+                            out_file.write("%d,%d,%.1f,%d,%d,%s,%d,%d,%f\n" % (len(self.cohorts), self.args.seed, self.args.alpha, agg_cohort_ind, ind_in_seq, "val_updated", int(cur_time), round_nr, val_loss))
+                        trainer.validation_loss_updated_model = {}
+
             if self.args.compute_validation_loss_global_model:
                 new_avg_loss = train_info["val_loss_global_model"]
                 should_stop = self.on_new_validation_loss(agg_cohort_ind, new_avg_loss)
@@ -636,26 +655,6 @@ class DFLSimulation(LearningSimulation):
             for event in node.overlays[0].events:
                 new_events.append(event)
             node.overlays[0].events = []
-
-        # Write away the losses in the model manager
-        cur_time = get_event_loop().time()
-        with open(os.path.join(self.data_dir, "losses.csv"), "a") as out_file:
-            for cohort_ind in self.cohorts.keys():
-                for ind_in_seq, cohort_peer_ind in enumerate(self.cohorts[cohort_ind]):
-                    trainer = self.nodes[cohort_peer_ind].overlays[0].model_manager.model_trainer
-                    for round_nr, train_loss in trainer.training_losses.items():
-                        out_file.write("%d,%d,%.1f,%d,%d,%s,%d,%d,%f\n" % (len(self.cohorts), self.args.seed, self.args.alpha, cohort_ind, ind_in_seq, "train", int(cur_time), round_nr, train_loss))
-                    trainer.training_losses = {}
-
-                    if self.args.compute_validation_loss_global_model:
-                        for round_nr, val_loss in trainer.validation_loss_global_model.items():
-                            out_file.write("%d,%d,%.1f,%d,%d,%s,%d,%d,%f\n" % (len(self.cohorts), self.args.seed, self.args.alpha, cohort_ind, ind_in_seq, "val_global", int(cur_time), round_nr, val_loss))
-                        trainer.validation_loss_global_model = {}
-
-                    if self.args.compute_validation_loss_updated_model:
-                        for round_nr, val_loss in trainer.validation_loss_updated_model.items():
-                            out_file.write("%d,%d,%.1f,%d,%d,%s,%d,%d,%f\n" % (len(self.cohorts), self.args.seed, self.args.alpha, cohort_ind, ind_in_seq, "val_updated", int(cur_time), round_nr, val_loss))
-                        trainer.validation_loss_updated_model = {}
 
         if self.args.log_events:
             new_events = sorted(new_events, key=lambda x: x[0])
