@@ -32,6 +32,11 @@ if not args.output:
     args.output = "cohorts_n%d_c%d_s%d_%s.txt" % (args.num_peers, args.cohorts, args.seed, args.method)
 
 
+if os.path.exists(args.output):
+    print("Output file %s already exists - not creating it again." % args.output)
+    exit(0)
+
+
 # Determine the number of samples per client
 learning_settings = LearningSettings(
     learning_rate=0,
