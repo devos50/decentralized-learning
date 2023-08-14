@@ -67,6 +67,7 @@ def get_args():
     parser.add_argument('--private-data-dir', type=str, default=os.path.join(os.environ["HOME"], "dfl-data"))
     parser.add_argument('--public-data-dir', type=str, default=os.path.join(os.environ["HOME"], "dfl-data"))
     parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--cohort-participation-fraction', type=float, default=1)
     return parser.parse_args()
 
 
@@ -345,7 +346,7 @@ async def run(args):
     # Reset loader
     public_dataset_loader = DataLoader(dataset=DatasetWithIndex(public_dataset.trainset), batch_size=args.batch_size, shuffle=True)
 
-    distill_results_file_name = "distill_accuracies_%d_%d_%.1f_%s_%s.csv" % (len(cohorts), args.seed, float(args.alpha), args.private_dataset, args.public_dataset)
+    distill_results_file_name = "distill_accuracies_%d_%d_%.1f_%g_%s_%s.csv" % (len(cohorts), args.seed, float(args.alpha), args.cohort_participation_fraction, args.private_dataset, args.public_dataset)
     with open(os.path.join("data", distill_results_file_name), "w") as out_file:
         out_file.write("cohorts,seed,distill_time,public_dataset,weighting_scheme,epoch,iteration,accuracy,loss,best_acc,train_time,total_time\n")
 
