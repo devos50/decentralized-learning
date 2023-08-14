@@ -51,7 +51,7 @@ class DFLSimulation(LearningSimulation):
         datadir_name = "n_%d_%s_%s_sd%d" % (
             self.args.peers, self.args.dataset, partitioner_str, self.args.seed)
         if self.cohorts:
-            datadir_name += "_ct%d" % len(self.cohorts)
+            datadir_name += "_ct%d_p%g" % (len(self.cohorts), self.args.cohort_participation_fraction)
         if self.args.cohort is not None:
             datadir_name += "_c%d" % self.args.cohort
         datadir_name += "_dfl"
