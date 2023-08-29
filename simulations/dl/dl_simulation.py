@@ -190,9 +190,9 @@ class DLSimulation(LearningSimulation):
                     nb_pk = self.nodes[self.participants_ids[0] + nb_ind].overlays[0].my_peer.public_key.key_to_bin()
                     self.nodes[self.participants_ids[0] + node_ind].overlays[0].neighbours.append(nb_pk)
         elif self.session_settings.dl.topology == "k-regular":
-            k: int = floor(log(len(self.nodes), 2))
+            k: int = floor(log(len(self.nodes), 2)) if self.args.k is None else self.args.k
             self.logger.info("Building %d-regular graph topology", k)
-            G = nx.random_regular_graph(k, len(self.nodes))
+            G = nx.random_regular_graph(k, len(self.nodes), seed=self.args.seed)
             for node_ind in range(len(self.nodes)):
                 for nb_node_ind in list(G.neighbors(node_ind)):
                     nb_pk = self.nodes[nb_node_ind].overlays[0].my_peer.public_key.key_to_bin()
