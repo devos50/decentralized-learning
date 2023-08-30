@@ -109,7 +109,7 @@ class DLCommunity(LearningCommunity):
         if self.aggregate_complete_callback:
             model_cpy = copy.deepcopy(self.model_manager.model)
             ensure_future(self.aggregate_complete_callback(self.round, model_cpy))
-        self.logger.error("Peer %s completed round %d", self.peer_manager.get_my_short_id(), self.round)
+        self.logger.info("Peer %s completed round %d", self.peer_manager.get_my_short_id(), self.round)
         self.incoming_models = []
 
     async def on_receive(self, result: TransferResult):
