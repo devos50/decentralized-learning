@@ -104,17 +104,17 @@ class DLSimulation(LearningSimulation):
 
     def on_round_done(self):
         self.logger.error("Round %d done", self.round_nr)
-        # Check if all nodes have wrapped up
+        transfers_to_kill = 0
         for node in self.nodes:
-            if node.overlays[0].bw_scheduler.incoming_transfers:
-                for ongoing_transfer in node.overlays[0].bw_scheduler.incoming_transfers:
-                    self.logger.error("Incoming transfer %s still going on after round completed", ongoing_transfer)
-                raise RuntimeError("Still ongoing transfers!")
-
             if node.overlays[0].bw_scheduler.outgoing_transfers:
-                for ongoing_transfer in node.overlays[0].bw_scheduler.outgoing_transfers[0]:
-                    self.logger.error("Outgoing transfer %s still going on after round completed", ongoing_transfer)
-                raise RuntimeError("Still ongoing transfers!")
+                for ongoing_transfer in node.overlays[0].bw_scheduler.outgoing_transfers:
+                    self.logger.warning("Transfer %s still going on after round completed", ongoing_transfer)
+                    transfers_to_kill += 1
+
+            node.overlays[0].bw_scheduler.kill_all_transfers()
+
+        if transfers_to_kill > 0:
+            self.logger.error("Killed %d transfers", transfers_to_kill)
 
         for node in self.nodes:
             node.overlays[0].aggregate_models()
