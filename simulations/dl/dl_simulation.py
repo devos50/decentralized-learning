@@ -106,8 +106,13 @@ class DLSimulation(LearningSimulation):
         self.logger.error("Round %d done", self.round_nr)
         # Check if all nodes have wrapped up
         for node in self.nodes:
-            assert len(node.overlays[0].bw_scheduler.incoming_transfers) == 0
-            assert len(node.overlays[0].bw_scheduler.outgoing_transfers) == 0
+            if node.overlays[0].bw_scheduler.incoming_transfers:
+                ongoing_transfer = node.overlays[0].bw_scheduler.incoming_transfers[0]
+                raise RuntimeError("Incoming transfer %s still going on after round completed" % ongoing_transfer)
+
+            if node.overlays[0].bw_scheduler.outgoing_transfers:
+                ongoing_transfer = node.overlays[0].bw_scheduler.outgoing_transfers[0]
+                raise RuntimeError("Outgoing transfer %s still going on after round completed" % ongoing_transfer)
 
         for node in self.nodes:
             node.overlays[0].aggregate_models()
