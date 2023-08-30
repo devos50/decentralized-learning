@@ -115,12 +115,12 @@ class LearningSimulation(TaskManager):
         """
         Set the relevant traces.
         """
-        rand = Random(self.args.seed)
         if self.args.availability_traces:
             self.logger.info("Applying availability trace file %s", self.args.availability_traces)
             with open(self.args.availability_traces, "rb") as traces_file:
                 data = pickle.load(traces_file)
 
+            rand = Random(self.args.seed)
             device_ids = rand.sample(list(data.keys()), self.args.peers)
             for ind, node in enumerate(self.nodes):
                 node.overlays[0].set_traces(data[device_ids[ind]])
@@ -130,6 +130,7 @@ class LearningSimulation(TaskManager):
             with open(self.args.capability_traces, "rb") as traces_file:
                 data = pickle.load(traces_file)
 
+            rand = Random(self.args.seed)
             device_ids = rand.sample(list(data.keys()), self.args.peers)
             nodes_bws: Dict[bytes, int] = {}
             for ind, node in enumerate(self.nodes):
