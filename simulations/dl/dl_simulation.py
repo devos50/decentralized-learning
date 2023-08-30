@@ -119,6 +119,10 @@ class DLSimulation(LearningSimulation):
         for node in self.nodes:
             node.overlays[0].aggregate_models()
 
+        if self.args.rounds and self.round_nr >= self.args.rounds:
+            self.on_simulation_finished()
+            self.loop.stop()
+
         self.round_nr += 1
         nodes_started = 0
 
