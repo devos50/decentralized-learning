@@ -103,6 +103,7 @@ class DLSimulation(LearningSimulation):
         await super().start_simulation()
 
     def on_round_done(self):
+        self.logger.error("Round %d done", self.round_nr)
         # Check if all nodes have wrapped up
         for node in self.nodes:
             assert len(node.overlays[0].bw_scheduler.incoming_transfers) == 0
@@ -119,7 +120,7 @@ class DLSimulation(LearningSimulation):
                 node.overlays[0].start_round(self.round_nr)
                 nodes_started += 1
 
-        print("Round %d started (with %d nodes)" % (self.round_nr, nodes_started))
+        self.logger.error("Round %d started (with %d nodes)", self.round_nr, nodes_started)
 
     def compute_all_accuracies(self):
         cur_time = get_event_loop().time()
