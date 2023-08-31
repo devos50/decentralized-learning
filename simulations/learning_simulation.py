@@ -258,15 +258,10 @@ class LearningSimulation(TaskManager):
         if self.args.duration > 0:
             await asyncio.sleep(self.args.duration)
             self.logger.info("Simulation took %f seconds" % (time.time() - start_time))
+            self.on_simulation_finished()
             self.loop.stop()
         else:
             self.logger.info("Running simulation for undefined time")
-
-        if self.args.profile:
-            yappi.stop()
-            yappi_stats = yappi.get_func_stats()
-            yappi_stats.sort("tsub")
-            yappi_stats.save(os.path.join(self.data_dir, "yappi.stats"), type='callgrind')
 
     def start_nodes_training(self, active_nodes: List) -> None:
         pass
@@ -455,6 +450,12 @@ export PYTHONPATH=%s
 
     def on_simulation_finished(self) -> None:
         self.flush_statistics()
+
+        if self.args.profile:
+            yappi.stop()
+            yappi_stats = yappi.get_func_stats()
+            yappi_stats.sort("tsub")
+            yappi_stats.save(os.path.join(self.data_dir, "yappi.stats"), type='callgrind')
 
     async def run(self) -> None:
         self.setup_directories()
