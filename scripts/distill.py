@@ -16,7 +16,7 @@ from torch.utils.data import DataLoader, Dataset
 from accdfl.core.datasets import create_dataset
 from accdfl.core.models import create_model
 from accdfl.core.session_settings import SessionSettings, LearningSettings
-
+from accdfl.util.swa import SWA
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("distiller")
@@ -351,7 +351,9 @@ async def run(args):
         out_file.write("cohorts,seed,distill_time,public_dataset,weighting_scheme,epoch,iteration,accuracy,loss,best_acc,train_time,total_time\n")
 
     # Distill \o/
-    optimizer = optim.Adam(student_model.parameters(), lr=args.learning_rate, betas=(args.momentum, 0.999), weight_decay=args.weight_decay)
+    #optimizer = optim.Adam(student_model.parameters(), lr=args.learning_rate, betas=(args.momentum, 0.999), weight_decay=args.weight_decay)
+    base_optimizer = torch.optim.SGD(student_model.parameters(), lr=1e-3, momentum=0.9, weight_decay=0.00001)
+    optimizer = SWA(base_optimizer, swa_start=500, swa_freq=25, swa_lr=None)
     criterion = torch.nn.L1Loss(reduce=True)
     best_acc = 0
     iteration = 0
@@ -391,6 +393,10 @@ async def run(args):
 
         if epoch < 80:
             compute_student_accuracy()
+
+    optimizer.swap_swa_sgd()
+    print("Computing final student accuracy...")
+    compute_student_accuracy()
 
 logging.basicConfig(level=logging.INFO)
 loop = asyncio.get_event_loop()
