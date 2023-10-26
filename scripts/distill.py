@@ -16,7 +16,7 @@ from torch.utils.data import DataLoader, Dataset
 from accdfl.core.datasets import create_dataset
 from accdfl.core.models import create_model
 from accdfl.core.session_settings import SessionSettings, LearningSettings
-
+from accdfl.util.swa import SWA
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("distiller")
@@ -62,8 +62,10 @@ def get_args():
     parser.add_argument('--teacher-model', type=str, default=None)
     parser.add_argument('--weighting-scheme', type=str, default="uniform", choices=["uniform", "label", "class"])
     parser.add_argument('--model-selection', type=str, default="best", choices=["best", "last"])
+    parser.add_argument('--optimizer', type=str, default="adam", choices=["sgd", "adam"])
     parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--check-teachers-accuracy', action=argparse.BooleanOptionalAction)
+    parser.add_argument('--swa', action=argparse.BooleanOptionalAction)
     parser.add_argument('--private-data-dir', type=str, default=os.path.join(os.environ["HOME"], "dfl-data"))
     parser.add_argument('--public-data-dir', type=str, default=os.path.join(os.environ["HOME"], "dfl-data"))
     parser.add_argument('--seed', type=int, default=42)
@@ -346,12 +348,19 @@ async def run(args):
     # Reset loader
     public_dataset_loader = DataLoader(dataset=DatasetWithIndex(public_dataset.trainset), batch_size=args.batch_size, shuffle=True)
 
-    distill_results_file_name = "distill_accuracies_%d_%d_%.1f_%g_%s_%s.csv" % (len(cohorts), args.seed, float(args.alpha), args.cohort_participation_fraction, args.private_dataset, args.public_dataset)
+    distill_results_file_name = "distill_accuracies_%d_%d_%f_%.1f_%g_%s_%s.csv" % (len(cohorts), args.seed, args.learning_rate, float(args.alpha), args.cohort_participation_fraction, args.private_dataset, args.public_dataset)
     with open(os.path.join("data", distill_results_file_name), "w") as out_file:
-        out_file.write("cohorts,seed,distill_time,public_dataset,weighting_scheme,epoch,iteration,accuracy,loss,best_acc,train_time,total_time\n")
+        out_file.write("cohorts,seed,learning_rate,distill_time,public_dataset,weighting_scheme,epoch,iteration,accuracy,loss,best_acc,train_time,total_time\n")
 
-    # Distill \o/
-    optimizer = optim.Adam(student_model.parameters(), lr=args.learning_rate, betas=(args.momentum, 0.999), weight_decay=args.weight_decay)
+    if args.optimizer == "adam":
+        base_optimizer = optim.Adam(student_model.parameters(), lr=args.learning_rate, betas=(args.momentum, 0.999), weight_decay=args.weight_decay)
+    elif args.optimizer == "sgd":
+        base_optimizer = torch.optim.SGD(student_model.parameters(), lr=args.learning_rate, momentum=args.momentum, weight_decay=0.00001)
+
+    if args.swa:
+        optimizer = SWA(base_optimizer, swa_start=500, swa_freq=25, swa_lr=None)
+    else:
+        optimizer = base_optimizer
     criterion = torch.nn.L1Loss(reduce=True)
     best_acc = 0
     iteration = 0
@@ -367,7 +376,7 @@ async def run(args):
         logger.info("Accuracy of student model after %d epochs (%d iterations): %f, %f (best: %f)", epoch + 1, iteration, acc, loss, best_acc)
         time_for_testing += (time.time() - test_start_time)
         with open(os.path.join("data", distill_results_file_name), "a") as out_file:
-            out_file.write("%d,%d,%d,%s,%s,%d,%d,%f,%f,%f,%f,%f\n" % (len(cohorts), args.seed,
+            out_file.write("%d,%d,%f,%d,%s,%s,%d,%d,%f,%f,%f,%f,%f\n" % (len(cohorts), args.seed, args.learning_rate,
             distill_timestamp, args.public_dataset, args.weighting_scheme, epoch + 1, iteration, acc, loss, best_acc,
             time.time() - start_time - time_for_testing, time.time() - start_time))
 
@@ -386,11 +395,7 @@ async def run(args):
 
             iteration += 1
 
-            if epoch >= 80:
-                compute_student_accuracy()
-
-        if epoch < 80:
-            compute_student_accuracy()
+        compute_student_accuracy()
 
 logging.basicConfig(level=logging.INFO)
 loop = asyncio.get_event_loop()
