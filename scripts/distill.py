@@ -348,9 +348,9 @@ async def run(args):
     # Reset loader
     public_dataset_loader = DataLoader(dataset=DatasetWithIndex(public_dataset.trainset), batch_size=args.batch_size, shuffle=True)
 
-    distill_results_file_name = "distill_accuracies_%d_%d_%f_%.1f_%g_%s_%s.csv" % (len(cohorts), args.seed, args.learning_rate, float(args.alpha), args.cohort_participation_fraction, args.private_dataset, args.public_dataset)
+    distill_results_file_name = "distill_accuracies_%d_%d_%f_%s_%.1f_%g_%s_%s.csv" % (len(cohorts), args.seed, args.learning_rate, args.optimizer, float(args.alpha), args.cohort_participation_fraction, args.private_dataset, args.public_dataset)
     with open(os.path.join("data", distill_results_file_name), "w") as out_file:
-        out_file.write("cohorts,seed,learning_rate,distill_time,public_dataset,weighting_scheme,epoch,iteration,accuracy,loss,best_acc,train_time,total_time\n")
+        out_file.write("cohorts,seed,learning_rate,optimizer,distill_time,public_dataset,weighting_scheme,epoch,iteration,accuracy,loss,best_acc,train_time,total_time\n")
 
     if args.optimizer == "adam":
         base_optimizer = optim.Adam(student_model.parameters(), lr=args.learning_rate, betas=(args.momentum, 0.999), weight_decay=args.weight_decay)
@@ -376,9 +376,9 @@ async def run(args):
         logger.info("Accuracy of student model after %d epochs (%d iterations): %f, %f (best: %f)", epoch + 1, iteration, acc, loss, best_acc)
         time_for_testing += (time.time() - test_start_time)
         with open(os.path.join("data", distill_results_file_name), "a") as out_file:
-            out_file.write("%d,%d,%f,%d,%s,%s,%d,%d,%f,%f,%f,%f,%f\n" % (len(cohorts), args.seed, args.learning_rate,
-            distill_timestamp, args.public_dataset, args.weighting_scheme, epoch + 1, iteration, acc, loss, best_acc,
-            time.time() - start_time - time_for_testing, time.time() - start_time))
+            out_file.write("%d,%d,%f,%s,%d,%s,%s,%d,%d,%f,%f,%f,%f,%f\n" % (len(cohorts), args.seed, args.learning_rate,
+            args.optimizer, distill_timestamp, args.public_dataset, args.weighting_scheme, epoch + 1, iteration, acc,
+            loss, best_acc, time.time() - start_time - time_for_testing, time.time() - start_time))
 
     for epoch in range(args.epochs):
         for i, (images, _, indices) in enumerate(public_dataset_loader):
