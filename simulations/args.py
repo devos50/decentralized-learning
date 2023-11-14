@@ -62,7 +62,7 @@ def get_args(dataset: str, default_lr: float, default_momentum: float = 0):
     parser.add_argument('--k', type=int, default=None)
     parser.add_argument('--latencies-file', type=str, default=None)
     parser.add_argument('--gl-round-timeout', type=int, default=60)
-    parser.add_argument('--dl-round-timeout', type=int, default=120)
+    parser.add_argument('--dl-round-timeout', type=int, default=600)
     parser.add_argument('--fix-aggregator', action=argparse.BooleanOptionalAction)
     parser.add_argument('--success-fraction', type=float, default=1.0)
     parser.add_argument('--liveness-success-fraction', type=float, default=0.4)

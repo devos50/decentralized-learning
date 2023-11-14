@@ -4,7 +4,7 @@ from argparse import Namespace
 from asyncio import get_event_loop
 from binascii import hexlify
 from math import floor, log
-from typing import List
+from typing import List, Dict
 
 from accdfl.core.model_manager import ModelManager
 from accdfl.core.session_settings import LearningSettings, SessionSettings, DLSettings
@@ -24,7 +24,29 @@ class DLSimulation(LearningSimulation):
         self.num_round_completed = 0
         self.participants_ids: List[int] = []
         self.round_nr: int = 1
-        self.data_dir = os.path.join("data", "n_%d_%s_sd%d_dl" % (self.args.peers, self.args.dataset, self.args.seed))
+        self.cohorts: Dict[int, List[int]] = {}
+        self.node_to_cohort: Dict[int, int] = {}
+        self.min_val_loss_per_cohort: Dict[int, float] = {}
+
+        if self.args.cohort_file is not None:
+            # Read the cohort organisations
+            with open(os.path.join("data", self.args.cohort_file)) as cohort_file:
+                for line in cohort_file.readlines():
+                    parts = line.strip().split(",")
+                    self.cohorts[int(parts[0])] = [int(n) for n in parts[1].split("-")]
+                    self.min_val_loss_per_cohort[int(parts[0])] = 1000000
+
+            # Create the node -> cohort mapping
+            for cohort_ind, nodes_in_cohort in self.cohorts.items():
+                for node_ind in nodes_in_cohort:
+                    self.node_to_cohort[node_ind] = cohort_ind
+
+        partitioner_str = self.args.partitioner if self.args.partitioner != "dirichlet" else "dirichlet%g" % self.args.alpha
+        datadir_name = "n_%d_%s_%s_sd%d_dl" % (self.args.peers, self.args.dataset, partitioner_str, self.args.seed)
+        if self.cohorts:
+            datadir_name += "_ct%d_p%g" % (len(self.cohorts), self.args.cohort_participation_fraction)
+
+        self.data_dir = os.path.join("data", datadir_name)
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = super().get_ipv8_builder(peer_id)
@@ -97,12 +119,16 @@ class DLSimulation(LearningSimulation):
         with open(os.path.join(self.data_dir, "round_durations.csv"), "w") as out_file:
             out_file.write("round,duration\n")
 
+        with open(os.path.join(self.data_dir, "losses.csv"), "w") as out_file:
+            out_file.write("cohorts,seed,alpha,participation,cohort,peer,type,time,round,loss\n")
+
     async def start_simulation(self) -> None:
         self.round_start_time = get_event_loop().time()
         for node in self.nodes:
             node.overlays[0].start_round(self.round_nr)
-        self.register_task("round_done", self.on_round_done, interval=self.args.dl_round_timeout)
-        self.register_task("check_accuracy", self.compute_all_accuracies, interval=self.args.accuracy_logging_interval)
+
+        if self.args.dl_round_timeout:
+            self.register_task("round_done", self.on_round_done, interval=self.args.dl_round_timeout)
         await super().start_simulation()
 
     def on_round_done(self):
@@ -126,6 +152,11 @@ class DLSimulation(LearningSimulation):
             self.on_simulation_finished()
             self.loop.stop()
 
+        self.register_validation_losses()
+
+        if self.args.accuracy_logging_interval > 0 and self.args.accuracy_logging_interval % self.round_nr == 0:
+            self.compute_all_accuracies()
+
         self.round_nr += 1
         nodes_started = 0
 
@@ -135,6 +166,32 @@ class DLSimulation(LearningSimulation):
                 nodes_started += 1
 
         self.logger.error("Round %d started (with %d nodes)", self.round_nr, nodes_started)
+
+    def register_validation_losses(self):
+        cur_time = get_event_loop().time()
+        with open(os.path.join(self.data_dir, "losses.csv"), "a") as out_file:
+            for node_ind, node in enumerate(self.nodes):
+                cohort_ind = self.node_to_cohort[node_ind]
+                trainer = node.overlays[0].model_manager.model_trainer
+                for round_nr, train_loss in trainer.training_losses.items():
+                    out_file.write("%d,%d,%.1f,%g,%d,%d,%s,%d,%d,%f\n" % (
+                    len(self.cohorts), self.args.seed, self.args.alpha, self.args.cohort_participation_fraction,
+                    cohort_ind, node_ind, "train", int(cur_time), round_nr, train_loss))
+                trainer.training_losses = {}
+
+                if self.args.compute_validation_loss_global_model:
+                    for round_nr, val_loss in trainer.validation_loss_global_model.items():
+                        out_file.write("%d,%d,%.1f,%g,%d,%d,%s,%d,%d,%f\n" % (
+                        len(self.cohorts), self.args.seed, self.args.alpha, self.args.cohort_participation_fraction,
+                        cohort_ind, node_ind, "val_global", int(cur_time), round_nr, val_loss))
+                    trainer.validation_loss_global_model = {}
+
+                if self.args.compute_validation_loss_updated_model:
+                    for round_nr, val_loss in trainer.validation_loss_updated_model.items():
+                        out_file.write("%d,%d,%.1f,%g,%d,%d,%s,%d,%d,%f\n" % (
+                        len(self.cohorts), self.args.seed, self.args.alpha, self.args.cohort_participation_fraction,
+                        cohort_ind, node_ind, "val_updated", int(cur_time), round_nr, val_loss))
+                    trainer.validation_loss_updated_model = {}
 
     def compute_all_accuracies(self):
         cur_time = get_event_loop().time()
@@ -206,11 +263,22 @@ class DLSimulation(LearningSimulation):
                     self.nodes[self.participants_ids[0] + node_ind].overlays[0].neighbours.append(nb_pk)
         elif self.session_settings.dl.topology == "k-regular":
             k: int = floor(log(len(self.nodes), 2)) if self.args.k is None else self.args.k
-            self.logger.info("Building %d-regular graph topology", k)
-            G = nx.random_regular_graph(k, len(self.nodes), seed=self.args.seed)
-            for node_ind in range(len(self.nodes)):
-                for nb_node_ind in list(G.neighbors(node_ind)):
-                    nb_pk = self.nodes[nb_node_ind].overlays[0].my_peer.public_key.key_to_bin()
-                    self.nodes[node_ind].overlays[0].neighbours.append(nb_pk)
+            if self.cohorts:
+                self.logger.info("Building %d %d-regular graphs", len(self.cohorts), k)
+                for cluster_id, nodes in self.cohorts.items():
+                    G = nx.random_regular_graph(k, len(nodes), seed=self.args.seed)
+                    mapping = {i: node for i, node in enumerate(nodes)}
+                    G = nx.relabel_nodes(G, mapping)
+                    for node_ind in G.nodes:
+                        for nb_node_ind in list(G.neighbors(node_ind)):
+                            nb_pk = self.nodes[nb_node_ind].overlays[0].my_peer.public_key.key_to_bin()
+                            self.nodes[node_ind].overlays[0].neighbours.append(nb_pk)
+            else:
+                self.logger.info("Building %d-regular graph topology", k)
+                G = nx.random_regular_graph(k, len(self.nodes), seed=self.args.seed)
+                for node_ind in range(len(self.nodes)):
+                    for nb_node_ind in list(G.neighbors(node_ind)):
+                        nb_pk = self.nodes[nb_node_ind].overlays[0].my_peer.public_key.key_to_bin()
+                        self.nodes[node_ind].overlays[0].neighbours.append(nb_pk)
         else:
             raise RuntimeError("Unknown DL topology %s" % self.session_settings.dl.topology)

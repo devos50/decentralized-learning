@@ -57,7 +57,7 @@ class DLCommunity(LearningCommunity):
         self.logger.info("Peer %s starting round %d", self.peer_manager.get_my_short_id(), self.round)
 
         # Train
-        await self.model_manager.train()
+        await self.model_manager.train(self.round)
 
         # Detach the tensors of the model by making a copy
         model_cpy = unserialize_model(serialize_model(self.model_manager.model),
