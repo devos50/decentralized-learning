@@ -200,7 +200,7 @@ class DLSimulation(LearningSimulation):
     def save_aggregated_model_of_cohort(self, cohort: int):
         model_manager: ModelManager = ModelManager(None, self.session_settings, 0)
         for node_ind in self.cohorts[cohort]:
-            model = self.nodes[node_ind].overlays[0].model_manager.model
+            model = self.nodes[node_ind].overlays[0].model_manager.model.cpu()
             model_manager.process_incoming_trained_model(b"%d" % node_ind, model)
 
         avg_model = model_manager.aggregate_trained_models()
