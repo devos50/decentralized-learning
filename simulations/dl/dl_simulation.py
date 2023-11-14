@@ -6,6 +6,8 @@ from binascii import hexlify
 from math import floor, log
 from typing import List, Dict
 
+import torch
+
 from accdfl.core.model_manager import ModelManager
 from accdfl.core.session_settings import LearningSettings, SessionSettings, DLSettings
 
@@ -156,6 +158,8 @@ class DLSimulation(LearningSimulation):
 
         if self.args.accuracy_logging_interval > 0 and self.round_nr % self.args.accuracy_logging_interval == 0:
             self.compute_all_accuracies()
+            for cohort in self.cohorts.keys():
+                self.save_aggregated_model_of_cohort(cohort)
 
         self.round_nr += 1
         nodes_started = 0
@@ -192,6 +196,17 @@ class DLSimulation(LearningSimulation):
                         len(self.cohorts), self.args.seed, self.args.alpha, self.args.cohort_participation_fraction,
                         cohort_ind, node_ind, "val_updated", int(cur_time), round_nr, val_loss))
                     trainer.validation_loss_updated_model = {}
+
+    def save_aggregated_model_of_cohort(self, cohort: int):
+        model_manager: ModelManager = ModelManager(None, self.session_settings, 0)
+        for node_ind in self.cohorts[cohort]:
+            model = self.nodes[node_ind].overlays[0].model_manager.model
+            model_manager.process_incoming_trained_model(b"%d" % node_ind, model)
+
+        avg_model = model_manager.aggregate_trained_models()
+        models_dir = os.path.join(self.data_dir, "models")
+        cur_time = get_event_loop().time()
+        torch.save(avg_model.state_dict(), os.path.join(models_dir, "c%d_%d_%d_0.model" % (cohort, self.round_nr, cur_time)))
 
     def compute_all_accuracies(self):
         cur_time = get_event_loop().time()
