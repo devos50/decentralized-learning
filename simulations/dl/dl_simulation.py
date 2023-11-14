@@ -154,7 +154,7 @@ class DLSimulation(LearningSimulation):
 
         self.register_validation_losses()
 
-        if self.args.accuracy_logging_interval > 0 and self.args.accuracy_logging_interval % self.round_nr == 0:
+        if self.args.accuracy_logging_interval > 0 and self.round_nr % self.args.accuracy_logging_interval == 0:
             self.compute_all_accuracies()
 
         self.round_nr += 1
