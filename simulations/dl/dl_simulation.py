@@ -205,6 +205,7 @@ class DLSimulation(LearningSimulation):
 
         avg_model = model_manager.aggregate_trained_models()
         models_dir = os.path.join(self.data_dir, "models")
+        os.makedirs(models_dir, exist_ok=True)
         cur_time = get_event_loop().time()
         torch.save(avg_model.state_dict(), os.path.join(models_dir, "c%d_%d_%d_0.model" % (cohort, self.round_nr, cur_time)))
 
