@@ -3,6 +3,7 @@ import random
 from argparse import Namespace
 from asyncio import get_event_loop
 from binascii import hexlify
+from typing import Dict, List
 
 import torch
 
@@ -10,7 +11,6 @@ from accdfl.core.model_manager import ModelManager
 from accdfl.core.models import create_model
 from accdfl.core.session_settings import LearningSettings, SessionSettings, GLSettings
 from ipv8.configuration import ConfigBuilder
-from ipv8.taskmanager import TaskManager
 
 from simulations.learning_simulation import LearningSimulation
 
@@ -19,8 +19,29 @@ class GLSimulation(LearningSimulation):
 
     def __init__(self, args: Namespace) -> None:
         super().__init__(args)
-        self.task_manager = TaskManager()
-        self.data_dir = os.path.join("data", "n_%d_%s_sd%d_gl" % (self.args.peers, self.args.dataset, self.args.seed))
+        self.cohorts: Dict[int, List[int]] = {}
+        self.node_to_cohort: Dict[int, int] = {}
+        self.min_val_loss_per_cohort: Dict[int, float] = {}
+
+        if self.args.cohort_file is not None:
+            # Read the cohort organisations
+            with open(os.path.join("data", self.args.cohort_file)) as cohort_file:
+                for line in cohort_file.readlines():
+                    parts = line.strip().split(",")
+                    self.cohorts[int(parts[0])] = [int(n) for n in parts[1].split("-")]
+                    self.min_val_loss_per_cohort[int(parts[0])] = 1000000
+
+            # Create the node -> cohort mapping
+            for cohort_ind, nodes_in_cohort in self.cohorts.items():
+                for node_ind in nodes_in_cohort:
+                    self.node_to_cohort[node_ind] = cohort_ind
+
+        partitioner_str = self.args.partitioner if self.args.partitioner != "dirichlet" else "dirichlet%g" % self.args.alpha
+        datadir_name = "n_%d_%s_%s_sd%d_gl" % (self.args.peers, self.args.dataset, partitioner_str, self.args.seed)
+        if self.cohorts:
+            datadir_name += "_ct%d_p%g" % (len(self.cohorts), self.args.cohort_participation_fraction)
+
+        self.data_dir = os.path.join("data", datadir_name)
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = super().get_ipv8_builder(peer_id)
@@ -67,7 +88,6 @@ class GLSimulation(LearningSimulation):
         self.model_manager = ModelManager(None, self.session_settings, 0)
 
         for ind, node in enumerate(self.nodes):
-            node.overlays[0].round_complete_callback = lambda round_nr, i=ind: self.on_round_complete(i, round_nr)
             node.overlays[0].setup(self.session_settings)
 
             # Initialize the models of each node. We have to do this here because GL is first sharing, then training so the
@@ -77,10 +97,45 @@ class GLSimulation(LearningSimulation):
 
         self.build_topology()
 
-        if self.args.accuracy_logging_interval > 0 and self.args.accuracy_logging_interval_is_in_sec:
+        if self.args.accuracy_logging_interval > 0:
             interval = self.args.accuracy_logging_interval
             self.logger.info("Registering logging interval task that triggers every %d seconds", interval)
-            self.task_manager.register_task("acc_check", self.compute_all_accuracies, delay=interval, interval=interval)
+            self.register_task("acc_check", self.on_accuracy_check_interval, delay=interval, interval=interval)
+
+        with open(os.path.join(self.data_dir, "losses.csv"), "w") as out_file:
+            out_file.write("cohorts,seed,alpha,participation,cohort,peer,type,time,round,loss\n")
+
+    def on_accuracy_check_interval(self):
+        self.compute_all_accuracies()
+        self.register_validation_losses()
+        for cohort in self.cohorts.keys():
+            self.save_aggregated_model_of_cohort(cohort)
+
+    def register_validation_losses(self):
+        cur_time = get_event_loop().time()
+        with open(os.path.join(self.data_dir, "losses.csv"), "a") as out_file:
+            for node_ind, node in enumerate(self.nodes):
+                cohort_ind = self.node_to_cohort[node_ind]
+                trainer = node.overlays[0].model_manager.model_trainer
+                for round_nr, train_loss in trainer.training_losses.items():
+                    out_file.write("%d,%d,%.1f,%g,%d,%d,%s,%d,%d,%f\n" % (
+                    len(self.cohorts), self.args.seed, self.args.alpha, self.args.cohort_participation_fraction,
+                    cohort_ind, node_ind, "train", int(cur_time), round_nr, train_loss))
+                trainer.training_losses = {}
+
+                if self.args.compute_validation_loss_global_model:
+                    for round_nr, val_loss in trainer.validation_loss_global_model.items():
+                        out_file.write("%d,%d,%.1f,%g,%d,%d,%s,%d,%d,%f\n" % (
+                        len(self.cohorts), self.args.seed, self.args.alpha, self.args.cohort_participation_fraction,
+                        cohort_ind, node_ind, "val_global", int(cur_time), round_nr, val_loss))
+                    trainer.validation_loss_global_model = {}
+
+                if self.args.compute_validation_loss_updated_model:
+                    for round_nr, val_loss in trainer.validation_loss_updated_model.items():
+                        out_file.write("%d,%d,%.1f,%g,%d,%d,%s,%d,%d,%f\n" % (
+                        len(self.cohorts), self.args.seed, self.args.alpha, self.args.cohort_participation_fraction,
+                        cohort_ind, node_ind, "val_updated", int(cur_time), round_nr, val_loss))
+                    trainer.validation_loss_updated_model = {}
 
     def compute_all_accuracies(self):
         cur_time = get_event_loop().time()
@@ -135,37 +190,30 @@ class GLSimulation(LearningSimulation):
 
         self.model_manager.reset_incoming_trained_models()
 
+    def save_aggregated_model_of_cohort(self, cohort: int):
+        model_manager: ModelManager = ModelManager(None, self.session_settings, 0)
+        for node_ind in self.cohorts[cohort]:
+            model = self.nodes[node_ind].overlays[0].model_manager.model.cpu()
+            model_manager.process_incoming_trained_model(b"%d" % node_ind, model)
+
+        avg_model = model_manager.aggregate_trained_models()
+        models_dir = os.path.join(self.data_dir, "models")
+        os.makedirs(models_dir, exist_ok=True)
+        cur_time = get_event_loop().time()
+        torch.save(avg_model.state_dict(),
+                   os.path.join(models_dir, "c%d_0_%d_0_last.model" % (cohort, cur_time)))
+
     def build_topology(self):
         """
         Build a k-out topology. This is compatible with the experiment results in the GL papers.
         """
-        for node in self.nodes:
-            other_nodes = [n for n in self.nodes if n != node]
-            node.overlays[0].nodes = other_nodes
-
-    async def on_round_complete(self, peer_ind: int, round_nr: int):
-        # Compute model accuracy
-        if self.args.accuracy_logging_interval > 0 and not self.args.accuracy_logging_interval_is_in_sec and \
-                round_nr % self.args.accuracy_logging_interval == 0:
-            print("Will compute accuracy of peer %d for round %d!" % (peer_ind, round_nr))
-            try:
-                print("Testing model of peer %d on device %s..." % (peer_ind + 1, self.args.accuracy_device_name))
-                model = self.nodes[peer_ind].overlays[0].model_manager.model
-                if not self.args.bypass_training:
-                    accuracy, loss = self.evaluator.evaluate_accuracy(
-                        model, device_name=self.args.accuracy_device_name)
-                else:
-                    accuracy, loss = 0, 0
-
-                with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
-                    out_file.write("%s,GL,%f,%d,%d,%f,%f\n" %
-                                   (self.args.dataset, get_event_loop().time(),
-                                    peer_ind, round_nr, accuracy, loss))
-            except ValueError as e:
-                print("Encountered error during evaluation check - dumping all models and stopping")
-                self.checkpoint_models(round_nr)
-                raise e
-
-        # Checkpoint the model
-        if self.args.checkpoint_interval and round_nr % self.args.checkpoint_interval == 0:
-            self.checkpoint_model(peer_ind, round_nr)
+        if self.cohorts:
+            for cohort_ind, node_indices_in_cohort in self.cohorts.items():
+                nodes_in_cohort = [self.nodes[ind] for ind in node_indices_in_cohort]
+                for node in nodes_in_cohort:
+                    other_nodes = [n for n in nodes_in_cohort if n != node]
+                    node.overlays[0].nodes = other_nodes
+        else:
+            for node in self.nodes:
+                other_nodes = [n for n in self.nodes if n != node]
+                node.overlays[0].nodes = other_nodes
