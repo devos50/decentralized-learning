@@ -4,7 +4,10 @@ from argparse import Namespace
 from asyncio import get_event_loop
 from binascii import hexlify
 
+import torch
+
 from accdfl.core.model_manager import ModelManager
+from accdfl.core.models import create_model
 from accdfl.core.session_settings import LearningSettings, SessionSettings, GLSettings
 from ipv8.configuration import ConfigBuilder
 from ipv8.taskmanager import TaskManager
@@ -66,6 +69,11 @@ class GLSimulation(LearningSimulation):
         for ind, node in enumerate(self.nodes):
             node.overlays[0].round_complete_callback = lambda round_nr, i=ind: self.on_round_complete(i, round_nr)
             node.overlays[0].setup(self.session_settings)
+
+            # Initialize the models of each node. We have to do this here because GL is first sharing, then training so the
+            # model would not be initialized first.
+            torch.manual_seed(self.session_settings.model_seed)
+            node.overlays[0].model_manager.model = create_model(self.session_settings.dataset, architecture=self.session_settings.model)
 
         self.build_topology()
 

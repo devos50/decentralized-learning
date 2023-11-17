@@ -3,7 +3,7 @@ import copy
 import json
 import random
 import time
-from asyncio import sleep, ensure_future
+from asyncio import sleep, ensure_future, get_event_loop
 from binascii import unhexlify
 from typing import List
 
@@ -27,7 +27,7 @@ class GLCommunity(LearningCommunity):
         Start to participate in the training process.
         """
         super().start()
-        self.start_next_round()
+        get_event_loop().call_later(random.uniform(0, self.settings.gl.round_timeout), self.start_next_round)
 
     def go_offline(self, graceful: bool = True):
         super().go_offline()
@@ -121,4 +121,5 @@ class GLCommunity(LearningCommunity):
             ensure_future(self.aggregate_complete_callback(self.round, model_cpy))
 
         # Train
-        self.model_age += await self.model_manager.train()
+        samples_trained_on, _, _ = await self.model_manager.train(self.round)
+        self.model_age += samples_trained_on
