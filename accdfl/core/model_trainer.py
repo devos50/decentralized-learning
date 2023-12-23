@@ -32,7 +32,7 @@ class ModelTrainer:
         self.total_training_time: float = 0
         self.is_training: bool = False
 
-        if settings.dataset in ["cifar10", "mnist", "movielens", "spambase"]:
+        if settings.dataset in ["cifar10", "mnist", "movielens", "spambase", "google_speech"]:
             self.train_dir = data_dir
         else:
             self.train_dir = os.path.join(data_dir, "per_user_data", "train")
@@ -48,6 +48,10 @@ class ModelTrainer:
             self.dataset = create_dataset(self.settings, participant_index=self.participant_index, train_dir=self.train_dir)
 
         local_steps: int = self.settings.learning.local_steps
+        if local_steps == 0:
+            train_set = self.dataset.get_trainset(batch_size=self.settings.learning.batch_size, shuffle=True)
+            local_steps = len(train_set)
+
         device = torch.device(device_name)
         model = model.to(device)
         optimizer = SGDOptimizer(model, self.settings.learning.learning_rate, self.settings.learning.momentum, self.settings.learning.weight_decay)
@@ -85,6 +89,10 @@ class ModelTrainer:
                 train_set_it = iter(train_set)
 
                 data, target = next(train_set_it)
+
+                if self.settings.dataset == "google_speech":
+                    data = torch.unsqueeze(data, 1)
+
                 model.train()
                 data, target = Variable(data.to(device)), Variable(target.to(device))
                 samples_trained_on += len(data)
