@@ -109,5 +109,6 @@ class ModelTrainer:
                 optimizer.optimizer.step()
 
         self.is_training = False
+        model.to("cpu")
 
         return samples_trained_on

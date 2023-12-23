@@ -12,6 +12,7 @@ import torch.nn as nn
 from accdfl.core.gradient_aggregation import GradientAggregationMethod
 from accdfl.core.gradient_aggregation.fedavg import FedAvg
 from accdfl.core.model_trainer import ModelTrainer
+from accdfl.core.models import unserialize_model, serialize_model
 from accdfl.core.session_settings import SessionSettings, dump_settings
 
 
@@ -57,41 +58,14 @@ class ModelManager:
         return self.get_aggregation_method().aggregate(models, weights=weights)
 
     async def train(self) -> int:
-        if self.settings.train_in_subprocess:
-            # Dump the model and settings to a file
-            model_file_name = "%d.model" % random.randint(1, 1000000)
-            model_path = os.path.join(self.settings.work_dir, model_file_name)
-            torch.save(self.model.state_dict(), model_path)
-            dump_settings(self.settings)
+        samples_trained_on = await self.model_trainer.train(self.model, device_name=self.settings.train_device_name)
 
-            # Get full path to the script
-            import accdfl.util as autil
-            script_dir = os.path.join(os.path.abspath(os.path.dirname(autil.__file__)), "train_model.py")
-            cmd = "%s %s %s %s %s %s %d" % (sys.executable, script_dir, self.settings.work_dir, model_file_name,
-                                            self.data_dir, self.participant_index, torch.get_num_threads())
-            train_start_time = time.time()
-            proc = await asyncio.create_subprocess_shell(
-                cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE)
+        # Detach the gradients
+        self.model = unserialize_model(serialize_model(self.model), self.settings.dataset, architecture=self.settings.model)
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
-            stdout, stderr = await proc.communicate()
-            self.logger.info(f'Training exited with {proc.returncode}]')
-
-            if proc.returncode != 0:
-                if stdout:
-                    self.logger.error(f'[stdout]\n{stdout.decode()}')
-                if stderr:
-                    self.logger.error(f'[stderr]\n{stderr.decode()}')
-                raise RuntimeError("Training subprocess exited with non-zero exit code %d: %s" %
-                                   (proc.returncode, stderr.decode()))
-
-            # Read the new model and adopt it
-            self.model.load_state_dict(torch.load(model_path))
-            os.unlink(model_path)
-        else:
-            samples_trained_on = await self.model_trainer.train(self.model, device_name=self.settings.train_device_name)
-            return samples_trained_on
+        return samples_trained_on
 
     async def compute_accuracy(self, model: nn.Module):
         """
