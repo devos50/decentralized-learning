@@ -1,3 +1,4 @@
+import logging
 import os
 
 import torch
@@ -16,6 +17,8 @@ from accdfl.core.optimizer.sgd import SGDOptimizer
 from accdfl.util.divide_data import DataPartitioner, select_dataset
 
 data_dir = "/Users/martijndevos/dfl-data/google_speech"
+
+logging.basicConfig(level=logging.INFO)
 
 def accuracy(output, target, topk=(1,)):
     """Computes the accuracy over the k top predictions for the specified values of k"""
@@ -80,7 +83,7 @@ test_dataset = SPEECH(data_dir, dataset='test',
                                                     FixAudioLength(),
                                                     valid_feature_transform]))
 
-print("Data partitioner starts ...")
+logging.info("Data partitioner starts ...")
 training_sets = DataPartitioner(data=train_dataset, numOfClass=len(train_dataset.classMapping))
 training_sets.partition_data_helper(num_clients=1)
 
@@ -91,11 +94,11 @@ client_data = select_dataset(1, training_sets, batch_size=32)
 test_data = select_dataset(1, testing_sets, batch_size=128)
 
 device_name = "cuda:0" if torch.cuda.is_available() else "cpu"
-print("Using device: %s" % device_name)
+logging.info("Using device: %s" % device_name)
 device = torch.device(device_name)
 model = resnet34(num_classes=35, in_channels=1)
 model = model.to(device)
-print(model_test(model, test_data, device))
+logging.info(model_test(model, test_data, device))
 optimizer = SGDOptimizer(model, 0.05, 0.9, weight_decay=0)
 steps_done = 0
 for data, target in client_data:
@@ -108,11 +111,9 @@ for data, target in client_data:
     loss.backward()
     optimizer.optimizer.step()
     steps_done += 1
-    print("step %d done" % steps_done)
+    logging.info("step %d done" % steps_done)
 
-    if steps_done == 20:
-        break
-
-print("Will test")
-test_results = model_test(model, test_data, device)
-print(test_results)
+    if steps_done == 100:
+        logging.info("Will test")
+        test_results = model_test(model, test_data, device)
+        logging.info(test_results)
