@@ -1,7 +1,7 @@
-import logging
 import os
 
 import torch
+from torch.autograd import Variable
 from torch.nn import CrossEntropyLoss
 
 from torchvision import transforms
@@ -33,7 +33,7 @@ def accuracy(output, target, topk=(1,)):
 
         return res
 
-def model_test(model, test_data):
+def model_test(model, test_data, device):
     test_loss = 0
     correct = 0
     top_5 = 0
@@ -41,6 +41,7 @@ def model_test(model, test_data):
     with torch.no_grad():
         for data, target in test_data:
             data = torch.unsqueeze(data, 1)
+            data, target = Variable(data.to(device)), Variable(target.to(device))
 
             output = model(data)
             lossf = CrossEntropyLoss()
@@ -88,24 +89,30 @@ testing_sets.partition_data_helper(num_clients=1)
 
 client_data = select_dataset(1, training_sets, batch_size=32)
 test_data = select_dataset(1, testing_sets, batch_size=128)
+
+device_name = "cuda:0" if torch.cuda.is_available() else "cpu"
+print("Using device: %s" % device_name)
+device = torch.device(device_name)
 model = resnet34(num_classes=35, in_channels=1)
-print(model_test(model, test_data))
+model = model.to(device)
+print(model_test(model, test_data, device))
 optimizer = SGDOptimizer(model, 0.05, 0.9, weight_decay=0)
 steps_done = 0
 for data, target in client_data:
     data = torch.unsqueeze(data, 1)
+    data, target = Variable(data.to(device)), Variable(target.to(device))
     lossf = CrossEntropyLoss()
     output = model.forward(data)
     loss = lossf(output, target)
     optimizer.optimizer.zero_grad()
     loss.backward()
     optimizer.optimizer.step()
-    print("step done")
     steps_done += 1
+    print("step %d done" % steps_done)
 
     if steps_done == 20:
         break
 
 print("Will test")
-test_results = model_test(model, test_data)
+test_results = model_test(model, test_data, device)
 print(test_results)
