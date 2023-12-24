@@ -39,5 +39,9 @@ def create_dataset(settings: SessionSettings, participant_index: int = 0, train_
         data_dir = train_dir or test_dir
         return Spambase(participant_index, 0, mapping, settings.partitioner, train_dir=data_dir, test_dir=data_dir,
                         shards=settings.target_participants, alpha=settings.alpha)
+    elif settings.dataset == "google_speech":
+        from accdfl.core.datasets.google_speech import GoogleSpeech
+        return GoogleSpeech(participant_index, 0, mapping, settings.partitioner,
+                            train_dir=train_dir, test_dir=test_dir)
     else:
         raise RuntimeError("Unknown dataset %s" % settings.dataset)
