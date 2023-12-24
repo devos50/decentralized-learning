@@ -220,11 +220,13 @@ class GoogleSpeech(Dataset):
         model.to(device)
         model.eval()
 
+        ce_loss = nn.CrossEntropyLoss()
         with torch.no_grad():
             for data, target in iter(testloader):
                 data, target = data.to(device), target.to(device)
                 data = torch.unsqueeze(data, 1)
                 output = model.forward(data)
+                total_loss += ce_loss(output, target)
 
                 pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
                 correct += pred.eq(target.view_as(pred)).sum().item()
