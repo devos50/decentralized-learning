@@ -101,19 +101,21 @@ model = model.to(device)
 logging.info(model_test(model, test_data, device))
 optimizer = SGDOptimizer(model, 0.05, 0.9, weight_decay=0)
 steps_done = 0
-for data, target in client_data:
-    data = torch.unsqueeze(data, 1)
-    data, target = Variable(data.to(device)), Variable(target.to(device))
-    lossf = CrossEntropyLoss()
-    output = model.forward(data)
-    loss = lossf(output, target)
-    optimizer.optimizer.zero_grad()
-    loss.backward()
-    optimizer.optimizer.step()
-    steps_done += 1
-    logging.info("step %d done" % steps_done)
+for epoch in range(1, 6):
+    logging.info("Starting epoch %d", epoch)
+    for data, target in client_data:
+        data = torch.unsqueeze(data, 1)
+        data, target = Variable(data.to(device)), Variable(target.to(device))
+        lossf = CrossEntropyLoss()
+        output = model.forward(data)
+        loss = lossf(output, target)
+        optimizer.optimizer.zero_grad()
+        loss.backward()
+        optimizer.optimizer.step()
+        steps_done += 1
+        logging.debug("step %d done" % steps_done)
 
-    if steps_done == 100:
-        logging.info("Will test")
-        test_results = model_test(model, test_data, device)
-        logging.info(test_results)
+        if steps_done % 100 == 0:
+            logging.info("Will test")
+            test_results = model_test(model, test_data, device)
+            logging.info(test_results)
