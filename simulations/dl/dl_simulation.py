@@ -103,13 +103,25 @@ class DLSimulation(LearningSimulation):
         await super().start_simulation()
 
     def on_round_done(self):
-        # Check if all nodes have wrapped up
+        self.logger.error("Round %d done", self.round_nr)
+        transfers_to_kill = 0
         for node in self.nodes:
-            assert len(node.overlays[0].bw_scheduler.incoming_transfers) == 0
-            assert len(node.overlays[0].bw_scheduler.outgoing_transfers) == 0
+            if node.overlays[0].bw_scheduler.outgoing_transfers:
+                for ongoing_transfer in node.overlays[0].bw_scheduler.outgoing_transfers:
+                    self.logger.warning("Transfer %s still going on after round completed", ongoing_transfer)
+                    transfers_to_kill += 1
+
+            node.overlays[0].bw_scheduler.kill_all_transfers()
+
+        if transfers_to_kill > 0:
+            self.logger.error("Killed %d transfers", transfers_to_kill)
 
         for node in self.nodes:
             node.overlays[0].aggregate_models()
+
+        if self.args.rounds and self.round_nr >= self.args.rounds:
+            self.on_simulation_finished()
+            self.loop.stop()
 
         self.round_nr += 1
         nodes_started = 0
@@ -119,7 +131,7 @@ class DLSimulation(LearningSimulation):
                 node.overlays[0].start_round(self.round_nr)
                 nodes_started += 1
 
-        print("Round %d started (with %d nodes)" % (self.round_nr, nodes_started))
+        self.logger.error("Round %d started (with %d nodes)", self.round_nr, nodes_started)
 
     def compute_all_accuracies(self):
         cur_time = get_event_loop().time()
@@ -190,9 +202,9 @@ class DLSimulation(LearningSimulation):
                     nb_pk = self.nodes[self.participants_ids[0] + nb_ind].overlays[0].my_peer.public_key.key_to_bin()
                     self.nodes[self.participants_ids[0] + node_ind].overlays[0].neighbours.append(nb_pk)
         elif self.session_settings.dl.topology == "k-regular":
-            k: int = floor(log(len(self.nodes), 2))
+            k: int = floor(log(len(self.nodes), 2)) if self.args.k is None else self.args.k
             self.logger.info("Building %d-regular graph topology", k)
-            G = nx.random_regular_graph(k, len(self.nodes))
+            G = nx.random_regular_graph(k, len(self.nodes), seed=self.args.seed)
             for node_ind in range(len(self.nodes)):
                 for nb_node_ind in list(G.neighbors(node_ind)):
                     nb_pk = self.nodes[nb_node_ind].overlays[0].my_peer.public_key.key_to_bin()

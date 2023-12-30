@@ -255,18 +255,16 @@ class Transfer:
         try:
             self.complete_future.set_result(None)
         except InvalidStateError:
-            self.sender_scheduler.logger.error("Finish of transfer %s (%s => %s) resulted in an InvalidStateError - "
-                                               "ignoring for now", self.transfer_id, self.sender_scheduler.my_id,
-                                               self.receiver_scheduler.my_id)
+            self.sender_scheduler.logger.error("Finish of transfer %s resulted in an InvalidStateError - "
+                                               "ignoring for now", self)
 
     def fail(self):
         self.update()
         try:
             self.complete_future.set_exception(RuntimeError("Transfer interrupted"))
         except InvalidStateError:
-            self.sender_scheduler.logger.error("Failure of transfer %s (%s => %s) resulted in an InvalidStateError - "
-                                               "ignoring for now", self.transfer_id, self.sender_scheduler.my_id,
-                                               self.receiver_scheduler.my_id)
+            self.sender_scheduler.logger.error("Failure of transfer %s resulted in an InvalidStateError - "
+                                               "ignoring for now", self)
 
     def update(self):
         transferred: float = (get_event_loop().time() - self.last_time_updated) * self.allocated_bw
@@ -275,3 +273,6 @@ class Transfer:
 
     def get_transferred_bytes(self) -> int:
         return self.transferred
+
+    def __str__(self):
+        return "%s (%s => %s)" % (self.transfer_id, self.sender_scheduler.my_id, self.receiver_scheduler.my_id)

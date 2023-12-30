@@ -115,12 +115,12 @@ class LearningSimulation(TaskManager):
         """
         Set the relevant traces.
         """
-        rand = Random(self.args.seed)
         if self.args.availability_traces:
             self.logger.info("Applying availability trace file %s", self.args.availability_traces)
             with open(self.args.availability_traces, "rb") as traces_file:
                 data = pickle.load(traces_file)
 
+            rand = Random(self.args.seed)
             device_ids = rand.sample(list(data.keys()), self.args.peers)
             for ind, node in enumerate(self.nodes):
                 node.overlays[0].set_traces(data[device_ids[ind]])
@@ -130,6 +130,7 @@ class LearningSimulation(TaskManager):
             with open(self.args.capability_traces, "rb") as traces_file:
                 data = pickle.load(traces_file)
 
+            rand = Random(self.args.seed)
             device_ids = rand.sample(list(data.keys()), self.args.peers)
             nodes_bws: Dict[bytes, int] = {}
             for ind, node in enumerate(self.nodes):
@@ -257,15 +258,10 @@ class LearningSimulation(TaskManager):
         if self.args.duration > 0:
             await asyncio.sleep(self.args.duration)
             self.logger.info("Simulation took %f seconds" % (time.time() - start_time))
+            self.on_simulation_finished()
             self.loop.stop()
         else:
             self.logger.info("Running simulation for undefined time")
-
-        if self.args.profile:
-            yappi.stop()
-            yappi_stats = yappi.get_func_stats()
-            yappi_stats.sort("tsub")
-            yappi_stats.save(os.path.join(self.data_dir, "yappi.stats"), type='callgrind')
 
     def start_nodes_training(self, active_nodes: List) -> None:
         pass
@@ -454,6 +450,12 @@ export PYTHONPATH=%s
 
     def on_simulation_finished(self) -> None:
         self.flush_statistics()
+
+        if self.args.profile:
+            yappi.stop()
+            yappi_stats = yappi.get_func_stats()
+            yappi_stats.sort("tsub")
+            yappi_stats.save(os.path.join(self.data_dir, "yappi.stats"), type='callgrind')
 
     async def run(self) -> None:
         self.setup_directories()
