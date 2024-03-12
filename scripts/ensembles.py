@@ -9,7 +9,6 @@ import time
 from typing import Dict, List
 
 import torch
-from torch import nn
 from torch.optim import Adam
 from torch.utils.data import TensorDataset, DataLoader
 
@@ -19,7 +18,7 @@ from accdfl.core.models.akashnet import AkashNet
 from accdfl.core.session_settings import LearningSettings, SessionSettings
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("distiller")
+logger = logging.getLogger("ensembler")
 
 data_dir = None
 device = None
@@ -55,6 +54,7 @@ def get_args():
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--validation-set-fraction', type=float, default=0.1)
     parser.add_argument('--epochs', type=int, default=500)
+    parser.add_argument('--test-interval', type=int, default=50)
     return parser.parse_args()
 
 
@@ -277,7 +277,7 @@ def train_akashnet(args, train_inputs, train_targets):
         train_loss_file.write("%d,%f\n" % (epoch + 1, mean_train_loss))
         logger.info("Training loss of epoch %d: %f" % (epoch + 1, mean_train_loss))
 
-        if epoch % 50 == 0:
+        if epoch % args.test_interval == 0:
             accuracy, loss = evaluate_akashnet(args)
             logger.info("Evaluation @ epoch %d: acc %f, loss %f" % (epoch, accuracy, loss))
 
@@ -343,7 +343,8 @@ async def run(args):
     print("Dimension of train inputs: %s" % str(train_inputs.size()))
     print("Dimension of train targets: %s" % str(train_targets.size()))
 
-    akashnet = AkashNet(total_clients=len(cohorts))
+    num_classes = 10 if args.dataset == "cifar10" else 62
+    akashnet = AkashNet(total_clients=len(cohorts), num_classes=num_classes)
     train_akashnet(args, train_inputs, train_targets)
 
 loop = asyncio.get_event_loop()
