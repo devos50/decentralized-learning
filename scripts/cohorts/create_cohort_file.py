@@ -29,7 +29,7 @@ parser.add_argument('--output', type=str, default=None)
 args = parser.parse_args(sys.argv[1:])
 
 if not args.output:
-    args.output = "cohorts_n%d_c%d_s%d_%s.txt" % (args.num_peers, args.cohorts, args.seed, args.method)
+    args.output = "cohorts_%s_n%d_c%d_s%d_%s.txt" % (args.dataset, args.num_peers, args.cohorts, args.seed, args.method)
 
 
 if os.path.exists(args.output):

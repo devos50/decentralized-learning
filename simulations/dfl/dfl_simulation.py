@@ -47,7 +47,7 @@ class DFLSimulation(LearningSimulation):
                     self.cohorts[int(parts[0])] = [int(n) for n in parts[1].split("-")]
                     self.min_val_loss_per_cohort[int(parts[0])] = 1000000
 
-        partitioner_str = self.args.partitioner if self.args.partitioner != "dirichlet" else "dirichlet%f" % self.args.alpha
+        partitioner_str = self.args.partitioner if self.args.partitioner != "dirichlet" else "dirichlet%g" % self.args.alpha
         datadir_name = "n_%d_%s_%s_sd%d" % (
             self.args.peers, self.args.dataset, partitioner_str, self.args.seed)
         if self.cohorts:
