@@ -16,7 +16,7 @@ PEERS=200
 LR=0.002
 CLUSTER_METHOD="uniform"
 
-python3 scripts/cohorts/create_cohort_file.py $PEERS $COHORTS \
+python3 -u scripts/cohorts/create_cohort_file.py $PEERS $COHORTS \
 --seed $SEED \
 --partitioner dirichlet \
 --alpha $ALPHA \

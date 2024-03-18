@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 import time
+from random import Random
 
 from accdfl.core.datasets import create_dataset
 from accdfl.core.session_settings import SessionSettings, LearningSettings
@@ -83,6 +84,10 @@ for peer_id in range(args.num_peers):
 
 
 def cluster_uniform():
+    all_peers = list(range(0, args.num_peers))
+    rand = Random(args.seed)
+    rand.shuffle(all_peers)
+
     # Calculate the base number of peers per cohort
     base_peers_per_cohort = args.num_peers // args.cohorts
 
@@ -103,7 +108,7 @@ def cluster_uniform():
         # Calculate the range of peers for the current cohort
         begin_peer = current_peer
         end_peer = current_peer + peers_in_this_cohort
-        cohorts[cohort_ind] = list(range(begin_peer, end_peer))
+        cohorts[cohort_ind] = all_peers[begin_peer:end_peer]
 
         # Update the index of the first peer for the next cohort
         current_peer = end_peer
@@ -172,13 +177,18 @@ elif args.method == "class":
 
 # Count the number of data samples per cohort
 totals_per_cohort = []
+total_peers = 0
 for cohort_ind in range(args.cohorts):
     totals = [0] * num_cls
     for peer_id_in_cohort in cohorts[cohort_ind]:
         for cls_idx, num_samples in enumerate(client_data[peer_id_in_cohort]):
             totals[cls_idx] += num_samples
     totals_per_cohort.append(totals)
-    logger.info("Data samples in cohort %d: %s (total: %d)", cohort_ind, totals, sum(totals))
+    peers_in_cohort: int = len(cohorts[cohort_ind])
+    total_peers += peers_in_cohort
+    logger.info("Data samples in cohort %d: %s (total: %d), peers: %d", cohort_ind, totals, sum(totals), peers_in_cohort)
+
+assert total_peers == args.num_peers, "Not all peers have been assigned to a cohort!"
 
 with open(args.output, "w") as cohorts_file:
     for cohort_ind, cohort_peers in cohorts.items():

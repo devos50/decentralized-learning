@@ -10,3 +10,5 @@ simulations/dl/data/**
 simulations/gl/data/**
 
 scripts/data/**
+*.log
+*.txt
