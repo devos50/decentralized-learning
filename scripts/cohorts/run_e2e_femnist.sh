@@ -20,6 +20,7 @@ python3 -u scripts/cohorts/create_cohort_file.py $PEERS $COHORTS \
 --seed $SEED \
 --partitioner dirichlet \
 --alpha $ALPHA \
+--method $CLUSTER_METHOD \
 --output "data/cohorts/cohorts_n${PEERS}_c${COHORTS}_s${SEED}_a${ALPHA}_${CLUSTER_METHOD}.txt" \
 --dataset femnist \
 --data-dir /mnt/nfs/devos/leaf/femnist

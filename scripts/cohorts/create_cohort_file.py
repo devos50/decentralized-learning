@@ -151,6 +151,7 @@ def cluster_on_data():
 
 def cluster_on_class():
     num_classes = len(client_data[0])
+    assert args.cohorts == num_classes, "When clustering on class, the number of cohorts and classes must be equal!"
     cohorts = {i: [] for i in range(args.cohorts)}
     for peer_id, peer_data in client_data.items():
         # Get the dominant class of this peer
