@@ -27,6 +27,9 @@ def create_model(dataset: str, architecture: Optional[str] = None) -> Model:
         elif architecture == "resnet8":
             from accdfl.core.models.resnet8 import ResNet8
             return ResNet8()
+        elif architecture == "resnet18":
+            import torchvision.models as tormodels
+            return tormodels.__dict__["resnet18"](num_classes=10)
         else:
             raise RuntimeError("Unknown model architecture for CIFAR10: %s" % architecture)
     elif dataset == "celeba":
@@ -41,5 +44,8 @@ def create_model(dataset: str, architecture: Optional[str] = None) -> Model:
     elif dataset == "spambase":
         from accdfl.core.models.linear import LinearModel
         return LinearModel(57, 2)
+    elif dataset == "google_speech":
+        from accdfl.core.models.resnet_speech import resnet34
+        return resnet34(num_classes=35, in_channels=1)
     else:
         raise RuntimeError("Unknown dataset %s" % dataset)
