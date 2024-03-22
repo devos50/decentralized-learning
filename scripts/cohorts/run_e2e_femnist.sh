@@ -15,17 +15,18 @@ PATIENCE=100
 PEERS=3550
 LR=0.1
 CLUSTER_METHOD="uniform"
+DATASET="femnist"
 
 python3 -u scripts/cohorts/create_cohort_file.py $PEERS $COHORTS \
 --seed $SEED \
 --partitioner dirichlet \
 --alpha $ALPHA \
+--dataset $DATASET \
 --method $CLUSTER_METHOD \
 --output "data/cohorts/cohorts_n${PEERS}_c${COHORTS}_s${SEED}_a${ALPHA}_${CLUSTER_METHOD}.txt" \
---dataset femnist \
---data-dir /mnt/nfs/devos/leaf/femnist
+--data-dir /mnt/nfs/devos/leaf/${DATASET}
 
-python3 -u simulations/dfl/femnist.py \
+python3 -u simulations/dfl/${DATASET}.py \
 --dataset-base-path "/mnt/nfs/devos" \
 --peers $PEERS \
 --local-steps 5 \
@@ -46,13 +47,12 @@ python3 -u simulations/dfl/femnist.py \
 --log-level "ERROR" \
 --learning-rate $LR \
 --checkpoint-interval 18000 \
---checkpoint-interval-is-in-sec > output_femnist_c${COHORTS}_s${SEED}_a${ALPHA}_p${PARTICIPATION}_${CLUSTER_METHOD}.log 2>&1
+--checkpoint-interval-is-in-sec > output_${DATASET}_c${COHORTS}_s${SEED}_a${ALPHA}_p${PARTICIPATION}_${CLUSTER_METHOD}.log 2>&1
 
-python3 -u scripts/ensembles.py data n_${PEERS}_femnist_dirichlet${ALPHA}_sd${SEED}_ct${COHORTS}_p${PARTICIPATION}_dfl femnist \
+python3 -u scripts/ensembles.py data n_${PEERS}_${DATASET}_dirichlet${ALPHA}_sd${SEED}_ct${COHORTS}_p${PARTICIPATION}_dfl ${DATASET} \
 --cohort cohorts/cohorts_n${PEERS}_c${COHORTS}_s${SEED}_a${ALPHA}_${CLUSTER_METHOD}.txt \
 --partitioner dirichlet \
 --alpha $ALPHA \
 --seed $SEED \
 --test-interval 5 \
---data-dir /mnt/nfs/devos/leaf/femnist > output_ensembles_cifar10_n${PEERS}_c${COHORTS}_s${SEED}_a${ALPHA}_${CLUSTER_METHOD}.txt 2>&1
-#python3 -u scripts/distill.py $PWD/data n_1000_femnist_dirichlet${ALPHA}_sd${SEED}_ct${COHORTS}_p${PARTICIPATION}_dfl femnist svhn --cohort-file cohorts/cohorts_n1000_c${COHORTS}_s${SEED}_a${ALPHA}.txt --cohort-participation-fraction $PARTICIPATION --public-data-dir /var/scratch/spandey/dfl-data/svhn --private-data-dir /var/scratch/spandey/leaf/femnist --learning-rate 0.001 --momentum 0.9 --partitioner dirichlet --alpha $ALPHA --seed $SEED --weighting-scheme label --check-teachers-accuracy > output_distill_femnist_c${COHORTS}_s${SEED}_a${ALPHA}_p${PARTICIPATION}.log 2>&1
+--data-dir /mnt/nfs/devos/leaf/${DATASET} > output_ensembles_${DATASET}_n${PEERS}_c${COHORTS}_s${SEED}_a${ALPHA}_${CLUSTER_METHOD}.txt 2>&1

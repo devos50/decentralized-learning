@@ -1,15 +1,11 @@
 # -*- coding: utf-8 -*-
 import csv
 import logging
-import random
-import time
 from collections import defaultdict
 from random import Random
 
 import numpy as np
 from torch.utils.data import DataLoader
-
-#from argParser import args
 
 
 class Partition(object):
@@ -99,7 +95,6 @@ class DataPartitioner(object):
 
     def uniform_partition(self, num_clients):
         # random partition
-        numOfLabels = self.getNumOfLabels()
         data_len = self.getDataLen()
         logging.info(f"Randomly partitioning data, {data_len} samples...")
 

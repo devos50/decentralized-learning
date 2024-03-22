@@ -237,6 +237,9 @@ class GoogleSpeech(Dataset):
         loss = total_loss / float(example_number)
         return accuracy, loss
 
+    def get_num_classes(self):
+        return NUM_CLASSES
+
 
 class BackgroundNoiseDataset():
     """Dataset for silence / background noise."""

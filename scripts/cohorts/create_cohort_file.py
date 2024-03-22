@@ -59,7 +59,7 @@ full_settings = SessionSettings(
     seed=args.seed,
 )
 
-if full_settings.dataset in ["cifar10", "mnist", "fashionmnist", "svhn"]:
+if full_settings.dataset in ["cifar10", "mnist", "fashionmnist", "svhn", "google_speech"]:
     train_dir = args.data_dir
 else:
     train_dir = os.path.join(args.data_dir, "per_user_data", "train")
