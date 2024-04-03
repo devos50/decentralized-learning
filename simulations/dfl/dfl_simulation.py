@@ -446,7 +446,8 @@ class DFLSimulation(LearningSimulation):
             return False
 
     async def on_aggregate_complete(self, ind: int, round_nr: int, model, train_info: Dict[str, float]):
-        if self.args.cohort_file and self.args.cohort is None:
+        cohort_training: bool = self.args.cohort_file and self.args.cohort is None
+        if cohort_training:
             # Which cohort are we in?
             agg_cohort_ind = -1
             for cohort_ind, agg_ind in self.aggregator_per_cohort.items():
@@ -558,8 +559,10 @@ class DFLSimulation(LearningSimulation):
             os.makedirs(models_dir, exist_ok=True)
             torch.save(model.state_dict(), os.path.join(models_dir, "%d_%d_%d.model" % (round_nr, cur_time, ind)))
 
+        # Check accuracy of needed
         if self.args.accuracy_logging_interval > 0 and not self.args.accuracy_logging_interval_is_in_sec and \
-                round_nr % self.args.accuracy_logging_interval == 0 and round_nr > self.latest_accuracy_check_round:
+                round_nr % self.args.accuracy_logging_interval == 0 and round_nr > self.latest_accuracy_check_round and \
+                (not cohort_training or len(self.cohorts) == 1):
 
             print("Will compute accuracy for round %d!" % round_nr)
             if not self.args.bypass_training:

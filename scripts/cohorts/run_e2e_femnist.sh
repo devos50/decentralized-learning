@@ -36,7 +36,7 @@ python3 -u simulations/dfl/${DATASET}.py \
 --seed $SEED \
 --stop-criteria-patience $PATIENCE \
 --capability-trace data/client_device_capacity \
---accuracy-logging-interval 0 \
+--accuracy-logging-interval 10 \
 --partitioner realworld \
 --fix-aggregator \
 --cohort-file "cohorts/cohorts_n${PEERS}_c${COHORTS}_s${SEED}_${CLUSTER_METHOD}.txt" \
