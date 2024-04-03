@@ -1,17 +1,16 @@
 #!/bin/bash
 
 # Ensure the script receives exactly three arguments
-if [ "$#" -ne 3 ]; then
-    echo "Usage: $0 <number_of_cohorts> <seed> <participation>"
+if [ "$#" -ne 2 ]; then
+    echo "Usage: $0 <number_of_cohorts> <seed>"
     exit 1
 fi
 
 # Extract the arguments
 COHORTS=$1
 SEED=$2
-PARTICIPATION=$3
 PATIENCE=100
-PEERS=3550
+PEERS=3597
 LR=0.1
 CLUSTER_METHOD="uniform"
 DATASET="femnist"
@@ -28,7 +27,7 @@ python3 -u simulations/dfl/${DATASET}.py \
 --dataset-base-path "/mnt/nfs/devos" \
 --peers $PEERS \
 --local-steps 5 \
---cohort-participation-fraction $PARTICIPATION \
+--cohort-participation $PARTICIPATION \
 --duration 0 \
 --num-aggregators 1 \
 --activity-log-interval 3600 \

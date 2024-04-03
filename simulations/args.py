@@ -35,7 +35,7 @@ def get_args(dataset: str, default_lr: float, default_momentum: float = 0):
     # Cohort-based training
     parser.add_argument('--cohort-file', type=str, default=None)
     parser.add_argument('--cohort', type=int, default=None)
-    parser.add_argument('--cohort-participation-fraction', type=float, default=1)
+    parser.add_argument('--cohort-participation', type=int, default=10)
 
     # Other settings
     parser.add_argument('--log-level', type=str, default="INFO")

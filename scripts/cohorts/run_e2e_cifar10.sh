@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Ensure the script receives exactly two arguments
-if [ "$#" -ne 5 ]; then
-    echo "Usage: $0 <number_of_cohorts> <seed> <alpha> <participation_rate> <peers>"
+if [ "$#" -ne 4 ]; then
+    echo "Usage: $0 <number_of_cohorts> <seed> <alpha> <peers>"
     exit 1
 fi
 
@@ -10,9 +10,9 @@ fi
 COHORTS=$1
 SEED=$2
 ALPHA=$3
-PARTICIPATION=$4
-PEERS=$5
-PATIENCE=100
+PEERS=$4
+PARTICIPATION=50
+PATIENCE=50
 LR=0.002
 CLUSTER_METHOD="uniform"
 DATASET="cifar10"
@@ -26,7 +26,7 @@ python3 -u scripts/cohorts/create_cohort_file.py $PEERS $COHORTS \
 --output "data/cohorts/cohorts_n${PEERS}_c${COHORTS}_s${SEED}_a${ALPHA}_${CLUSTER_METHOD}.txt"
 
 python3 -u simulations/dfl/${DATASET}.py \
---cohort-participation-fraction $PARTICIPATION \
+--cohort-participation $PARTICIPATION \
 --peers ${PEERS} \
 --duration 0 \
 --num-aggregators 1 \

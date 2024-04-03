@@ -46,7 +46,7 @@ class DLSimulation(LearningSimulation):
         partitioner_str = self.args.partitioner if self.args.partitioner != "dirichlet" else "dirichlet%g" % self.args.alpha
         datadir_name = "n_%d_%s_%s_sd%d_dl" % (self.args.peers, self.args.dataset, partitioner_str, self.args.seed)
         if self.cohorts:
-            datadir_name += "_ct%d_p%g" % (len(self.cohorts), self.args.cohort_participation_fraction)
+            datadir_name += "_ct%d_p%d" % (len(self.cohorts), self.args.cohort_participation)
 
         self.data_dir = os.path.join("data", datadir_name)
 
@@ -178,22 +178,22 @@ class DLSimulation(LearningSimulation):
                 cohort_ind = self.node_to_cohort[node_ind]
                 trainer = node.overlays[0].model_manager.model_trainer
                 for round_nr, train_loss in trainer.training_losses.items():
-                    out_file.write("%d,%d,%.1f,%g,%d,%d,%s,%d,%d,%f\n" % (
-                    len(self.cohorts), self.args.seed, self.args.alpha, self.args.cohort_participation_fraction,
+                    out_file.write("%d,%d,%.1f,%d,%d,%d,%s,%d,%d,%f\n" % (
+                    len(self.cohorts), self.args.seed, self.args.alpha, self.args.cohort_participation,
                     cohort_ind, node_ind, "train", int(cur_time), round_nr, train_loss))
                 trainer.training_losses = {}
 
                 if self.args.compute_validation_loss_global_model:
                     for round_nr, val_loss in trainer.validation_loss_global_model.items():
-                        out_file.write("%d,%d,%.1f,%g,%d,%d,%s,%d,%d,%f\n" % (
-                        len(self.cohorts), self.args.seed, self.args.alpha, self.args.cohort_participation_fraction,
+                        out_file.write("%d,%d,%.1f,%d,%d,%d,%s,%d,%d,%f\n" % (
+                        len(self.cohorts), self.args.seed, self.args.alpha, self.args.cohort_participation,
                         cohort_ind, node_ind, "val_global", int(cur_time), round_nr, val_loss))
                     trainer.validation_loss_global_model = {}
 
                 if self.args.compute_validation_loss_updated_model:
                     for round_nr, val_loss in trainer.validation_loss_updated_model.items():
-                        out_file.write("%d,%d,%.1f,%g,%d,%d,%s,%d,%d,%f\n" % (
-                        len(self.cohorts), self.args.seed, self.args.alpha, self.args.cohort_participation_fraction,
+                        out_file.write("%d,%d,%.1f,%d,%d,%d,%s,%d,%d,%f\n" % (
+                        len(self.cohorts), self.args.seed, self.args.alpha, self.args.cohort_participation,
                         cohort_ind, node_ind, "val_updated", int(cur_time), round_nr, val_loss))
                     trainer.validation_loss_updated_model = {}
 
