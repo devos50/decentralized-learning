@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Ensure the script receives exactly two arguments
-if [ "$#" -ne 4 ]; then
-    echo "Usage: $0 <number_of_cohorts> <seed> <alpha> <participation>"
+# Ensure the script receives exactly three arguments
+if [ "$#" -ne 3 ]; then
+    echo "Usage: $0 <number_of_cohorts> <seed> <participation>"
     exit 1
 fi
 
