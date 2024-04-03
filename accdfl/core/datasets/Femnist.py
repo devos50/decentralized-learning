@@ -10,7 +10,6 @@ from torch.utils.data import DataLoader
 
 from accdfl.core.datasets.Data import Data
 from accdfl.core.datasets.Dataset import Dataset
-from accdfl.core.datasets.Partitioner import DataPartitioner
 from accdfl.core.mappings.Mapping import Mapping
 
 NUM_CLASSES = 62
@@ -22,7 +21,6 @@ PIXEL_RANGE = 256.0
 class Femnist(Dataset):
     """
     Class for the FEMNIST dataset
-
     """
 
     def __read_file__(self, file_path):
@@ -88,23 +86,23 @@ class Femnist(Dataset):
         files.sort()
         c_len = len(files)
 
-        # clients, num_samples, train_data = self.__read_dir__(self.train_dir)
+        if not files:
+            raise RuntimeError("No FEMNIST files found - is the dataset path (%s) correct?" % self.train_dir)
 
         self.uid = self.mapping.get_uid(self.rank, self.machine_id)
         my_train_data = {"x": [], "y": []}
-        self.clients = []
-        self.num_samples = []
         logging.debug("Clients Length: %d", c_len)
 
-        file_name = files[self.uid]
-        clients, _, train_data = self.__read_file__(
-            os.path.join(self.train_dir, file_name)
-        )
-        for cur_client in clients:
-            self.clients.append(cur_client)
-            my_train_data["x"].extend(train_data[cur_client]["x"])
-            my_train_data["y"].extend(train_data[cur_client]["y"])
-            self.num_samples.append(len(train_data[cur_client]["y"]))
+        if self.partitioner == "realworld":
+            file_name = files[self.uid]
+            clients, _, train_data = self.__read_file__(
+                os.path.join(self.train_dir, file_name)
+            )
+            for cur_client in clients:
+                my_train_data["x"].extend(train_data[cur_client]["x"])
+                my_train_data["y"].extend(train_data[cur_client]["y"])
+        else:
+            raise RuntimeError("Unknown partitioner %s for FEMNIST" % self.partitioner)
 
         self.train_x = (
             np.array(my_train_data["x"], dtype=np.dtype("float32"))
@@ -112,8 +110,6 @@ class Femnist(Dataset):
             .transpose(0, 3, 1, 2)
         )
         self.train_y = np.array(my_train_data["y"], dtype=np.dtype("int64")).reshape(-1)
-        logging.debug("train_x.shape: %s", str(self.train_x.shape))
-        logging.debug("train_y.shape: %s", str(self.train_y.shape))
         assert self.train_x.shape[0] == self.train_y.shape[0]
         assert self.train_x.shape[0] > 0
 
@@ -122,7 +118,6 @@ class Femnist(Dataset):
     def load_testset(self):
         """
         Loads the testing set.
-
         """
         logging.info("Loading testing set at directory %s", self.test_dir)
         _, _, d = self.__read_dir__(self.test_dir)
@@ -139,8 +134,6 @@ class Femnist(Dataset):
             .transpose(0, 3, 1, 2)
         )
         self.test_y = np.array(test_y, dtype=np.dtype("int64")).reshape(-1)
-        logging.info("test_x.shape: %s", str(self.test_x.shape))
-        logging.info("test_y.shape: %s", str(self.test_y.shape))
         assert self.test_x.shape[0] == self.test_y.shape[0]
         assert self.test_x.shape[0] > 0
 
@@ -149,12 +142,15 @@ class Femnist(Dataset):
         rank: int,
         machine_id: int,
         mapping: Mapping,
-        n_procs="",
+        partitioner: str,
         train_dir="",
         test_dir="",
         sizes="",
         test_batch_size=1024,
         validation_size=0,
+        shards=1,
+        alpha: float = 1,
+        seed: int = 42,
     ):
         """
         Constructor which reads the data files, instantiates and partitions the dataset
@@ -191,6 +187,16 @@ class Femnist(Dataset):
             validation_size,
         )
 
+        self.partitioner = partitioner
+        self.shards = shards
+        self.alpha = alpha
+        self.seed = seed
+
+        self.train_x = None
+        self.train_y = None
+        self.test_x = None
+        self.test_y = None
+
         if self.__training__:
             self.load_trainset()
 
@@ -199,45 +205,6 @@ class Femnist(Dataset):
 
         if self.__training__ and self.__validating__:
             self.load_validationset()
-
-    def get_client_ids(self):
-        """
-        Function to retrieve all the clients of the current process
-
-        Returns
-        -------
-        list(str)
-            A list of strings of the client ids.
-
-        """
-        return self.clients
-
-    def get_client_id(self, i):
-        """
-        Function to get the client id of the ith sample
-
-        Parameters
-        ----------
-        i : int
-            Index of the sample
-
-        Returns
-        -------
-        str
-            Client ID
-
-        Raises
-        ------
-        IndexError
-            If the sample index is out of bounds
-
-        """
-        lb = 0
-        for j in range(len(self.clients)):
-            if i < lb + self.num_samples[j]:
-                return self.clients[j]
-
-        raise IndexError("i is out of bounds!")
 
     def load_validationset(self):
         """
@@ -273,7 +240,7 @@ class Femnist(Dataset):
         """
         if self.__training__:
             return DataLoader(
-                Data(self.train_x, self.train_y),
+                self.trainset,
                 batch_size=batch_size,
                 shuffle=shuffle,
             )
