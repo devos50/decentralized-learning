@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Ensure the script receives exactly two arguments
-if [ "$#" -ne 4 ]; then
-    echo "Usage: $0 <number_of_cohorts> <seed> <alpha> <participation_rate>"
+if [ "$#" -ne 5 ]; then
+    echo "Usage: $0 <number_of_cohorts> <seed> <alpha> <participation_rate> <peers>"
     exit 1
 fi
 
@@ -11,8 +11,8 @@ COHORTS=$1
 SEED=$2
 ALPHA=$3
 PARTICIPATION=$4
+PEERS=$5
 PATIENCE=50
-PEERS=200
 LR=0.002
 CLUSTER_METHOD="uniform"
 DATASET="cifar10"
