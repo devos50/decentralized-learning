@@ -9,8 +9,7 @@ fi
 # Extract the arguments
 COHORTS=$1
 SEED=$2
-ALPHA=$3
-PARTICIPATION=$4
+PARTICIPATION=$3
 PATIENCE=100
 PEERS=3550
 LR=0.1
@@ -19,11 +18,10 @@ DATASET="femnist"
 
 python3 -u scripts/cohorts/create_cohort_file.py $PEERS $COHORTS \
 --seed $SEED \
---partitioner dirichlet \
---alpha $ALPHA \
+--partitioner realworld \
 --dataset $DATASET \
 --method $CLUSTER_METHOD \
---output "data/cohorts/cohorts_n${PEERS}_c${COHORTS}_s${SEED}_a${ALPHA}_${CLUSTER_METHOD}.txt" \
+--output "data/cohorts/cohorts_n${PEERS}_c${COHORTS}_s${SEED}_${CLUSTER_METHOD}.txt" \
 --data-dir /mnt/nfs/devos/leaf/${DATASET}
 
 python3 -u simulations/dfl/${DATASET}.py \
@@ -39,20 +37,18 @@ python3 -u simulations/dfl/${DATASET}.py \
 --stop-criteria-patience $PATIENCE \
 --capability-trace data/client_device_capacity \
 --accuracy-logging-interval 0 \
---partitioner dirichlet \
---alpha $ALPHA \
+--partitioner realworld \
 --fix-aggregator \
---cohort-file "cohorts/cohorts_n${PEERS}_c${COHORTS}_s${SEED}_a${ALPHA}_${CLUSTER_METHOD}.txt" \
+--cohort-file "cohorts/cohorts_n${PEERS}_c${COHORTS}_s${SEED}_${CLUSTER_METHOD}.txt" \
 --compute-validation-loss-global-model \
 --log-level "ERROR" \
 --learning-rate $LR \
 --checkpoint-interval 18000 \
---checkpoint-interval-is-in-sec > output_${DATASET}_c${COHORTS}_s${SEED}_a${ALPHA}_p${PARTICIPATION}_${CLUSTER_METHOD}.log 2>&1
+--checkpoint-interval-is-in-sec > output_${DATASET}_c${COHORTS}_s${SEED}_p${PARTICIPATION}_${CLUSTER_METHOD}.log 2>&1
 
-python3 -u scripts/ensembles.py data n_${PEERS}_${DATASET}_dirichlet${ALPHA}_sd${SEED}_ct${COHORTS}_p${PARTICIPATION}_dfl ${DATASET} \
---cohort cohorts/cohorts_n${PEERS}_c${COHORTS}_s${SEED}_a${ALPHA}_${CLUSTER_METHOD}.txt \
---partitioner dirichlet \
---alpha $ALPHA \
+python3 -u scripts/ensembles.py data n_${PEERS}_${DATASET}_realworld_sd${SEED}_ct${COHORTS}_p${PARTICIPATION}_dfl ${DATASET} \
+--cohort cohorts/cohorts_n${PEERS}_c${COHORTS}_s${SEED}_${CLUSTER_METHOD}.txt \
+--partitioner realworld \
 --seed $SEED \
 --test-interval 5 \
 --data-dir /mnt/nfs/devos/leaf/${DATASET} > output_ensembles_${DATASET}_n${PEERS}_c${COHORTS}_s${SEED}_a${ALPHA}_${CLUSTER_METHOD}.txt 2>&1

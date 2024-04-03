@@ -28,7 +28,7 @@ def get_args(default_lr: float, default_momentum: float = 0):
     parser.add_argument('--peers', type=int, default=1)
     parser.add_argument('--rounds', type=int, default=100)
     parser.add_argument('--acc-check-interval', type=int, default=1)
-    parser.add_argument('--partitioner', type=str, default="iid")
+    parser.add_argument('--partitioner', type=str, default="iid", choices=["iid", "shards", "dirichlet", "realworld"])
     parser.add_argument('--alpha', type=float, default=1)
     parser.add_argument('--model', type=str, default=None)
     parser.add_argument('--train-method', type=str, default="local")

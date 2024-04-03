@@ -40,7 +40,7 @@ def get_args():
     parser.add_argument('--cohort-file', type=str, default="cohorts.txt")
     parser.add_argument('dataset')
     parser.add_argument('--distill-timestamp', type=int, default=None)  # The timestamp during the experiment at which we distill
-    parser.add_argument('--partitioner', type=str, default="iid")
+    parser.add_argument('--partitioner', type=str, default="iid", choices=["iid", "shards", "dirichlet", "realworld"])
     parser.add_argument('--alpha', type=float, default=1)
     parser.add_argument('--learning-rate', type=float, default=5e-5)
     parser.add_argument('--momentum', type=float, default=None)
