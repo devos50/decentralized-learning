@@ -9,6 +9,7 @@ fi
 # Extract the arguments
 COHORTS=$1
 SEED=$2
+PARTICIPATION=50
 PATIENCE=100
 PEERS=3597
 LR=0.1
