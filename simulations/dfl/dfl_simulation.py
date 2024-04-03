@@ -487,7 +487,7 @@ class DFLSimulation(LearningSimulation):
                 new_rolling_avg_loss = self.rolling_avgs_per_cohort[agg_cohort_ind][-1]
                 self.logger.info("Avg. validation loss of cohort %d: %f, unaveraged: %f", agg_cohort_ind, new_rolling_avg_loss, new_avg_loss)
                 if new_rolling_avg_loss < self.min_val_loss_per_cohort[agg_cohort_ind]:
-                    self.logger.info("Cohort %d has a lower validation loss: %f - checkpointing model", agg_cohort_ind, new_rolling_avg_loss)
+                    self.logger.error("Cohort %d has a lower validation loss: %f - checkpointing model", agg_cohort_ind, new_rolling_avg_loss)
                     self.min_val_loss_per_cohort[agg_cohort_ind] = new_rolling_avg_loss
 
                     cur_time = get_event_loop().time()
@@ -501,7 +501,7 @@ class DFLSimulation(LearningSimulation):
                     torch.save(model.state_dict(), os.path.join(models_dir, "c%d_%d_%d_0_best.model" % (agg_cohort_ind, round_nr, cur_time)))
 
                 if should_stop:
-                    self.logger.info("Validation loss of cohort %d not decreasing - stopping it", agg_cohort_ind)
+                    self.logger.error("Validation loss of cohort %d not decreasing - stopping it", agg_cohort_ind)
                     for cohort_peer_ind in self.cohorts[agg_cohort_ind]:
                         self.nodes[cohort_peer_ind].overlays[0].go_offline(graceful=False)
                     self.cohorts_completed.add(agg_cohort_ind)
