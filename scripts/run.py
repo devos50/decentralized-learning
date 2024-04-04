@@ -46,7 +46,6 @@ async def run(args, dataset: str):
         momentum=args.momentum,
         weight_decay=args.weight_decay,
         batch_size=args.batch_size,
-        local_steps=0,
     )
 
     settings = SessionSettings(

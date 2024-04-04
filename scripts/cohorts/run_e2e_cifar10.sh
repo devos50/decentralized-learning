@@ -44,7 +44,7 @@ python3 -u simulations/dfl/${DATASET}.py \
 --log-level "ERROR" \
 --learning-rate $LR \
 --checkpoint-interval 18000 \
---checkpoint-interval-is-in-sec > output_c${COHORTS}_s${SEED}_a${ALPHA}_p${PARTICIPATION}_${CLUSTER_METHOD}.log 2>&1
+--checkpoint-interval-is-in-sec > output_${DATASET}_c${COHORTS}_s${SEED}_a${ALPHA}_p${PARTICIPATION}_${CLUSTER_METHOD}.log 2>&1
 
 python3 -u scripts/ensembles.py data n_${PEERS}_${DATASET}_dirichlet${ALPHA}_sd${SEED}_ct${COHORTS}_p${PARTICIPATION}_dfl $DATASET \
 --cohort "cohorts/cohorts_n${PEERS}_c${COHORTS}_s${SEED}_a${ALPHA}_${CLUSTER_METHOD}.txt" \
