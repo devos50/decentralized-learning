@@ -106,9 +106,11 @@ class DFLSimulation(LearningSimulation):
 
         if self.args.cohort_file is not None:
             # Setup cohorts
+            assert len(self.cohorts) >= 1, "There are no active cohorts!"
 
             # Fix the sample size
-            self.args.sample_size = min(len(self.cohorts[0]), self.args.cohort_participation)
+            active_cohort: int = list(self.cohorts.keys())[0]
+            self.args.sample_size = min(len(self.cohorts[active_cohort]), self.args.cohort_participation)
 
             for cohort_ind, cohort_peers in self.cohorts.items():
                 aggregator_peer_pk = self.nodes[self.aggregator_per_cohort[cohort_ind]].overlays[0].my_peer.public_key.key_to_bin()
@@ -170,7 +172,7 @@ class DFLSimulation(LearningSimulation):
                     node.overlays[0].setup(session_settings)
                     node.overlays[0].model_manager.model_trainer.logger = SimulationLoggerAdapter(node.overlays[0].model_manager.model_trainer.logger, {})
 
-                if cohort_ind == 0:
+                if not self.session_settings:
                     self.session_settings = session_settings  # Store one instantiation of these settings for other purposes
         else:
             # Setup the training process
