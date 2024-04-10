@@ -238,6 +238,9 @@ class LearningSimulation(TaskManager):
         online, offline, training = 0, 0, 0
         active_nodes_in_view: List[int] = []
         for node in self.nodes:
+            if not node.overlays[0].did_setup:
+                continue
+
             if node.overlays[0].is_active:
                 online += 1
                 active_nodes_in_view.append(len(node.overlays[0].peer_manager.get_active_peers()))
