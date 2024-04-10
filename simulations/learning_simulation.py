@@ -139,6 +139,9 @@ class LearningSimulation(TaskManager):
             device_ids = rand.sample(list(data.keys()), self.args.peers)
             nodes_bws: Dict[bytes, int] = {}
             for ind, node in enumerate(self.nodes):
+                if not node.overlays[0].did_setup:
+                    continue
+
                 node.overlays[0].model_manager.model_trainer.simulated_speed = data[device_ids[ind]]["computation"]
                 if self.args.bypass_model_transfers and not self.args.instant_network:
                     if node.overlays[0].bw_scheduler.bw_limit == -1:
@@ -255,7 +258,7 @@ class LearningSimulation(TaskManager):
     async def start_simulation(self) -> None:
         active_nodes: List = []
         for ind, node in enumerate(self.nodes):
-            if not self.args.cohort_file and hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() not in self.session_settings.participants:
+            if self.args.cohort is not None and hexlify(node.overlays[0].my_peer.public_key.key_to_bin()).decode() not in self.session_settings.participants:
                 continue
 
             if not node.overlays[0].traces or (node.overlays[0].traces and node.overlays[0].traces["active"][0] == 0):
@@ -426,6 +429,9 @@ export PYTHONPATH=%s
         total_network_time: float = 0
 
         for ind, node in enumerate(self.nodes):
+            if not node.overlays[0].did_setup:
+                continue
+
             total_bytes_up += node.overlays[0].endpoint.bytes_up
             total_bytes_down += node.overlays[0].endpoint.bytes_down
             total_train_time += node.overlays[0].model_manager.model_trainer.total_training_time
@@ -442,6 +448,9 @@ export PYTHONPATH=%s
 
         individual_stats = {}
         for ind, node in enumerate(self.nodes):
+            if not node.overlays[0].did_setup:
+                continue
+
             bytes_up = node.overlays[0].endpoint.bytes_up
             bytes_down = node.overlays[0].endpoint.bytes_down
             train_time = node.overlays[0].model_manager.model_trainer.total_training_time

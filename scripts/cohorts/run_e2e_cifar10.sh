@@ -42,6 +42,7 @@ python3 -u simulations/dfl/${DATASET}.py \
 --cohort-file "cohorts/cohorts_n${PEERS}_c${COHORTS}_s${SEED}_a${ALPHA}_${CLUSTER_METHOD}.txt" \
 --compute-validation-loss-global-model \
 --log-level "ERROR" \
+--local-steps 5 \
 --learning-rate $LR \
 --checkpoint-interval 18000 \
 --checkpoint-interval-is-in-sec > output_${DATASET}_c${COHORTS}_s${SEED}_a${ALPHA}_p${PARTICIPATION}_${CLUSTER_METHOD}.log 2>&1

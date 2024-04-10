@@ -47,12 +47,17 @@ class DFLSimulation(LearningSimulation):
                     self.cohorts[int(parts[0])] = [int(n) for n in parts[1].split("-")]
                     self.min_val_loss_per_cohort[int(parts[0])] = 1000000
 
+        # If we only activate one cohort (specified by the --cohort flag), remove all other cohorts from the equation
+        if self.args.cohort is not None:
+            self.cohorts = {self.args.cohort: self.cohorts[self.args.cohort]}
+
         partitioner_str = self.args.partitioner if self.args.partitioner != "dirichlet" else "dirichlet%g" % self.args.alpha
         datadir_name = "n_%d_%s_%s_sd%d" % (
             self.args.peers, self.args.dataset, partitioner_str, self.args.seed)
         if self.cohorts:
             datadir_name += "_ct%d_p%d" % (len(self.cohorts), self.args.cohort_participation)
         if self.args.cohort is not None:
+            assert self.args.cohort < len(self.cohorts), "Cohort index (%d) exceeding total num of cohorts (%d)" % (self.args.cohort, len(self.cohorts))
             datadir_name += "_c%d" % self.args.cohort
         datadir_name += "_dfl"
         self.data_dir = os.path.join("data", datadir_name)
@@ -91,7 +96,7 @@ class DFLSimulation(LearningSimulation):
         aggregator_peer_pk = None
         lowest_latency_peer_id = -1
         if self.args.fix_aggregator:
-            if self.args.cohort_file is not None and self.args.cohort is None:
+            if self.args.cohort_file is not None:
                 for cohort_ind, cohort_peers in self.cohorts.items():
                     lowest_latency_peer_id = self.determine_peer_with_lowest_median_latency(cohort_peers)
                     self.aggregator_per_cohort[cohort_ind] = lowest_latency_peer_id
@@ -99,7 +104,7 @@ class DFLSimulation(LearningSimulation):
                 lowest_latency_peer_id = self.determine_peer_with_lowest_median_latency(participants_ids)
                 aggregator_peer_pk = self.nodes[lowest_latency_peer_id].overlays[0].my_peer.public_key.key_to_bin()
 
-        if self.args.cohort_file is not None and self.args.cohort is None:
+        if self.args.cohort_file is not None:
             # Setup cohorts
 
             # Fix the sample size
@@ -248,7 +253,7 @@ class DFLSimulation(LearningSimulation):
         with open(os.path.join(self.data_dir, "events.csv"), "w") as out_file:
             out_file.write("time,peer,round,event\n")
 
-        if self.args.cohort_file and self.args.cohort is None:
+        if self.args.cohort_file:
             with open(os.path.join(self.data_dir, "cohorts_info.csv"), "w") as out_file:
                 out_file.write("cohort,time,round,loss,ongoing_cohorts,finished_cohorts\n")
 
@@ -262,7 +267,7 @@ class DFLSimulation(LearningSimulation):
         if self.args.checkpoint_interval and self.args.checkpoint_interval_is_in_sec:
             self.logger.info("Starting model checkpoint loop every %d sec", self.args.checkpoint_interval)
 
-            if self.args.cohort_file and self.args.cohort is None:
+            if self.args.cohort_file:
                 self.register_task("checkpoint", self.checkpoint_cohort_models_interval, interval=self.args.checkpoint_interval)
             else:
                 self.register_task("checkpoint", self.checkpoint_model_interval, interval=self.args.checkpoint_interval)
@@ -271,7 +276,7 @@ class DFLSimulation(LearningSimulation):
         if self.args.accuracy_logging_interval and self.args.accuracy_logging_interval_is_in_sec:
             self.logger.info("Starting model accuracy check loop every %d sec", self.args.accuracy_logging_interval)
 
-            if self.args.cohort_file and self.args.cohort is None:
+            if self.args.cohort_file:
                 self.register_task("accuracy_check", self.check_cohorts_accuracy_interval, interval=self.args.accuracy_logging_interval)
             else:
                 self.register_task("accuracy_check", self.check_accuracy_interval, interval=self.args.accuracy_logging_interval)
@@ -321,7 +326,7 @@ class DFLSimulation(LearningSimulation):
 
         activated_nodes = []
 
-        if self.args.cohort_file and self.args.cohort is None:
+        if self.args.cohort_file:
             # We have to activate some nodes per cohort
             for cohort_ind, cohort_peers in self.cohorts.items():
                 sample_size = self.sample_size_per_cohort[cohort_ind]
@@ -446,7 +451,7 @@ class DFLSimulation(LearningSimulation):
             return False
 
     async def on_aggregate_complete(self, ind: int, round_nr: int, model, train_info: Dict[str, float]):
-        cohort_training: bool = self.args.cohort_file and self.args.cohort is None
+        cohort_training: bool = self.args.cohort_file
         if cohort_training:
             # Which cohort are we in?
             agg_cohort_ind = -1
