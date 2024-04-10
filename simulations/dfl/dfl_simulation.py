@@ -47,10 +47,6 @@ class DFLSimulation(LearningSimulation):
                     self.cohorts[int(parts[0])] = [int(n) for n in parts[1].split("-")]
                     self.min_val_loss_per_cohort[int(parts[0])] = 1000000
 
-        # If we only activate one cohort (specified by the --cohort flag), remove all other cohorts from the equation
-        if self.args.cohort is not None:
-            self.cohorts = {self.args.cohort: self.cohorts[self.args.cohort]}
-
         partitioner_str = self.args.partitioner if self.args.partitioner != "dirichlet" else "dirichlet%g" % self.args.alpha
         datadir_name = "n_%d_%s_%s_sd%d" % (
             self.args.peers, self.args.dataset, partitioner_str, self.args.seed)
@@ -61,6 +57,10 @@ class DFLSimulation(LearningSimulation):
             datadir_name += "_c%d" % self.args.cohort
         datadir_name += "_dfl"
         self.data_dir = os.path.join("data", datadir_name)
+
+        # If we only activate one cohort (specified by the --cohort flag), remove all other cohorts from the equation
+        if self.args.cohort is not None:
+            self.cohorts = {self.args.cohort: self.cohorts[self.args.cohort]}
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = super().get_ipv8_builder(peer_id)
@@ -525,7 +525,14 @@ class DFLSimulation(LearningSimulation):
                     torch.save(model.state_dict(), os.path.join(models_dir, "c%d_%d_%d_0_last.model" % (agg_cohort_ind, round_nr, cur_time)))
 
                     # Determine the number of data samples per class
-                    dataset = self.nodes[0].overlays[0].model_manager.model_trainer.dataset
+                    dataset = None
+                    for node in self.nodes:
+                        if node.overlays[0].did_setup:
+                            dataset = node.overlays[0].model_manager.model_trainer.dataset
+                            break
+
+                    assert dataset, "Dataset doesn't exist!"
+
                     samples_per_class = [0] * dataset.get_num_classes()
                     for cohort_peer_ind in self.cohorts[agg_cohort_ind]:
                         peer_dataset = self.nodes[cohort_peer_ind].overlays[0].model_manager.model_trainer.dataset
