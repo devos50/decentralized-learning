@@ -123,7 +123,10 @@ class LearningSimulation(TaskManager):
             rand = Random(self.args.seed)
             device_ids = rand.sample(list(data.keys()), self.args.peers)
             for ind, node in enumerate(self.nodes):
-                node.overlays[0].set_traces(data[device_ids[ind]])
+                if node.overlays[0].my_peer.public_key.key_to_bin() != self.session_settings.dfl.fixed_aggregator:
+                    node.overlays[0].set_traces(data[device_ids[ind]])
+                else:
+                    self.logger.error("Not applying availability traces to server node %d", ind)
 
         if self.args.capability_traces:
             self.logger.info("Applying capability trace file %s", self.args.availability_traces)
