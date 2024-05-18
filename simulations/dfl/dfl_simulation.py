@@ -103,7 +103,7 @@ class DFLSimulation(LearningSimulation):
 
         # If we fix the aggregator, we assume unlimited upload/download slots
         if self.args.fix_aggregator:
-            print("Overriding max. EVA transfers for peer %d" % lowest_latency_peer_id)
+            self.logger.info("Overriding max. EVA transfers/bw limits for peer %d", lowest_latency_peer_id)
             self.nodes[lowest_latency_peer_id].overlays[0].eva.settings.max_simultaneous_transfers = 100000
 
         if self.args.bypass_model_transfers:
