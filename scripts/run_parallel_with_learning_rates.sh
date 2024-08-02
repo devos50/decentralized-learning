@@ -12,4 +12,4 @@ command_to_run=$1
 shift 1  # Remove the first argument to keep only the seeds
 
 # Use the provided seeds and run the command with each seed in parallel
-printf "%s\n" "$@" | xargs -I {} -P "$#" bash -c "LEARNING_RATE={} && echo \"Running command with learning rate: \$LEARNING_RATE\" && ${command_to_run/\{\}/\$SEED} > output_\$LEARNING_RATE.log 2>&1"
+printf "%s\n" "$@" | xargs -I {} -P "$#" bash -c "LEARNING_RATE={} && echo \"Running command with learning rate: \$LEARNING_RATE\" && ${command_to_run/\{\}/\$LEARNING_RATE} > output_\$LEARNING_RATE.log 2>&1"
