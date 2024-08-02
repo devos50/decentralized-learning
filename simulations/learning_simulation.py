@@ -123,7 +123,10 @@ class LearningSimulation(TaskManager):
             rand = Random(self.args.seed)
             device_ids = rand.sample(list(data.keys()), self.args.peers)
             for ind, node in enumerate(self.nodes):
-                node.overlays[0].set_traces(data[device_ids[ind]])
+                if node.overlays[0].my_peer.public_key.key_to_bin() != self.session_settings.dfl.fixed_aggregator:
+                    node.overlays[0].set_traces(data[device_ids[ind]])
+                else:
+                    self.logger.error("Not applying availability traces to server node %d", ind)
 
         if self.args.capability_traces:
             self.logger.info("Applying capability trace file %s", self.args.availability_traces)
@@ -137,7 +140,11 @@ class LearningSimulation(TaskManager):
                 node.overlays[0].model_manager.model_trainer.simulated_speed = data[device_ids[ind]]["computation"]
                 if self.args.bypass_model_transfers:
                     # Also apply the network latencies
-                    bw_limit: int = int(data[ind + 1]["communication"]) * 1024 // 8
+                    if node.overlays[0].my_peer.public_key.key_to_bin() == self.session_settings.dfl.fixed_aggregator:
+                        self.logger.error("Setting BW limit of server node %d to unlimited", ind)
+                        bw_limit: int = 1000000000000
+                    else:
+                        bw_limit: int = int(data[ind + 1]["communication"]) * 1024 // 8
                     node.overlays[0].bw_scheduler.bw_limit = bw_limit
                     nodes_bws[node.overlays[0].my_peer.public_key.key_to_bin()] = bw_limit
 
