@@ -27,9 +27,9 @@ def create_model(dataset: str, architecture: Optional[str] = None) -> Model:
         elif architecture == "resnet8":
             from accdfl.core.models.resnet8 import ResNet8
             return ResNet8()
-        elif architecture == "resnet18":
+        elif architecture in ["resnet18", "mobilenet_v3_large"]:
             import torchvision.models as tormodels
-            return tormodels.__dict__["resnet18"](num_classes=10)
+            return tormodels.__dict__[architecture](num_classes=10)
         else:
             raise RuntimeError("Unknown model architecture for CIFAR10: %s" % architecture)
     elif dataset == "celeba":

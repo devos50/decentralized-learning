@@ -220,7 +220,7 @@ class CIFAR10(Dataset):
             for data, target in iter(testloader):
                 data, target = data.to(device), target.to(device)
                 output = model.forward(data)
-                if model.__class__.__name__ == "ResNet":
+                if model.__class__.__name__ in ["ResNet", "MobileNetV3"]:
                     total_loss += ce_loss(output, target)
                 else:
                     total_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss

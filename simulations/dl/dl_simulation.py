@@ -168,8 +168,8 @@ class DLSimulation(LearningSimulation):
                 accuracy, loss = 0, 0
 
             with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
-                out_file.write("%s,DL,%f,%d,%d,%f,%f\n" % (self.args.dataset, get_event_loop().time(), 0,
-                                                           int(cur_time), accuracy, loss))
+                out_file.write("%s,%d,%g,DL,%f,%d,%d,%f,%f\n" % (self.args.dataset, self.args.seed, self.args.learning_rate,
+                                                                 get_event_loop().time(), 0, int(cur_time), accuracy, loss))
         elif self.args.dl_accuracy_method == "individual":
             # Compute the accuracies of all individual models
             if self.args.dl_test_mode == "das_jobs":
@@ -181,8 +181,9 @@ class DLSimulation(LearningSimulation):
                 accuracy, loss = acc_res
                 round_nr = self.nodes[ind].overlays[0].round
                 with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
-                    out_file.write("%s,DL,%f,%d,%d,%f,%f\n" %
-                                   (self.args.dataset, cur_time, ind, round_nr, accuracy, loss))
+                    out_file.write("%s,%d,%g,DL,%f,%d,%d,%f,%f\n" %
+                                   (self.args.dataset, self.args.seed, self.args.learning_rate,
+                                    cur_time, ind, round_nr, accuracy, loss))
 
         self.model_manager.reset_incoming_trained_models()
 
