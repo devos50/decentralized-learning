@@ -10,6 +10,10 @@ def serialize_model(model: torch.nn.Module) -> bytes:
     return pickle.dumps(model.state_dict())
 
 
+def serialize_chunk(chunk) -> bytes:
+    return pickle.dumps(chunk)
+
+
 def unserialize_model(serialized_model: bytes, dataset: str, architecture: Optional[str] = None) -> torch.nn.Module:
     model = create_model(dataset, architecture=architecture)
     model.load_state_dict(pickle.loads(serialized_model))

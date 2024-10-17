@@ -9,6 +9,7 @@ from math import floor
 from random import Random
 from typing import Dict, Optional, List, Tuple, Set
 
+from accdfl.dfl.reduction_manager import ReductionManager
 import torch
 from torch import nn
 
@@ -20,7 +21,7 @@ from ipv8.util import succeed
 from accdfl.core import NodeMembershipChange
 from accdfl.core.community import LearningCommunity
 from accdfl.core.model_manager import ModelManager
-from accdfl.core.models import serialize_model, unserialize_model
+from accdfl.core.models import serialize_chunk, serialize_model, unserialize_model
 from accdfl.core.session_settings import SessionSettings
 from accdfl.dfl.caches import PingPeersRequestCache, PingRequestCache
 from accdfl.dfl.payloads import AdvertiseMembership, PingPayload, PongPayload, AggAckPayload
@@ -36,6 +37,7 @@ class DFLCommunity(LearningCommunity):
 
         self.random = Random(int.from_bytes(self.my_peer.public_key.key_to_bin(), 'big'))
         self.peers_first_round: List[bytes] = []
+        self.reduction_manager: Optional[ReductionManager] = None
 
         # Statistics
         self.active_peers_history = []
@@ -450,7 +452,39 @@ class DFLCommunity(LearningCommunity):
             self.logger.warning("Participant %s went offline during model training in round %d - not proceeding", self.peer_manager.get_my_short_id(), round)
             return
 
-        await self.forward_trained_model(round)
+        await self.do_ring_allreduce(round)
+
+    async def do_ring_allreduce(self, round: int):
+        # TODO we're not checking online/offline status of nodes!
+        participants = await self.determine_available_peers_for_sample(round, self.settings.dfl.sample_size)
+        participants = sorted(participants)
+        total_participants: int = len(participants)
+        my_rank: int = participants.index(self.my_id)
+
+        self.reduction_manager = ReductionManager(round, self.model_manager.model, participants, my_rank)
+        self.reduction_manager.prepare()
+
+        for reduce_step in range(2 * total_participants - 1):
+            print("DOING STEP %d" % reduce_step)
+            self.reduction_manager.receive_future = Future()
+
+            # Send chunk
+            idx, chunk = self.reduction_manager.get_chunk_to_send()
+            recipient_peer_pk = participants[(my_rank + 1) % len(participants)]
+            peer = self.get_peer_by_pk(recipient_peer_pk)
+            if not peer:
+                raise RuntimeError("Could not find peer with public key %s", hexlify(recipient_peer_pk).decode())
+
+            ensure_future(self.eva_send_chunk(round, idx, chunk, peer))
+
+            if self.reduction_manager.step < total_participants:
+                self.reduction_manager.chunks[idx].zero_()
+
+            await self.reduction_manager.receive_future
+
+        # We finished the all-reduce, reconstruct the model and send the model to the next sample
+        a = 1 / 0
+
 
     async def forward_trained_model(self, round: int):
         # 2. Determine the aggregators of the next sample that are available
@@ -553,6 +587,14 @@ class DFLCommunity(LearningCommunity):
 
         await asyncio.gather(*futures)
 
+    def eva_send_chunk(self, round, chunk_idx, chunk, peer):
+        # TODO we're not sending the population view here!
+        start_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
+        serialized_chunk = serialize_chunk(chunk)
+        response = {"round": round, "idx": chunk_idx, "type": "chunk"}
+        serialized_response = json.dumps(response).encode()
+        return self.schedule_eva_send_model(peer, serialized_response, serialized_chunk, start_time)
+
     def eva_send_model(self, round, model, type, population_view, peer):
         start_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
         serialized_model = serialize_model(model)
@@ -584,6 +626,13 @@ class DFLCommunity(LearningCommunity):
 
         self.logger.info(f'Participant {my_peer_id} received data from participant {peer_id}: {result.info.decode()}')
         json_data = json.loads(result.info.decode())
+
+        if json_data["type"] == "chunk":
+            self.log_event(json_data["round"], "received_chunk")
+            incoming_chunk = pickle.loads(result.data)
+            self.received_model_chunk(json_data["idx"], incoming_chunk)
+            return
+
         serialized_model = result.data[:json_data["model_data_len"]]
         serialized_population_view = result.data[json_data["model_data_len"]:]
         received_population_view = pickle.loads(serialized_population_view)
@@ -602,6 +651,11 @@ class DFLCommunity(LearningCommunity):
         elif json_data["type"] == "aggregated_model":
             self.log_event(json_data["round"], "received_aggregated_model")
             self.received_aggregated_model(result.peer, json_data["round"], incoming_model)
+        else:
+            raise RuntimeError("Received unknown message type %s" % json_data["type"])
+
+    def received_model_chunk(self, chunk_idx: int, chunk) -> None:
+        self.reduction_manager.process_received_chunk(chunk_idx, chunk)
 
     def has_enough_trained_models(self, agg_round: int) -> bool:
         return len(self.aggregations[agg_round].incoming_trained_models) >= \
