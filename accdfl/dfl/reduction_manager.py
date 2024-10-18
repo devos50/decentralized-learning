@@ -1,3 +1,4 @@
+import copy
 from asyncio import Future
 from typing import List, Optional
 
@@ -27,14 +28,20 @@ class ReductionManager:
             remaining = flat_params[len(self.participants_ids) * chunk_size:]
             self.chunks[-1] = torch.cat([self.chunks[-1], remaining])
 
-    def finish(self):
+    def get_aggregated_model(self):
         # Reconstruct the flat tensor
-        flat_params = ReductionManager.get_flat_params(self.model)
-        aggregated_flat_params = torch.empty_like(flat_params)
-        for i, chunk in enumerate(self.chunks):
-            aggregated_flat_params[i::len(self.participants_ids)] = chunk
-        # TODO
-        a = 1 / 0
+        flat_params = torch.cat(self.chunks)
+
+        # Copy the flat tensor into the model
+        pointer = 0
+        model_cpy = copy.deepcopy(self.model)
+        for param in model_cpy.parameters():
+            numel = param.data.numel()
+            param_shape = param.data.shape
+            param.data.copy_(flat_params[pointer:pointer + numel].view(param_shape))
+            pointer += numel
+
+        return model_cpy
 
     def process_received_chunk(self, chunk_idx: int, chunk: List):
         self.chunks[chunk_idx] += chunk

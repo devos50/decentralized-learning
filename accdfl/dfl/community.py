@@ -10,6 +10,7 @@ from random import Random
 from typing import Dict, Optional, List, Tuple, Set
 
 from accdfl.dfl.reduction_manager import ReductionManager
+from accdfl.dfl.round import Round
 import torch
 from torch import nn
 
@@ -36,8 +37,6 @@ class DFLCommunity(LearningCommunity):
         super().__init__(*args, **kwargs)
 
         self.random = Random(int.from_bytes(self.my_peer.public_key.key_to_bin(), 'big'))
-        self.peers_first_round: List[bytes] = []
-        self.reduction_manager: Optional[ReductionManager] = None
 
         # Statistics
         self.active_peers_history = []
@@ -81,6 +80,8 @@ class DFLCommunity(LearningCommunity):
         self.determine_sample_durations = []
         self.derived_samples: List[Tuple[int, List[str]]] = []
         self.events: List[Tuple[float, str, int, str]] = []
+
+        self.round_info: Dict[int, Round] = {}
 
         # State
         self.ongoing_training_task_name: Optional[str] = None
@@ -426,65 +427,97 @@ class DFLCommunity(LearningCommunity):
             if self.train_future:
                 ensure_future(self.forward_trained_model(payload.round))
 
-    def train_in_round(self, round):
-        self.ongoing_training_task_name = "round_%d" % round
+    def train_in_round(self, round_info: Round):
+        self.ongoing_training_task_name = "round_%d" % round_info.round_nr
         if not self.is_pending_task_active(self.ongoing_training_task_name):
-            task = self.register_task(self.ongoing_training_task_name, self.train_in_round_coroutine, round)
+            task = self.register_task(self.ongoing_training_task_name, self.train_in_round_coroutine, round_info)
 
-    async def train_in_round_coroutine(self, round):
+    async def train_in_round_coroutine(self, round_info: Round):
         """
         Participate in a round.
         """
-        if round < 1:
-            raise RuntimeError("Round number %d invalid!" % round)
+        round_nr: int = round_info.round_nr
+        if round_nr < 1:
+            raise RuntimeError("Round number %d invalid!" % round_nr)
 
-        self.logger.info("Participant %s starts participating in round %d", self.peer_manager.get_my_short_id(), round)
-        self.completed_training = False
-        self.log_event(round, "start_train")
+        self.logger.info("Participant %s starts training in round %d", self.peer_manager.get_my_short_id(), round_nr)
+        self.log_event(round_nr, "start_train")
 
         # 1. Train the model
+        round_info.is_training = True
         await self.model_manager.train()
+        round_info.is_training = False
+        round_info.train_done = True
 
-        self.log_event(round, "done_train")
+        self.log_event(round_nr, "done_train")
 
         # It might be that we went offline at this point - check for it
         if not self.is_active:
-            self.logger.warning("Participant %s went offline during model training in round %d - not proceeding", self.peer_manager.get_my_short_id(), round)
+            self.logger.warning("Participant %s went offline during model training in round %d - not proceeding",
+                                self.peer_manager.get_my_short_id(), round_nr)
             return
 
-        await self.do_ring_allreduce(round)
+        # 2. Share the model chunks in a ring all-reduce fashion
+        await self.do_ring_allreduce(round_info)
 
-    async def do_ring_allreduce(self, round: int):
+    async def do_ring_allreduce(self, round_info: Round):
         # TODO we're not checking online/offline status of nodes!
-        participants = await self.determine_available_peers_for_sample(round, self.settings.dfl.sample_size)
+        round_nr: int = round_info.round_nr
+        participants = await self.determine_available_peers_for_sample(round_nr, self.settings.dfl.sample_size)
         participants = sorted(participants)
+        participants_ids: List[str] = [self.peer_manager.get_short_id(peer_id) for peer_id in participants]
+        print(participants_ids)
         total_participants: int = len(participants)
         my_rank: int = participants.index(self.my_id)
 
-        self.reduction_manager = ReductionManager(round, self.model_manager.model, participants, my_rank)
-        self.reduction_manager.prepare()
+        round_info.reduction_manager = ReductionManager(round, self.model_manager.model, participants, my_rank)
+        round_info.reduction_manager.prepare()
 
-        for reduce_step in range(2 * total_participants - 1):
-            print("DOING STEP %d" % reduce_step)
-            self.reduction_manager.receive_future = Future()
+        for _ in range(2 * total_participants - 1):
+            round_info.reduction_manager.receive_future = Future()
 
             # Send chunk
-            idx, chunk = self.reduction_manager.get_chunk_to_send()
+            idx, chunk = round_info.reduction_manager.get_chunk_to_send()
             recipient_peer_pk = participants[(my_rank + 1) % len(participants)]
             peer = self.get_peer_by_pk(recipient_peer_pk)
             if not peer:
                 raise RuntimeError("Could not find peer with public key %s", hexlify(recipient_peer_pk).decode())
 
-            ensure_future(self.eva_send_chunk(round, idx, chunk, peer))
+            ensure_future(self.eva_send_chunk(round_nr, idx, chunk, peer))
 
-            if self.reduction_manager.step < total_participants:
-                self.reduction_manager.chunks[idx].zero_()
+            if round_info.reduction_manager.step < total_participants:
+                round_info.reduction_manager.chunks[idx].zero_()
 
-            await self.reduction_manager.receive_future
+            if round_info.chunk_received_before_start:
+                chunk_idx, rec_chunk = round_info.chunk_received_before_start
+                self.received_model_chunk(round_nr, chunk_idx, rec_chunk)
+
+            await round_info.reduction_manager.receive_future
 
         # We finished the all-reduce, reconstruct the model and send the model to the next sample
-        a = 1 / 0
+        aggregated_model = round_info.reduction_manager.get_aggregated_model()
+        self.logger.info("Peer %s done with all-reduce in round %d", self.peer_manager.get_my_short_id(), round_nr)
+        round_info.reduction_manager = None
 
+        await self.forward_aggregated_model(aggregated_model, my_rank, round_nr + 1)
+
+    async def forward_aggregated_model(self, aggregated_model, my_rank: int, next_round: int) -> None:
+        # Forward the aggregated model to the next sample
+        participants = await self.determine_available_peers_for_sample(next_round, self.settings.dfl.sample_size)
+        participants = sorted(participants)
+        peer_pk: bytes = participants[my_rank]
+        
+        if peer_pk == self.my_id:
+            model_cpy = copy.deepcopy(aggregated_model)
+            asyncio.get_event_loop().call_soon(self.received_aggregated_model, self.my_peer, next_round, model_cpy)
+            return
+
+        peer = self.get_peer_by_pk(peer_pk)
+        if not peer:
+            raise RuntimeError("Could not find peer with public key %s", hexlify(peer_pk).decode())
+
+        population_view = copy.deepcopy(self.peer_manager.last_active)
+        ensure_future(self.eva_send_model(next_round, aggregated_model, "aggregated_model", population_view, peer))
 
     async def forward_trained_model(self, round: int):
         # 2. Determine the aggregators of the next sample that are available
@@ -587,7 +620,7 @@ class DFLCommunity(LearningCommunity):
 
         await asyncio.gather(*futures)
 
-    def eva_send_chunk(self, round, chunk_idx, chunk, peer):
+    def eva_send_chunk(self, round: int, chunk_idx: int, chunk, peer):
         # TODO we're not sending the population view here!
         start_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
         serialized_chunk = serialize_chunk(chunk)
@@ -630,7 +663,7 @@ class DFLCommunity(LearningCommunity):
         if json_data["type"] == "chunk":
             self.log_event(json_data["round"], "received_chunk")
             incoming_chunk = pickle.loads(result.data)
-            self.received_model_chunk(json_data["idx"], incoming_chunk)
+            self.received_model_chunk(json_data["round"], json_data["idx"], incoming_chunk)
             return
 
         serialized_model = result.data[:json_data["model_data_len"]]
@@ -654,8 +687,20 @@ class DFLCommunity(LearningCommunity):
         else:
             raise RuntimeError("Received unknown message type %s" % json_data["type"])
 
-    def received_model_chunk(self, chunk_idx: int, chunk) -> None:
-        self.reduction_manager.process_received_chunk(chunk_idx, chunk)
+    def received_model_chunk(self, round_nr: int, chunk_idx: int, chunk) -> None:
+        if round_nr not in self.round_info:
+            # We received a chunk but haven't started this round yet - store it.
+            new_round = Round(round_nr)
+            self.round_info[round_nr] = new_round
+            new_round.chunk_received_before_start = (chunk_idx, chunk)
+        else:
+            # Otherwise, process it right away!
+            if self.round_info[round_nr].reduction_manager:
+                # We started the reduction process already
+                self.round_info[round_nr].reduction_manager.process_received_chunk(chunk_idx, chunk)
+            else:
+                # We didn't start the reduction process yet so just store it
+                self.round_info[round_nr].chunk_received_before_start = (chunk_idx, chunk)
 
     def has_enough_trained_models(self, agg_round: int) -> bool:
         return len(self.aggregations[agg_round].incoming_trained_models) >= \
@@ -783,7 +828,7 @@ class DFLCommunity(LearningCommunity):
                              len(self.aggregations[index].incoming_trained_models))
             self.aggregations.pop(index)
 
-    def received_aggregated_model(self, peer: Peer, model_round: int, model: nn.Module) -> None:
+    def received_aggregated_model(self, peer: Peer, round_nr: int, model: nn.Module) -> None:
         if self.shutting_down:
             self.logger.warning("Participant %s ignoring incoming aggregated model due to shutdown",
                                 self.peer_manager.get_my_short_id())
@@ -792,22 +837,19 @@ class DFLCommunity(LearningCommunity):
         peer_pk = peer.public_key.key_to_bin()
         peer_id = self.peer_manager.get_short_id(peer_pk)
 
-        self.logger.info("Participant %s received aggregated model of round %d from aggregator %s",
-                         self.peer_manager.get_my_short_id(), model_round - 1, peer_id)
+        self.logger.info("Participant %s received aggregated model for round %d from peer %s",
+                         self.peer_manager.get_my_short_id(), round_nr, peer_id)
 
-        if model_round > self.train_sample_estimate:
-            if model_round > 1:  # We don't want to log this for the first round
-                self.log_event(self.train_sample_estimate, "interrupt_training")
-            self.train_sample_estimate = model_round
-            self.cancel_current_training_task()
-            self.completed_training = False
-        if model_round == self.train_sample_estimate and not self.ongoing_training_task_name and not self.completed_training:
-            self.model_manager.model = model
-            self.train_in_round(model_round)
+        if round_nr not in self.round_info:
+            # Create a new round
+            new_round = Round(round_nr)
+            new_round.model = model
+            self.round_info[round_nr] = new_round
         else:
-            self.logger.info("Participant %s NOT starting training round %d (train sample: %d, ongoing train task: %s, "
-                             "completed training: %d)", self.peer_manager.get_my_short_id(), model_round,
-                             self.train_sample_estimate, self.ongoing_training_task_name, self.completed_training)
+            self.round_info[round_nr].model = model
+        
+        # TODO not sure if we really want this, maybe we should sequentialize training?
+        self.train_in_round(self.round_info[round_nr])
 
     async def on_send_complete(self, result: TransferResult):
         await super().on_send_complete(result)

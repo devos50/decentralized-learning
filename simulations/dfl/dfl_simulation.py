@@ -155,7 +155,7 @@ class DFLSimulation(LearningSimulation):
             self.flush_statistics()
             raise RuntimeError("Liveness violated - MoDeST not making progress anymore")
 
-    def start_nodes_training(self, active_nodes: List) -> None:
+    async def start_nodes_training(self, active_nodes: List) -> None:
         # Update the membership status of inactive peers in all peer managers. This assumption should be
         # reasonable as availability at the very start of the training process can easily be synchronized using an
         # out-of-band mechanism (e.g., published on a website).
@@ -171,16 +171,15 @@ class DFLSimulation(LearningSimulation):
         # We will now start round 1. The nodes that participate in the first round are always selected from the pool of
         # active peers. If we use our sampling function, training might not start at all if many offline nodes
         # are selected for the first round.
-        rand_sampler = Random(self.args.seed)
-        activated_nodes = rand_sampler.sample(active_nodes, min(len(active_nodes), self.args.sample_size))
-        for initial_active_node in activated_nodes:
-            overlay = initial_active_node.overlays[0]
-            self.logger.info("Activating peer %s in round 1", overlay.peer_manager.get_my_short_id())
-            overlay.received_aggregated_model(overlay.my_peer, 1, overlay.model_manager.model)
 
-        activated_peers_pks = [node.overlays[0].my_peer.public_key.key_to_bin() for node in activated_nodes]
+        # rand_sampler = Random(self.args.seed)
+        # activated_nodes = rand_sampler.sample(active_nodes, min(len(active_nodes), self.args.sample_size))
+        peers_r1 = await active_nodes[0].overlays[0].determine_available_peers_for_sample(1, self.session_settings.dfl.sample_size)
         for node in self.nodes:
-            node.overlays[0].peers_first_round = activated_peers_pks
+            overlay = node.overlays[0]
+            if overlay.my_id in peers_r1:
+                self.logger.info("Activating peer %s in round 1", overlay.peer_manager.get_my_short_id())
+                overlay.received_aggregated_model(overlay.my_peer, 1, overlay.model_manager.model)
 
     async def on_aggregate_complete(self, ind: int, round_nr: int, model):
         tot_up, tot_down = 0, 0

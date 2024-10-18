@@ -291,7 +291,7 @@ class LearningSimulation(TaskManager):
                 active_nodes.append(node)
         self.logger.info("Started %d nodes...", len(active_nodes))
 
-        self.start_nodes_training(active_nodes)
+        await self.start_nodes_training(active_nodes)
 
         dataset_base_path: str = self.args.dataset_base_path or os.environ["HOME"]
         if self.args.dataset in ["cifar10", "mnist", "google_speech"]:
@@ -315,7 +315,7 @@ class LearningSimulation(TaskManager):
         else:
             self.logger.info("Running simulation for undefined time")
 
-    def start_nodes_training(self, active_nodes: List) -> None:
+    async def start_nodes_training(self, active_nodes: List) -> None:
         pass
 
     def on_ipv8_ready(self) -> None:
