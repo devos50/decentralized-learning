@@ -66,7 +66,7 @@ class ModelTrainer:
             # model will not be updated.
             start_time = get_event_loop().time()
             if self.simulated_speed:
-                elapsed_time = AUGMENTATION_FACTOR_SIM * local_steps * self.settings.learning.batch_size * (self.simulated_speed / 1000)
+                elapsed_time = AUGMENTATION_FACTOR_SIM * local_steps * (self.simulated_speed / 1000)
             else:
                 elapsed_time = 0
 
