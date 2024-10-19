@@ -151,6 +151,12 @@ class LearningSimulation(TaskManager):
             for node in self.nodes:
                 node.overlays[0].other_nodes_bws = nodes_bws
 
+        # Log these bandwidths
+        with open(os.path.join(self.data_dir, "bandwidths.csv"), "w") as out_file:
+            out_file.write("bandwidth\n")
+            for node in self.nodes:
+                out_file.write("%d\n" % node.overlays[0].bw_scheduler.bw_limit)
+
         self.logger.info("Traces applied!")
 
     def apply_latencies(self):
