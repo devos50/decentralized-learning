@@ -14,6 +14,8 @@ from accdfl.dfl.round import Round
 import torch
 from torch import nn
 
+import numpy as np
+
 from ipv8.lazy_community import lazy_wrapper_wd
 from ipv8.messaging.payload_headers import BinMemberAuthenticationPayload, GlobalTimeDistributionPayload
 from ipv8.types import Peer
@@ -444,16 +446,17 @@ class DFLCommunity(LearningCommunity):
         participants = await self.determine_available_peers_for_sample(round_nr, self.settings.dfl.sample_size)
         participants = sorted(participants)
         participants_ids: List[str] = [self.peer_manager.get_short_id(peer_id) for peer_id in participants]
-        print(participants_ids)
         total_participants: int = len(participants)
         my_rank: int = participants.index(self.my_id)
 
         round_info.reduction_manager = ReductionManager(round, self.model_manager.model, participants, my_rank)
         round_info.reduction_manager.prepare()
 
+        # Prepare all futures
         for step in range(2 * total_participants - 1):
-            round_info.reduction_manager.receive_future = Future()
+            round_info.reduction_manager.receive_futures[step] = Future()
 
+        for step in range(2 * total_participants - 1):
             # Send chunk
             idx, chunk = round_info.reduction_manager.get_chunk_to_send()
             recipient_peer_pk = participants[(my_rank + 1) % len(participants)]
@@ -472,7 +475,7 @@ class DFLCommunity(LearningCommunity):
                 self.received_model_chunk(round_nr, step, chunk_idx, rec_chunk)
                 round_info.out_of_order_chunks.pop(step)
 
-            await round_info.reduction_manager.receive_future
+            await round_info.reduction_manager.receive_futures[step]
 
         return my_rank
 
@@ -614,7 +617,7 @@ class DFLCommunity(LearningCommunity):
 
         if json_data["type"] == "chunk":
             self.log_event(json_data["round"], "received_chunk")
-            incoming_chunk = pickle.loads(result.data)
+            incoming_chunk = torch.from_numpy(np.frombuffer(result.data, dtype=np.int32))
             self.received_model_chunk(json_data["round"], json_data["step"], json_data["idx"], incoming_chunk)
             return
 
@@ -653,7 +656,7 @@ class DFLCommunity(LearningCommunity):
 
                 # Are we waiting for this particular chunk? If so, process it right away.
                 if reduction_manager.step == step:
-                    self.round_info[round_nr].reduction_manager.process_received_chunk(chunk_idx, chunk)
+                    self.round_info[round_nr].reduction_manager.process_received_chunk(step, chunk_idx, chunk)
                 else:
                     # Otherwise, store it for processing later.
                     self.round_info[round_nr].out_of_order_chunks[step] = (chunk_idx, chunk)

@@ -4,7 +4,7 @@ import pickle
 from asyncio import ensure_future
 from typing import List, Tuple
 
-from accdfl.core.models import serialize_model
+from accdfl.core.models import serialize_chunk, serialize_model
 from accdfl.dfl.community import DFLCommunity
 from accdfl.util.eva.result import TransferResult
 from simulations.bandwidth_scheduler import BWScheduler
@@ -19,6 +19,11 @@ class DFLBypassNetworkCommunity(DFLCommunity):
 
         self.bw_scheduler: BWScheduler = BWScheduler(self.my_peer.public_key.key_to_bin(),
                                                      self.peer_manager.get_my_short_id())
+        
+    async def eva_send_chunk(self, round: int, step: int, chunk_idx: int, chunk, peer):
+        binary_data = serialize_chunk(chunk)
+        response = {"round": round, "step": step, "idx": chunk_idx, "type": "chunk"}        
+        return await self.eva_send_data(binary_data, response, peer)
 
     async def eva_send_model(self, round, model, type, population_view, peer):
         serialized_model = serialize_model(model)
@@ -29,8 +34,11 @@ class DFLBypassNetworkCommunity(DFLCommunity):
         self.bw_out_stats["num"]["view"] += 1
         binary_data = serialized_model + serialized_population_view
         response = {"round": round, "type": type, "model_data_len": len(serialized_model)}
-        serialized_response = json.dumps(response).encode()
 
+        return await self.eva_send_data(binary_data, response, peer)
+
+    async def eva_send_data(self, binary_data: bytes, response: bytes, peer):
+        serialized_response = json.dumps(response).encode()
         found: bool = False
         transfer_success: bool = True
         transfer_time: float = 0

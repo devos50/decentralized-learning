@@ -1,6 +1,6 @@
 import copy
 from asyncio import Future
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import torch
 
@@ -14,7 +14,7 @@ class ReductionManager:
         self.my_rank: int = my_rank
         self.chunks: List = [None] * len(self.participants_ids)
         self.step: int = 0
-        self.receive_future: Optional[Future] = None
+        self.receive_futures: Dict[int, Future] = {}
 
     def prepare(self):
         # Chunk
@@ -43,10 +43,11 @@ class ReductionManager:
 
         return model_cpy
 
-    def process_received_chunk(self, chunk_idx: int, chunk: List):
+    def process_received_chunk(self, step: int, chunk_idx: int, chunk: List):
+        assert step == self.step
         self.chunks[chunk_idx] += chunk
+        self.receive_futures[step].set_result(None)
         self.step += 1
-        self.receive_future.set_result(None)
 
     @staticmethod
     def get_flat_params(model):

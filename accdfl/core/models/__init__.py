@@ -11,7 +11,7 @@ def serialize_model(model: torch.nn.Module) -> bytes:
 
 
 def serialize_chunk(chunk) -> bytes:
-    return pickle.dumps(chunk)
+    return chunk.numpy().tobytes()
 
 
 def unserialize_model(serialized_model: bytes, dataset: str, architecture: Optional[str] = None) -> torch.nn.Module:
