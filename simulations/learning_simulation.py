@@ -17,6 +17,8 @@ import torch
 
 import yappi
 
+import numpy as np
+
 from accdfl.core.model_manager import ModelManager
 from accdfl.core.model_evaluator import ModelEvaluator
 from accdfl.core.session_settings import SessionSettings, dump_settings
@@ -111,45 +113,82 @@ class LearningSimulation(TaskManager):
         for node in self.nodes:
             node.overlays[0].peers_list = peers_list
 
+    def apply_availability_traces(self):
+        if not self.args.availability_traces:
+            return
+
+        self.logger.info("Applying availability trace file %s", self.args.availability_traces)
+        with open(self.args.availability_traces, "rb") as traces_file:
+            data = pickle.load(traces_file)
+
+        rand = Random(self.args.seed)
+        device_ids = rand.sample(list(data.keys()), self.args.peers)
+        for ind, node in enumerate(self.nodes):
+            if node.overlays[0].my_peer.public_key.key_to_bin() != self.session_settings.dfl.fixed_aggregator:
+                node.overlays[0].set_traces(data[device_ids[ind]])
+            else:
+                self.logger.error("Not applying availability traces to server node %d", ind)
+
+    def apply_fedscale_traces(self):
+        self.logger.info("Applying capability trace file %s", self.args.availability_traces)
+        with open(os.path.join("data", "fedscale_traces"), "rb") as traces_file:
+            data = pickle.load(traces_file)
+
+        rand = Random(self.args.seed)
+        device_ids = rand.sample(list(data.keys()), self.args.peers)
+        nodes_bws: Dict[bytes, int] = {}
+        for ind, node in enumerate(self.nodes):
+            node.overlays[0].model_manager.model_trainer.simulated_speed = data[device_ids[ind]]["computation"]
+            if self.args.bypass_model_transfers:
+                # Also apply the network latencies
+                if self.session_settings.dfl is not None and node.overlays[0].my_peer.public_key.key_to_bin() == self.session_settings.dfl.fixed_aggregator:
+                    self.logger.error("Setting BW limit of server node %d to unlimited", ind)
+                    bw_limit: int = 1000000000000
+                else:
+                    bw_limit: int = int(data[ind + 1]["communication"]) * 1024 // 8
+                node.overlays[0].bw_scheduler.bw_limit = bw_limit
+                nodes_bws[node.overlays[0].my_peer.public_key.key_to_bin()] = bw_limit
+
+        for node in self.nodes:
+            node.overlays[0].other_nodes_bws = nodes_bws
+
+    def apply_diablo_traces(self):
+        # Read and process the latency matrix
+        bw_means = []
+        with open(os.path.join("data", "diablo.txt"), "r") as diablo_file:
+            rows = diablo_file.readlines()
+            for row in rows:
+                values = list(map(float, row.strip().split(',')))
+                mean_value = np.mean(values) * 1024 * 1024 // 8
+                bw_means.append(mean_value)
+
+        nodes_bws: Dict[bytes, int] = {}
+        for ind, node in enumerate(self.nodes):
+            # TODO this is rather arbitrary for now
+            node.overlays[0].model_manager.model_trainer.simulated_speed = 100
+            bw_limit: int = bw_means[ind % len(bw_means)]
+            node.overlays[0].bw_scheduler.bw_limit = bw_limit
+            nodes_bws[node.overlays[0].my_peer.public_key.key_to_bin()] = bw_limit
+
+        for node in self.nodes:
+            node.overlays[0].other_nodes_bws = nodes_bws
+
+    def apply_compute_and_bandwidth_traces(self):
+        if self.args.traces == "none":
+            return
+        elif self.args.traces == "fedscale":
+            self.apply_fedscale_traces()
+        elif self.args.traces == "diablo":
+            self.apply_diablo_traces()
+        else:
+            raise RuntimeError("Unknown traces %s" % self.args.traces)
+
     def apply_traces(self):
         """
         Set the relevant traces.
         """
-        if self.args.availability_traces:
-            self.logger.info("Applying availability trace file %s", self.args.availability_traces)
-            with open(self.args.availability_traces, "rb") as traces_file:
-                data = pickle.load(traces_file)
-
-            rand = Random(self.args.seed)
-            device_ids = rand.sample(list(data.keys()), self.args.peers)
-            for ind, node in enumerate(self.nodes):
-                if node.overlays[0].my_peer.public_key.key_to_bin() != self.session_settings.dfl.fixed_aggregator:
-                    node.overlays[0].set_traces(data[device_ids[ind]])
-                else:
-                    self.logger.error("Not applying availability traces to server node %d", ind)
-
-        if self.args.capability_traces:
-            self.logger.info("Applying capability trace file %s", self.args.availability_traces)
-            with open(self.args.capability_traces, "rb") as traces_file:
-                data = pickle.load(traces_file)
-
-            rand = Random(self.args.seed)
-            device_ids = rand.sample(list(data.keys()), self.args.peers)
-            nodes_bws: Dict[bytes, int] = {}
-            for ind, node in enumerate(self.nodes):
-                node.overlays[0].model_manager.model_trainer.simulated_speed = data[device_ids[ind]]["computation"]
-                if self.args.bypass_model_transfers:
-                    # Also apply the network latencies
-                    if self.session_settings.dfl is not None and node.overlays[0].my_peer.public_key.key_to_bin() == self.session_settings.dfl.fixed_aggregator:
-                        self.logger.error("Setting BW limit of server node %d to unlimited", ind)
-                        bw_limit: int = 1000000000000
-                    else:
-                        bw_limit: int = int(data[ind + 1]["communication"]) * 1024 // 8
-                    node.overlays[0].bw_scheduler.bw_limit = bw_limit
-                    nodes_bws[node.overlays[0].my_peer.public_key.key_to_bin()] = bw_limit
-
-            for node in self.nodes:
-                node.overlays[0].other_nodes_bws = nodes_bws
+        self.apply_availability_traces()
+        self.apply_compute_and_bandwidth_traces()
 
         # Log these bandwidths
         with open(os.path.join(self.data_dir, "bandwidths.csv"), "w") as out_file:

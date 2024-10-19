@@ -21,8 +21,8 @@ def get_args(dataset: str, default_lr: float, default_momentum: float = 0):
 
     # Traces
     parser.add_argument('--availability-traces', type=str, default=None)
-    parser.add_argument('--capability-traces', type=str, default=None)
-    parser.add_argument('--seed', type=int, default=42)  # Seed used to sample traces
+    parser.add_argument('--traces', type=str, default="none", choices=["none", "fedscale", "diablo"])
+    parser.add_argument('--seed', type=int, default=42)
 
     # Other settings
     parser.add_argument('--log-level', type=str, default="INFO")
