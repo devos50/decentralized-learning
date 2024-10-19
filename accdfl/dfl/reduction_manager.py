@@ -31,6 +31,7 @@ class ReductionManager:
     def get_aggregated_model(self):
         # Reconstruct the flat tensor
         flat_params = torch.cat(self.chunks)
+        flat_params.div_(len(self.chunks))
 
         # Copy the flat tensor into the model
         pointer = 0
@@ -44,7 +45,7 @@ class ReductionManager:
         return model_cpy
 
     def process_received_chunk(self, step: int, chunk_idx: int, chunk):
-        self.chunks[chunk_idx] += chunk
+        self.chunks[chunk_idx].add_(chunk)
         self.receive_futures[step].set_result(None)
 
     @staticmethod

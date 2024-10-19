@@ -431,9 +431,6 @@ class DFLCommunity(LearningCommunity):
         # 3. Reconstruct the model and send the model to the next sample
         aggregated_model = round_info.reduction_manager.get_aggregated_model()
         self.logger.info("Peer %s done with all-reduce in round %d", self.peer_manager.get_my_short_id(), round_nr)
-
-        params = ReductionManager.get_flat_params(aggregated_model)
-        print(params[:10])
         round_info.reduction_manager = None
 
         await self.forward_aggregated_model(aggregated_model, my_rank, round_nr + 1)
@@ -464,7 +461,6 @@ class DFLCommunity(LearningCommunity):
 
             # Send chunk
             idx, chunk = round_info.reduction_manager.get_chunk_to_send(step)
-            print("%d send chunk %d in step %d: %s" % (my_rank, idx, step, chunk[:10]))
             recipient_peer_pk = participants[(my_rank + 1) % len(participants)]
             peer = self.get_peer_by_pk(recipient_peer_pk)
             if not peer:
