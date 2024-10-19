@@ -469,7 +469,6 @@ class DFLCommunity(LearningCommunity):
             ensure_future(self.eva_send_chunk(round_nr, step, idx, chunk, peer))
 
             if step < total_participants - 1:
-                self.logger.error("%d setting chunk %d to zero in step %d (round %d)", my_rank, idx, step, round_info.round_nr)
                 round_info.reduction_manager.chunks[idx].zero_()
 
             # Check if we have this chunk
