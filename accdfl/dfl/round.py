@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Dict, Optional
 
 from accdfl.dfl.reduction_manager import ReductionManager
 
@@ -11,9 +11,9 @@ class Round:
         self.round_nr: int = round_nr
         self.model: Optional[nn.Module] = None
 
-        # It could be that we receive a chunk, even before the round starts.
+        # It could be that we receive chunks out of order, for example, before the round starts.
         # In that situation, store the chunk to process it later.
-        self.chunk_received_before_start = None
+        self.out_of_order_chunks: Dict = {}
 
         self.reduction_manager: Optional[ReductionManager] = None
 

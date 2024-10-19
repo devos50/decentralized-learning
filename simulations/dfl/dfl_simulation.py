@@ -24,6 +24,7 @@ class DFLSimulation(LearningSimulation):
         self.latest_accuracy_check_round: int = 0
         self.last_round_complete_time: Optional[float] = None
         self.round_durations: List[float] = []
+        self.round_completed_counts: Dict[int, int] = {}
         self.best_accuracy: float = 0.0
         self.data_dir = os.path.join("data", "n_%d_%s_s%d_a%d_sf%g_lr%g_sd%ddfl" % (
             self.args.peers, self.args.dataset, self.args.sample_size, self.args.num_aggregators,
@@ -97,7 +98,7 @@ class DFLSimulation(LearningSimulation):
         )
 
         for ind, node in enumerate(self.nodes):
-            node.overlays[0].aggregate_complete_callback = lambda round_nr, model, i=ind: self.on_aggregate_complete(i, round_nr, model)
+            node.overlays[0].round_complete_callback = lambda round_nr, model, i=ind: self.on_round_complete(i, round_nr, model)
             node.overlays[0].setup(self.session_settings)
             node.overlays[0].model_manager.model_trainer.logger = SimulationLoggerAdapter(node.overlays[0].model_manager.model_trainer.logger, {})
 
@@ -128,7 +129,7 @@ class DFLSimulation(LearningSimulation):
             out_file.write("time,peer,round,event\n")
 
         # Start the liveness check (every 5 minutes)
-        self.register_task("check_liveness", self.check_liveness, interval=600)
+        #self.register_task("check_liveness", self.check_liveness, interval=600)
 
     def check_liveness(self):
         # Condition 1: At least one online node is training their model
@@ -181,7 +182,15 @@ class DFLSimulation(LearningSimulation):
                 self.logger.info("Activating peer %s in round 1", overlay.peer_manager.get_my_short_id())
                 overlay.received_aggregated_model(overlay.my_peer, 1, overlay.model_manager.model)
 
-    async def on_aggregate_complete(self, ind: int, round_nr: int, model):
+    async def on_round_complete(self, ind: int, round_nr: int, model):
+        if round_nr not in self.round_completed_counts:
+            self.round_completed_counts[round_nr] = 0
+        self.round_completed_counts[round_nr] += 1
+        if self.round_completed_counts[round_nr] < self.session_settings.dfl.sample_size:
+            return
+        
+        self.round_completed_counts.pop(round_nr)
+
         tot_up, tot_down = 0, 0
         for node in self.nodes:
             tot_up += node.overlays[0].endpoint.bytes_up
