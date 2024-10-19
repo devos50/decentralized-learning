@@ -3,6 +3,8 @@ from typing import Optional
 
 import torch
 
+import numpy as np
+
 from accdfl.core.models.Model import Model
 
 
@@ -11,7 +13,7 @@ def serialize_model(model: torch.nn.Module) -> bytes:
 
 
 def serialize_chunk(chunk) -> bytes:
-    return chunk.numpy().tobytes()
+    return chunk.numpy().astype(np.float32).tobytes()
 
 
 def unserialize_model(serialized_model: bytes, dataset: str, architecture: Optional[str] = None) -> torch.nn.Module:

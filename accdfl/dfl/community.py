@@ -412,6 +412,7 @@ class DFLCommunity(LearningCommunity):
 
         # 1. Train the model
         round_info.is_training = True
+        self.model_manager.model = round_info.model
         await self.model_manager.train()
         round_info.is_training = False
         round_info.train_done = True
@@ -430,6 +431,9 @@ class DFLCommunity(LearningCommunity):
         # 3. Reconstruct the model and send the model to the next sample
         aggregated_model = round_info.reduction_manager.get_aggregated_model()
         self.logger.info("Peer %s done with all-reduce in round %d", self.peer_manager.get_my_short_id(), round_nr)
+
+        params = ReductionManager.get_flat_params(aggregated_model)
+        print(params[:10])
         round_info.reduction_manager = None
 
         await self.forward_aggregated_model(aggregated_model, my_rank, round_nr + 1)
@@ -445,7 +449,6 @@ class DFLCommunity(LearningCommunity):
         round_nr: int = round_info.round_nr
         participants = await self.determine_available_peers_for_sample(round_nr, self.settings.dfl.sample_size)
         participants = sorted(participants)
-        participants_ids: List[str] = [self.peer_manager.get_short_id(peer_id) for peer_id in participants]
         total_participants: int = len(participants)
         my_rank: int = participants.index(self.my_id)
 
@@ -456,9 +459,12 @@ class DFLCommunity(LearningCommunity):
         for step in range(2 * total_participants - 1):
             round_info.reduction_manager.receive_futures[step] = Future()
 
-        for step in range(2 * total_participants - 1):
+        for step in range(2 * (total_participants - 1)):
+            round_info.reduction_manager.step = step
+
             # Send chunk
-            idx, chunk = round_info.reduction_manager.get_chunk_to_send()
+            idx, chunk = round_info.reduction_manager.get_chunk_to_send(step)
+            print("%d send chunk %d in step %d: %s" % (my_rank, idx, step, chunk[:10]))
             recipient_peer_pk = participants[(my_rank + 1) % len(participants)]
             peer = self.get_peer_by_pk(recipient_peer_pk)
             if not peer:
@@ -466,7 +472,8 @@ class DFLCommunity(LearningCommunity):
 
             ensure_future(self.eva_send_chunk(round_nr, step, idx, chunk, peer))
 
-            if round_info.reduction_manager.step < total_participants:
+            if step < total_participants - 1:
+                self.logger.error("%d setting chunk %d to zero in step %d (round %d)", my_rank, idx, step, round_info.round_nr)
                 round_info.reduction_manager.chunks[idx].zero_()
 
             # Check if we have this chunk
@@ -617,7 +624,7 @@ class DFLCommunity(LearningCommunity):
 
         if json_data["type"] == "chunk":
             self.log_event(json_data["round"], "received_chunk")
-            incoming_chunk = torch.from_numpy(np.frombuffer(result.data, dtype=np.int32))
+            incoming_chunk = torch.from_numpy(np.frombuffer(result.data, dtype=np.float32).copy())
             self.received_model_chunk(json_data["round"], json_data["step"], json_data["idx"], incoming_chunk)
             return
 

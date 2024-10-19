@@ -43,11 +43,9 @@ class ReductionManager:
 
         return model_cpy
 
-    def process_received_chunk(self, step: int, chunk_idx: int, chunk: List):
-        assert step == self.step
+    def process_received_chunk(self, step: int, chunk_idx: int, chunk):
         self.chunks[chunk_idx] += chunk
         self.receive_futures[step].set_result(None)
-        self.step += 1
 
     @staticmethod
     def get_flat_params(model):
@@ -55,6 +53,6 @@ class ReductionManager:
         flat_params = torch.cat(param_tensors)
         return flat_params
     
-    def get_chunk_to_send(self):
-        idx: int = (self.my_rank - self.step) % len(self.participants_ids)
-        return idx, self.chunks[idx]
+    def get_chunk_to_send(self, step: int):
+        idx: int = (self.my_rank - step) % len(self.participants_ids)
+        return idx, self.chunks[idx].clone()
