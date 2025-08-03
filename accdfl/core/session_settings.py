@@ -79,13 +79,3 @@ class SessionSettings:
     is_simulation: bool = False
     bypass_training: bool = False  # Whether to bypass model training, can be useful to observe network dynamics
     device: str = "cpu"
-
-
-def dump_settings(settings: SessionSettings):
-    """
-    Dump the session settings if they do not exist yet.
-    """
-    settings_file_path = os.path.join(settings.work_dir, "settings.json")
-    if not os.path.exists(settings_file_path):
-        with open(settings_file_path, "w") as settings_file:
-            settings_file.write(settings.to_json())

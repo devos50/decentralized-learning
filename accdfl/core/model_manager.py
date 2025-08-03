@@ -7,7 +7,7 @@ import torch
 from accdfl.core.gradient_aggregation import GradientAggregationMethod
 from accdfl.core.gradient_aggregation.fedavg import FedAvg
 from accdfl.core.model_trainer import ModelTrainer
-from accdfl.core.session_settings import SessionSettings, dump_settings
+from accdfl.core.session_settings import SessionSettings
 
 
 class ModelManager:
