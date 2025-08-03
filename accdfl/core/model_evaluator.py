@@ -19,7 +19,6 @@ class ModelEvaluator:
     def __init__(self, settings: SessionSettings):
         self.settings: SessionSettings = settings
         self.test_dataset = None
-        self.metric = evaluate.load('accuracy')
 
     def setup_dataset(self, dataset: Dataset, tokenizer: AutoTokenizer):
         self.test_dataset = dataset
@@ -28,22 +27,36 @@ class ModelEvaluator:
 
     def evaluate_classification_model(self, inference_model):
         TASK = "txt_classification"
+        metric = evaluate.load('accuracy')
         eval_dataloader = DataLoader(self.test_dataset.rename_column("label", "labels") if TASK != "img_classification" else self.test_dataset, batch_size=512, collate_fn=self.data_collator)
 
         inference_model.to(self.settings.device)
         inference_model.eval()
-        for step, batch in enumerate(eval_dataloader):
-            batch = {key: val.to(self.settings.device) for key, val in batch.items() if isinstance(val, torch.Tensor)}
-            with torch.no_grad():
-                outputs = inference_model(**batch)
-            predictions = outputs.logits.argmax(dim=-1)
-            predictions, references = predictions, batch["labels"]
-            self.metric.add_batch(
-                predictions=predictions,
-                references=references,
-            )
 
-        return self.metric.compute()
+        total_loss = 0.0
+        n_examples = 0
+        
+        with torch.no_grad():
+            for batch in eval_dataloader:
+                batch = {k: v.to(self.settings.device) for k, v in batch.items() if isinstance(v, torch.Tensor)}
+                outputs = inference_model(**batch)
+                logits = outputs.logits
+                loss = outputs.loss
+
+                labels = batch["labels"]
+                preds = logits.argmax(dim=-1)
+
+                # accuracy
+                metric.add_batch(predictions=preds, references=labels)
+
+                # loss: weight by batch size to get dataset mean
+                bs = labels.size(0)
+                total_loss += loss.item() * bs
+                n_examples += bs
+
+        acc = metric.compute()["accuracy"]
+        mean_loss = total_loss / max(n_examples, 1)
+        return {"accuracy": acc, "loss": mean_loss}
 
     def evaluate_accuracy(self, peft_model: PeftModel):
         peft_model.set_adapter("global")
