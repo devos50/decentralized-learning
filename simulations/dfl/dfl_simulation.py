@@ -5,7 +5,7 @@ from binascii import hexlify
 from random import Random
 from typing import List, Dict, Optional
 
-from peft import PeftModel
+from peft import LoraConfig, PeftModel
 import torch
 
 from datasets import Dataset
@@ -36,6 +36,7 @@ class DFLSimulation(LearningSimulation):
         self.best_accuracy: float = 0.0
         self.device: str = "cpu"
         self.dataset: Optional[Dataset] = None
+        self.peft_config: Optional[LoraConfig] = None
         self.peft_model: Optional[PeftModel] = None
         self.data_dir = os.path.join("data", "n_%d_%s_s%d_a%d_sf%g_lr%g_sd%ddfl" % (
             self.args.peers, self.args.dataset, self.args.sample_size, self.args.num_aggregators,
@@ -129,7 +130,8 @@ class DFLSimulation(LearningSimulation):
         base_model: PreTrainedModel = create_base_model(self.session_settings.dataset, self.dataset)
 
         # Create the adapters
-        self.peft_model = create_adapters(self.session_settings, base_model).to(self.device)
+        self.peft_config, self.peft_model, adapters, global_adapter = create_adapters(self.session_settings, base_model)
+        self.peft_model.to(self.device)
 
         # Create each of the datasets
         if self.session_settings.partitioner == "uniform":
@@ -143,6 +145,8 @@ class DFLSimulation(LearningSimulation):
             node.overlays[0].aggregate_complete_callback = lambda round_nr, i=ind: self.on_aggregate_complete(i, round_nr)
             node.overlays[0].setup(self.session_settings, self.peft_model)
             node.overlays[0].model_manager.model_trainer.setup_dataset(split_datasets[ind], tokenizer)
+            node.overlays[0].model_manager.adapter = adapters[ind]
+            node.overlays[0].model_manager.global_adapter = global_adapter
             node.overlays[0].model_manager.model_trainer.logger = SimulationLoggerAdapter(node.overlays[0].model_manager.model_trainer.logger, {})
 
         if not self.args.bypass_training:

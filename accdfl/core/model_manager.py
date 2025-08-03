@@ -17,8 +17,8 @@ class ModelManager:
 
     def __init__(self, peft_model: Optional[PeftModel], settings: SessionSettings, participant_index: int):
         self.peft_model: PeftModel = peft_model
-        self.adapter: Dict = get_peft_model_state_dict(peft_model, adapter_name=f"client_{participant_index}")
-        self.global_adapter: Dict = get_peft_model_state_dict(peft_model, adapter_name=f"global")
+        self.adapter: Dict = None
+        self.global_adapter: Dict = None
         self.settings: SessionSettings = settings
         self.participant_index: int = participant_index
         self.logger = logging.getLogger(self.__class__.__name__)

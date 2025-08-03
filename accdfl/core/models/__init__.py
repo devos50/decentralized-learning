@@ -1,7 +1,7 @@
 import pickle
-from typing import Dict
+from typing import Dict, List, Tuple
 from datasets import Dataset
-from peft import LoraConfig, PeftModel, get_peft_model
+from peft import LoraConfig, PeftModel, get_peft_model, get_peft_model_state_dict
 from transformers import AutoModelForSequenceClassification, PreTrainedModel
 
 from accdfl.core.session_settings import SessionSettings
@@ -38,14 +38,19 @@ def create_base_model(dataset_name: str, dataset: Dataset) -> PreTrainedModel:
         raise RuntimeError("Unknown dataset %s" % dataset_name)
 
 
-def create_adapters(session_settings: SessionSettings, base_model: PreTrainedModel) -> PeftModel:
+def create_adapters(session_settings: SessionSettings, base_model: PreTrainedModel) -> Tuple[LoraConfig, PeftModel, List[Dict], Dict]:
     peft_config = LoraConfig(task_type="SEQ_CLS", inference_mode=False, r=8, lora_alpha=16, lora_dropout=0.1)
     # TODO these parameters should be configurable
     peft_model = get_peft_model(base_model, peft_config, adapter_name="global")
+
+    global_adapter: Dict = get_peft_model_state_dict(peft_model, adapter_name="global")
+    adapters = []
 
     # Create adapters for each user
     for adapter_name in ["client_%d" % i for i in range(len(session_settings.participants))]:
         if adapter_name not in peft_model.peft_config:
             peft_model.add_adapter(adapter_name, peft_config)
+            adapter: Dict = get_peft_model_state_dict(peft_model, adapter_name=adapter_name)
+            adapters.append(adapter)
 
-    return peft_model
+    return peft_config, peft_model, adapters, global_adapter
