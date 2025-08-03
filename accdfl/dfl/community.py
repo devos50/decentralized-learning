@@ -12,6 +12,9 @@ from typing import Dict, Optional, List, Tuple, Set
 import torch
 from torch import nn
 
+from transformers import PreTrainedModel
+
+from accdfl.core.models import serialize_adapter, unserialize_adapter
 from ipv8.lazy_community import lazy_wrapper_wd
 from ipv8.messaging.payload_headers import BinMemberAuthenticationPayload, GlobalTimeDistributionPayload
 from ipv8.types import Peer
@@ -20,12 +23,12 @@ from ipv8.util import succeed
 from accdfl.core import NodeMembershipChange
 from accdfl.core.community import LearningCommunity
 from accdfl.core.model_manager import ModelManager
-from accdfl.core.models import serialize_model, unserialize_model
 from accdfl.core.session_settings import SessionSettings
 from accdfl.dfl.caches import PingPeersRequestCache, PingRequestCache
 from accdfl.dfl.payloads import AdvertiseMembership, PingPayload, PongPayload, AggAckPayload
 from accdfl.dfl.sample_manager import SampleManager
 from accdfl.util.eva.result import TransferResult
+from simulations.bandwidth_scheduler import BWScheduler
 
 
 class DFLCommunity(LearningCommunity):
@@ -34,14 +37,19 @@ class DFLCommunity(LearningCommunity):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        self.nodes = None
+        self.transfers: List[Tuple[str, str, int, float, float, str, bool]] = []
+
+        self.bw_scheduler: BWScheduler = BWScheduler(self.my_peer.public_key.key_to_bin(),
+                                                     self.peer_manager.get_my_short_id())
+
         self.random = Random(int.from_bytes(self.my_peer.public_key.key_to_bin(), 'big'))
-        self.peers_first_round: List[bytes] = []
 
         # Statistics
         self.active_peers_history = []
         self.bw_in_stats: Dict[str, Dict[str, int]] = {
             "bytes": {
-                "model": 0,
+                "adapter": 0,
                 "view": 0,
                 "ping": 0,
                 "pong": 0,
@@ -49,7 +57,7 @@ class DFLCommunity(LearningCommunity):
                 "aggack": 0,
             },
             "num": {
-                "model": 0,
+                "adapter": 0,
                 "view": 0,
                 "ping": 0,
                 "pong": 0,
@@ -60,7 +68,7 @@ class DFLCommunity(LearningCommunity):
 
         self.bw_out_stats: Dict[str, Dict[str, int]] = {
             "bytes": {
-                "model": 0,
+                "adapter": 0,
                 "view": 0,
                 "ping": 0,
                 "pong": 0,
@@ -68,7 +76,7 @@ class DFLCommunity(LearningCommunity):
                 "aggack": 0,
             },
             "num": {
-                "model": 0,
+                "adapter": 0,
                 "view": 0,
                 "ping": 0,
                 "pong": 0,
@@ -84,7 +92,7 @@ class DFLCommunity(LearningCommunity):
         self.ongoing_training_task_name: Optional[str] = None
         self.train_sample_estimate: int = 0
         self.advertise_index: int = 1
-        self.aggregations: Dict = {}
+        self.aggregations: Dict[int, ModelManager] = {}
         self.aggregation_timeouts = set()
         self.aggregations_completed = set()
         self.completed_training = False
@@ -113,10 +121,10 @@ class DFLCommunity(LearningCommunity):
         if advertise_join:
             self.advertise_membership(NodeMembershipChange.JOIN)
 
-    def setup(self, settings: SessionSettings):
+    def setup(self, settings: SessionSettings, base_model: PreTrainedModel):
         self.logger.info("Setting up experiment with %d initial participants and sample size %d (I am participant %s)" %
                          (len(settings.participants), settings.dfl.sample_size, self.peer_manager.get_my_short_id()))
-        super().setup(settings)
+        super().setup(settings, base_model)
         self.peer_manager.inactivity_threshold = settings.dfl.inactivity_threshold
         self.sample_manager = SampleManager(self.peer_manager, settings.dfl.sample_size, settings.dfl.num_aggregators)
 
@@ -142,6 +150,7 @@ class DFLCommunity(LearningCommunity):
             return
 
         super().go_offline()
+        self.bw_scheduler.kill_all_transfers()
 
         if self.aggregations:
             self.logger.warning("Aggregator %s went offline during aggregation - this might impact liveness",
@@ -450,9 +459,9 @@ class DFLCommunity(LearningCommunity):
             self.logger.warning("Participant %s went offline during model training in round %d - not proceeding", self.peer_manager.get_my_short_id(), round)
             return
 
-        await self.forward_trained_model(round)
+        await self.forward_trained_adapter(round)
 
-    async def forward_trained_model(self, round: int):
+    async def forward_trained_adapter(self, round: int):
         # 2. Determine the aggregators of the next sample that are available
         aggregators = await self.determine_available_peers_for_sample(round + 1, self.settings.dfl.num_aggregators,
                                                                       getting_aggregators=True)
@@ -461,9 +470,9 @@ class DFLCommunity(LearningCommunity):
         self.logger.info("Participant %s determined %d available aggregators in sample %d: %s",
                          self.peer_manager.get_my_short_id(), len(aggregator_ids), round + 1, aggregator_ids)
 
-        # 3. Send the trained model to the aggregators in the next sample
+        # 3. Send the trained adapter to the aggregators in the next sample
         self.train_future = Future()
-        await self.send_trained_model_to_aggregators(aggregators, round + 1)
+        await self.send_trained_adapter_to_aggregators(aggregators, round + 1)
 
         if self.train_future:  # Could be interrupted
             await self.train_future
@@ -475,13 +484,13 @@ class DFLCommunity(LearningCommunity):
             if self.round_complete_callback:
                 ensure_future(self.round_complete_callback(round))
 
-    async def send_aggregated_model_to_participants(self, participants: List[bytes], model: nn.Module, sample_index: int) -> List[bool]:
+    async def send_aggregated_adapter_to_participants(self, participants: List[bytes], sample_index: int) -> List[bool]:
         if not self.is_active:
-            self.logger.warning("Participant %s not sending aggregated model due to offline status",
+            self.logger.warning("Participant %s not sending aggregated adapter due to offline status",
                                 self.peer_manager.get_my_short_id())
             return []
 
-        self.logger.info("Participant %s sending aggregated model of round %d to participants",
+        self.logger.info("Participant %s sending aggregated adapter of round %d to participants",
                          self.peer_manager.get_my_short_id(), sample_index - 1)
 
         # For load balancing purposes, shuffle this list
@@ -491,8 +500,7 @@ class DFLCommunity(LearningCommunity):
         population_view = copy.deepcopy(self.peer_manager.last_active)
         for peer_pk in participants:
             if peer_pk == self.my_id:
-                model_cpy = copy.deepcopy(model)
-                asyncio.get_event_loop().call_soon(self.received_aggregated_model, self.my_peer, sample_index, model_cpy)
+                asyncio.get_event_loop().call_soon(self.received_aggregated_adapter, self.my_peer, sample_index, self.model_manager.global_adapter)
                 continue
 
             peer = self.get_peer_by_pk(peer_pk)
@@ -500,7 +508,7 @@ class DFLCommunity(LearningCommunity):
                 self.logger.warning("Could not find peer with public key %s", hexlify(peer_pk).decode())
                 continue
 
-            futures.append(self.eva_send_model(sample_index, model, "aggregated_model", population_view, peer))
+            futures.append(self.eva_send_adapter(sample_index, "aggregated_adapter", population_view, peer, self.model_manager.global_adapter))
 
         # Flush pending changes to the local view
         self.peer_manager.flush_last_active_pending()
@@ -508,17 +516,17 @@ class DFLCommunity(LearningCommunity):
         res = await asyncio.gather(*futures)
         return res
 
-    async def send_trained_model_to_aggregators(self, aggregators: List[bytes], sample_index: int) -> None:
+    async def send_trained_adapter_to_aggregators(self, aggregators: List[bytes], sample_index: int) -> None:
         """
-        Send the current model to the aggregators in a particular sample.
+        Send the current adapter to the aggregators in a particular sample.
         """
         if not self.is_active:
-            self.logger.warning("Participant %s not sending trained model due to offline status",
+            self.logger.warning("Participant %s not sending trained adapter due to offline status",
                                 self.peer_manager.get_my_short_id())
             return
 
         aggregator_ids = [self.peer_manager.get_short_id(aggregator) for aggregator in aggregators]
-        self.logger.info("Participant %s sending trained model of round %d to %d aggregators in sample %d: %s",
+        self.logger.info("Participant %s sending trained adapter of round %d to %d aggregators in sample %d: %s",
                          self.peer_manager.get_my_short_id(), sample_index - 1, len(aggregators), sample_index, aggregator_ids)
         population_view = copy.deepcopy(self.peer_manager.last_active)
 
@@ -528,17 +536,8 @@ class DFLCommunity(LearningCommunity):
         futures: List[Future] = []
         for aggregator in aggregators:
             if aggregator == self.my_id:
-                self.logger.info("Participant %s sending trained model to self", self.peer_manager.get_my_short_id())
-
-                # Transfer the model back to the CPU
-                device = torch.device("cpu")
-                self.model_manager.model = self.model_manager.model.to(device)
-
-                # Even when sending the model to oneself, serialize and deserialize the model to make sure all tensors are detached
-                detached_model = unserialize_model(serialize_model(self.model_manager.model),
-                                                   self.settings.dataset, architecture=self.settings.model)
-
-                ensure_future(self.received_trained_model(self.my_peer, sample_index, detached_model))
+                self.logger.info("Participant %s sending trained adapter to self", self.peer_manager.get_my_short_id())
+                ensure_future(self.received_trained_adapter(self.my_peer, sample_index))
                 continue
 
             peer = self.get_peer_by_pk(aggregator)
@@ -546,25 +545,75 @@ class DFLCommunity(LearningCommunity):
                 self.logger.warning("Could not find aggregator peer with public key %s", hexlify(aggregator).decode())
                 continue
 
-            futures.append(self.eva_send_model(sample_index, self.model_manager.model, "trained_model", population_view, peer))
+            futures.append(self.eva_send_adapter(sample_index, "trained_adapter", population_view, peer, self.model_manager.adapter))
 
         # Flush pending changes to the local view
         self.peer_manager.flush_last_active_pending()
 
         await asyncio.gather(*futures)
 
-    def eva_send_model(self, round, model, type, population_view, peer):
-        start_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
-        serialized_model = serialize_model(model)
+    async def eva_send_adapter(self, round, type, population_view, peer, adapter: Dict):
+        serialized_adapter = serialize_adapter(adapter)
         serialized_population_view = pickle.dumps(population_view)
-        self.bw_out_stats["bytes"]["model"] += len(serialized_model)
+        self.bw_out_stats["bytes"]["adapter"] += len(serialized_adapter)
         self.bw_out_stats["bytes"]["view"] += len(serialized_population_view)
-        self.bw_out_stats["num"]["model"] += 1
+        self.bw_out_stats["num"]["adapter"] += 1
         self.bw_out_stats["num"]["view"] += 1
-        binary_data = serialized_model + serialized_population_view
-        response = {"round": round, "type": type, "model_data_len": len(serialized_model)}
+        binary_data = serialized_adapter + serialized_population_view
+        response = {"round": round, "type": type, "adapter_data_len": len(serialized_adapter)}
         serialized_response = json.dumps(response).encode()
-        return self.schedule_eva_send_model(peer, serialized_response, binary_data, start_time)
+
+        found: bool = False
+        transfer_success: bool = True
+        transfer_time: float = 0
+        for node in self.nodes:
+            if node.overlays[0].my_peer == peer:
+                found = True
+                if not node.overlays[0].is_active:
+                    break
+
+                transfer_start_time = asyncio.get_event_loop().time()
+                if self.bw_scheduler.bw_limit > 0:
+                    transfer_size: int = len(binary_data) + len(serialized_response)
+                    transfer = self.bw_scheduler.add_transfer(node.overlays[0].bw_scheduler, transfer_size)
+                    transfer.metadata = response
+                    self.logger.info("Adapter transfer %s => %s started at t=%f",
+                                     self.peer_manager.get_my_short_id(),
+                                     node.overlays[0].peer_manager.get_my_short_id(),
+                                     transfer_start_time)
+                    try:
+                        await transfer.complete_future
+                    except RuntimeError:
+                        transfer_success = False
+                    transfer_time = asyncio.get_event_loop().time() - transfer_start_time
+
+                    transferred_bytes: int = transfer.get_transferred_bytes()
+                    self.endpoint.bytes_up += transferred_bytes
+                    node.overlays[0].endpoint.bytes_down += transferred_bytes
+
+                    self.logger.info("Adapter transfer %s => %s %s at t=%f and took %f s.",
+                                     self.peer_manager.get_my_short_id(),
+                                     node.overlays[0].peer_manager.get_my_short_id(),
+                                     "completed" if transfer_success else "failed",
+                                     transfer_start_time, transfer_time)
+                else:
+                    self.endpoint.bytes_up += len(binary_data) + len(serialized_response)
+                    node.overlays[0].endpoint.bytes_down += len(binary_data) + len(serialized_response)
+
+                json_data = json.loads(serialized_response.decode())
+                self.transfers.append((self.peer_manager.get_my_short_id(),
+                                       node.overlays[0].peer_manager.get_my_short_id(), json_data["round"],
+                                       transfer_start_time, transfer_time, json_data["type"], transfer_success))
+
+                if transfer_success:
+                    res = TransferResult(self.my_peer, serialized_response, binary_data, 0)
+                    ensure_future(node.overlays[0].on_receive(res))
+                break
+
+        if not found:
+            raise RuntimeError("Peer %s not found in node list!" % peer)
+
+        return transfer_success
 
     def cancel_current_training_task(self):
         if self.ongoing_training_task_name and self.is_pending_task_active(self.ongoing_training_task_name):
@@ -584,52 +633,52 @@ class DFLCommunity(LearningCommunity):
 
         self.logger.info(f'Participant {my_peer_id} received data from participant {peer_id}: {result.info.decode()}')
         json_data = json.loads(result.info.decode())
-        serialized_model = result.data[:json_data["model_data_len"]]
-        serialized_population_view = result.data[json_data["model_data_len"]:]
+        serialized_adapter = result.data[:json_data["adapter_data_len"]]
+        serialized_population_view = result.data[json_data["adapter_data_len"]:]
         received_population_view = pickle.loads(serialized_population_view)
-        self.bw_in_stats["bytes"]["model"] += len(serialized_model)
+        self.bw_in_stats["bytes"]["adapter"] += len(serialized_adapter)
         self.bw_in_stats["bytes"]["view"] += len(serialized_population_view)
-        self.bw_in_stats["num"]["model"] += 1
+        self.bw_in_stats["num"]["adapter"] += 1
         self.bw_in_stats["num"]["view"] += 1
         self.peer_manager.merge_population_views(received_population_view)
         self.peer_manager.update_peer_activity(result.peer.public_key.key_to_bin(),
                                                max(json_data["round"], self.get_round_estimate()))
-        incoming_model = unserialize_model(serialized_model, self.settings.dataset, architecture=self.settings.model)
+        incoming_adapter = unserialize_adapter(serialized_adapter)
 
-        if json_data["type"] == "trained_model":
-            self.log_event(json_data["round"], "received_trained_model")
-            await self.received_trained_model(result.peer, json_data["round"], incoming_model)
-        elif json_data["type"] == "aggregated_model":
-            self.log_event(json_data["round"], "received_aggregated_model")
-            self.received_aggregated_model(result.peer, json_data["round"], incoming_model)
+        if json_data["type"] == "trained_adapter":
+            self.log_event(json_data["round"], "received_trained_adapter")
+            await self.received_trained_adapter(result.peer, json_data["round"], incoming_adapter)
+        elif json_data["type"] == "aggregated_adapter":
+            self.log_event(json_data["round"], "received_aggregated_adapter")
+            self.received_aggregated_adapter(result.peer, json_data["round"], incoming_adapter)
 
-    def has_enough_trained_models(self, agg_round: int) -> bool:
-        return len(self.aggregations[agg_round].incoming_trained_models) >= \
+    def has_enough_trained_adapters(self, agg_round: int) -> bool:
+        return len(self.aggregations[agg_round].incoming_trained_adapters) >= \
                floor(self.settings.dfl.sample_size * self.settings.dfl.success_fraction)
 
-    def has_enough_trained_models_for_liveness(self, agg_round: int) -> bool:
-        return len(self.aggregations[agg_round].incoming_trained_models) >= 3
+    def has_enough_trained_adapters_for_liveness(self, agg_round: int) -> bool:
+        return len(self.aggregations[agg_round].incoming_trained_adapters) >= 3
 
-    async def received_trained_model(self, peer: Peer, index: int, model: nn.Module) -> None:
+    async def received_trained_adapter(self, peer: Peer, index: int, adapter: Dict) -> None:
         model_round = index - 1  # The round associated with this model is one smaller than the sample index
         if self.shutting_down:
-            self.logger.warning("Participant %s ignoring incoming trained model due to shutdown",
+            self.logger.warning("Participant %s ignoring incoming trained adapter due to shutdown",
                                 self.peer_manager.get_my_short_id())
             return
 
         peer_pk = peer.public_key.key_to_bin()
         peer_id = self.peer_manager.get_short_id(peer_pk)
 
-        self.logger.info("Participant %s received trained model for round %d from participant %s",
+        self.logger.info("Participant %s received trained adapter for round %d from participant %s",
                          self.peer_manager.get_my_short_id(), model_round, peer_id)
 
         if index not in self.aggregations:
             if index in self.aggregations_completed:
-                self.logger.info("Participant %s received trained model for completed round %d - ignoring ",
+                self.logger.info("Participant %s received trained adapter for completed round %d - ignoring ",
                                  self.peer_manager.get_my_short_id(), model_round)
                 return
 
-            self.logger.info("Participant %s received trained model for round %d for the first time - "
+            self.logger.info("Participant %s received trained adapter for round %d for the first time - "
                              "starting to aggregate", self.peer_manager.get_my_short_id(), model_round)
             self.log_event(model_round, "start_aggregate")
 
@@ -640,21 +689,21 @@ class DFLCommunity(LearningCommunity):
                                    index, delay=self.settings.dfl.aggregation_timeout)
                 self.aggregation_timeouts.add(task_name)
 
-            model_manager = ModelManager(None, self.settings, self.model_manager.participant_index)
+            model_manager = ModelManager(self.model_manager.peft_model, self.settings, self.model_manager.participant_index)
             self.aggregations[index] = model_manager
 
         if index not in self.aggregations_completed:
-            self.aggregations[index].process_incoming_trained_model(peer_pk, model)
+            self.aggregations[index].process_incoming_trained_adapter(peer_pk, adapter)
 
-            # Check whether we received enough incoming models
-            if self.has_enough_trained_models(index):
-                self.logger.info("Aggregator %s received sufficient trained models (%d) of round %d",
-                                 self.peer_manager.get_my_short_id(), len(self.aggregations[index].incoming_trained_models),
+            # Check whether we received enough incoming adapters
+            if self.has_enough_trained_adapters(index):
+                self.logger.info("Aggregator %s received sufficient trained adapters (%d) of round %d",
+                                 self.peer_manager.get_my_short_id(), len(self.aggregations[index].incoming_trained_adapters),
                                  model_round)
                 await self.aggregator_complete_round(model_round, index)
             else:
-                self.logger.info("Aggregator %s has not enough trained models (%d) of round %d yet",
-                                 self.peer_manager.get_my_short_id(), len(self.aggregations[index].incoming_trained_models),
+                self.logger.info("Aggregator %s has not enough trained adapters (%d) of round %d yet",
+                                 self.peer_manager.get_my_short_id(), len(self.aggregations[index].incoming_trained_adapters),
                                  model_round)
 
     async def aggregator_complete_round(self, model_round: int, index: int):
@@ -667,16 +716,16 @@ class DFLCommunity(LearningCommunity):
             self.cancel_pending_task(timeout_task_name)
         self.aggregation_timeouts.remove(timeout_task_name)
 
-        # 3.1. Aggregate these models
-        self.logger.info("Aggregator %s will average the models of round %d",
+        # 3.1. Aggregate these adapters
+        self.logger.info("Aggregator %s will average the adapters of round %d",
                          self.peer_manager.get_my_short_id(), model_round)
-        avg_model = model_manager.aggregate_trained_models()
+        model_manager.aggregate_trained_adapters()
 
         if self.aggregate_complete_callback:
-            ensure_future(self.aggregate_complete_callback(model_round, avg_model))
+            ensure_future(self.aggregate_complete_callback(model_round))
 
         # Capture the peers
-        peers_that_sent_trained_model: List[bytes] = list(model_manager.incoming_trained_models.keys())
+        peers_that_sent_trained_model: List[bytes] = list(model_manager.incoming_trained_adapters.keys())
 
         # 3. Determine the participants of the next sample that are available
         participants = await self.determine_available_peers_for_sample(index, self.settings.dfl.sample_size)
@@ -686,7 +735,7 @@ class DFLCommunity(LearningCommunity):
                          self.peer_manager.get_my_short_id(), len(participants_ids), model_round, participants_ids)
 
         # 3.3. Distribute the average model to the available participants in the sample.
-        await self.send_aggregated_model_to_participants(participants, avg_model, index)
+        await self.send_aggregated_adapter_to_participants(participants, index)
 
         if not self.is_active:
             # It might be that the aggregator went offline
@@ -719,26 +768,26 @@ class DFLCommunity(LearningCommunity):
                                 "aggregation for a subsequent round, ignoring it", self.peer_manager.get_my_short_id())
             return
 
-        if self.has_enough_trained_models_for_liveness(index):
+        if self.has_enough_trained_adapters_for_liveness(index):
             self.log_event(model_round, "aggregate_timeout")
             ensure_future(self.aggregator_complete_round(model_round, index))
         else:
             self.logger.info("Aggregator %s triggered aggregation timeout in round %d but didn't receive sufficient "
-                             "models to continue (%d models received)",
+                             "adapters to continue (%d adapters received)",
                              self.peer_manager.get_my_short_id(), model_round,
-                             len(self.aggregations[index].incoming_trained_models))
+                             len(self.aggregations[index].incoming_trained_adapters))
             self.aggregations.pop(index)
 
-    def received_aggregated_model(self, peer: Peer, model_round: int, model: nn.Module) -> None:
+    def received_aggregated_adapter(self, peer: Peer, model_round: int, aggregated_adapter: Dict) -> None:
         if self.shutting_down:
-            self.logger.warning("Participant %s ignoring incoming aggregated model due to shutdown",
+            self.logger.warning("Participant %s ignoring incoming aggregated adapter due to shutdown",
                                 self.peer_manager.get_my_short_id())
             return
 
         peer_pk = peer.public_key.key_to_bin()
         peer_id = self.peer_manager.get_short_id(peer_pk)
 
-        self.logger.info("Participant %s received aggregated model of round %d from aggregator %s",
+        self.logger.info("Participant %s received aggregated adapter of round %d from aggregator %s",
                          self.peer_manager.get_my_short_id(), model_round - 1, peer_id)
 
         if model_round > self.train_sample_estimate:
@@ -748,7 +797,7 @@ class DFLCommunity(LearningCommunity):
             self.cancel_current_training_task()
             self.completed_training = False
         if model_round == self.train_sample_estimate and not self.ongoing_training_task_name and not self.completed_training:
-            self.model_manager.model = model
+            self.model_manager.adopt_adapter(aggregated_adapter)
             self.train_in_round(model_round)
         else:
             self.logger.info("Participant %s NOT starting training round %d (train sample: %d, ongoing train task: %s, "

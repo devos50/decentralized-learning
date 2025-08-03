@@ -34,7 +34,6 @@ from simulation.discrete_loop import DiscreteLoop
 from simulation.simulation_endpoint import SimulationEndpoint
 
 from simulations.dl.bypass_network_community import DLBypassNetworkCommunity
-from simulations.dfl.bypass_network_community import DFLBypassNetworkCommunity
 from simulations.gl.bypass_network_community import GLBypassNetworkCommunity
 from simulations.logger import SimulationLoggerAdapter
 
@@ -76,7 +75,6 @@ class LearningSimulation(TaskManager):
                                 'DLCommunity': DLCommunity,
                                 'DLBypassNetworkCommunity': DLBypassNetworkCommunity,
                                 'DFLCommunity': DFLCommunity,
-                                'DFLBypassNetworkCommunity': DFLBypassNetworkCommunity,
                                 'GLCommunity': GLCommunity,
                                 'GLBypassNetworkCommunity': GLBypassNetworkCommunity,
                             })
@@ -292,16 +290,6 @@ class LearningSimulation(TaskManager):
         self.logger.info("Started %d nodes...", len(active_nodes))
 
         self.start_nodes_training(active_nodes)
-
-        dataset_base_path: str = self.args.dataset_base_path or os.environ["HOME"]
-        if self.args.dataset in ["cifar10", "mnist", "google_speech"]:
-            data_dir = os.path.join(dataset_base_path, "dfl-data")
-        else:
-            # The LEAF dataset
-            data_dir = os.path.join(dataset_base_path, "leaf", self.args.dataset)
-
-        if not self.args.bypass_training:
-            self.evaluator = ModelEvaluator(data_dir, self.session_settings)
 
         if self.args.profile:
             yappi.start(builtins=True)

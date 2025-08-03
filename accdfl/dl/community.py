@@ -10,7 +10,6 @@ import torch
 from torch import nn
 
 from accdfl.core.community import LearningCommunity
-from accdfl.core.models import serialize_model, unserialize_model
 from accdfl.util.eva.result import TransferResult
 
 

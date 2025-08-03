@@ -1,51 +1,56 @@
 import pickle
-from typing import Optional
+from typing import Dict
+from datasets import Dataset
+from peft import LoraConfig, PeftModel, get_peft_model
+from transformers import AutoModelForSequenceClassification, PreTrainedModel
 
-import torch
-
-from accdfl.core.models.Model import Model
-
-
-def serialize_model(model: torch.nn.Module) -> bytes:
-    return pickle.dumps(model.state_dict())
+from accdfl.core.session_settings import SessionSettings
 
 
-def unserialize_model(serialized_model: bytes, dataset: str, architecture: Optional[str] = None) -> torch.nn.Module:
-    model = create_model(dataset, architecture=architecture)
-    model.load_state_dict(pickle.loads(serialized_model))
-    return model
+def serialize_adapter(adapter: Dict) -> bytes:
+    """
+    Serialize a PEFT adapter to bytes.
+    """
+    return pickle.dumps(adapter)
 
 
-def create_model(dataset: str, architecture: Optional[str] = None) -> Model:
-    if dataset in ["shakespeare", "shakespeare_sub", "shakespeare_sub96"]:
-        from accdfl.core.models.shakespeare import LSTM
-        return LSTM()
-    elif dataset == "cifar10":
-        if not architecture:
-            from accdfl.core.models.cifar10 import GNLeNet
-            return GNLeNet(input_channel=3, output=10, model_input=(32, 32))
-        elif architecture == "resnet8":
-            from accdfl.core.models.resnet8 import ResNet8
-            return ResNet8()
-        elif architecture in ["resnet18", "mobilenet_v3_large"]:
-            import torchvision.models as tormodels
-            return tormodels.__dict__[architecture](num_classes=10)
-        else:
-            raise RuntimeError("Unknown model architecture for CIFAR10: %s" % architecture)
-    elif dataset == "celeba":
-        from accdfl.core.models.celeba import CNN
-        return CNN()
-    elif dataset == "femnist":
-        from accdfl.core.models.femnist import CNN
-        return CNN()
-    elif dataset == "movielens":
-        from accdfl.core.models.movielens import MatrixFactorization
-        return MatrixFactorization()
-    elif dataset == "spambase":
-        from accdfl.core.models.linear import LinearModel
-        return LinearModel(57, 2)
-    elif dataset == "google_speech":
-        from accdfl.core.models.resnet_speech import resnet34
-        return resnet34(num_classes=35, in_channels=1)
+def unserialize_adapter(serialized_adapter: bytes):
+    """
+    Unserialize a PEFT adapter from bytes.
+    """
+    return pickle.loads(serialized_adapter)
+
+
+def create_base_model(dataset_name: str, dataset: Dataset) -> PreTrainedModel:
+    if dataset_name == "ag_news":
+        # Extract the number of classess and their names
+        num_labels = dataset['train'].features['label'].num_classes
+        class_names = dataset["train"].features["label"].names
+        print(f"number of labels: {num_labels}")
+        print(f"the labels: {class_names}")
+        
+        # Create an id2label mapping
+        # We will need this for our classifier.
+        id2label = {i: label for i, label in enumerate(class_names)}
+
+        return AutoModelForSequenceClassification.from_pretrained("roberta-base", id2label=id2label, cache_dir="data/models")
     else:
-        raise RuntimeError("Unknown dataset %s" % dataset)
+        raise RuntimeError("Unknown dataset %s" % dataset_name)
+
+
+def create_adapters(session_settings: SessionSettings, base_model: PreTrainedModel) -> PeftModel:
+    peft_config = LoraConfig(task_type="SEQ_CLS", inference_mode=False, r=8, lora_alpha=16, lora_dropout=0.1)
+    # TODO these parameters should be configurable
+    peft_model = get_peft_model(base_model, peft_config)
+
+    # Create adapters for each user
+    for adapter_name in ["client_%d" % i for i in range(len(session_settings.participants))]:
+        if adapter_name not in peft_model.peft_config:
+            peft_model.add_adapter(adapter_name, peft_config)
+        peft_model.set_adapter(adapter_name)
+
+    # Create a global adapter (for the aggregation)
+    if "global" not in peft_model.peft_config:
+        peft_model.add_adapter("global", peft_config)
+
+    return peft_model

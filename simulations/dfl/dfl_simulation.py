@@ -5,13 +5,22 @@ from binascii import hexlify
 from random import Random
 from typing import List, Dict, Optional
 
+from peft import PeftModel
 import torch
 
+from datasets import Dataset
+
 from accdfl.core import NodeMembershipChange
+from accdfl.core.datasets import create_global_dataset
+from accdfl.core.datasets.partition import split_dataset_dirichlet, split_dataset_uniform
+from accdfl.core.model_evaluator import ModelEvaluator
+from accdfl.core.models import create_adapters, create_base_model, serialize_adapter
 from accdfl.core.session_settings import DFLSettings, LearningSettings, SessionSettings
 from accdfl.core.peer_manager import PeerManager
 
 from ipv8.configuration import ConfigBuilder
+
+from transformers import AutoTokenizer, PreTrainedModel
 
 from simulations.learning_simulation import LearningSimulation
 from simulations.logger import SimulationLoggerAdapter
@@ -25,16 +34,16 @@ class DFLSimulation(LearningSimulation):
         self.last_round_complete_time: Optional[float] = None
         self.round_durations: List[float] = []
         self.best_accuracy: float = 0.0
+        self.device: str = "cpu"
+        self.dataset: Optional[Dataset] = None
+        self.peft_model: Optional[PeftModel] = None
         self.data_dir = os.path.join("data", "n_%d_%s_s%d_a%d_sf%g_lr%g_sd%ddfl" % (
             self.args.peers, self.args.dataset, self.args.sample_size, self.args.num_aggregators,
             self.args.success_fraction, self.args.learning_rate, self.args.seed))
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = super().get_ipv8_builder(peer_id)
-        if self.args.bypass_model_transfers:
-            builder.add_overlay("DFLBypassNetworkCommunity", "my peer", [], [], {}, [])
-        else:
-            builder.add_overlay("DFLCommunity", "my peer", [], [], {}, [])
+        builder.add_overlay("DFLCommunity", "my peer", [], [], {}, [])
         return builder
 
     async def setup_simulation(self) -> None:
@@ -78,6 +87,14 @@ class DFLSimulation(LearningSimulation):
             aggregation_timeout=self.args.aggregation_timeout,
         )
 
+        # Determine the device to use for training
+        self.device = (
+            "cuda" if torch.cuda.is_available()
+            else "mps" if torch.backends.mps.is_available()
+            else "cpu"
+        )
+        self.logger.info("Using device %s for training", self.device)
+
         self.session_settings = SessionSettings(
             work_dir=self.data_dir,
             dataset=self.args.dataset,
@@ -92,24 +109,55 @@ class DFLSimulation(LearningSimulation):
             partitioner=self.args.partitioner,
             eva_block_size=1000,
             is_simulation=True,
-            train_device_name=self.args.train_device_name,
             bypass_training=self.args.bypass_training,
+            device=self.device,
         )
 
+        # Create the global dataset
+        self.dataset = create_global_dataset(self.session_settings)
+
+        # Process the dataset (tonkenization, etc.)
+        tokenizer = AutoTokenizer.from_pretrained("roberta-base", use_fast=True)
+
+        def preprocess(examples):
+            tokenized = tokenizer(examples['text'], truncation=True, padding=True)
+            return tokenized
+        processed_dataset = self.dataset.map(preprocess, batched=True,  remove_columns=["text"])
+        train_dataset = processed_dataset['train']
+
+        # Create the base model
+        base_model: PreTrainedModel = create_base_model(self.session_settings.dataset, self.dataset)
+
+        # Create the adapters
+        self.peft_model = create_adapters(self.session_settings, base_model).to(self.device)
+
+        # Create each of the datasets
+        if self.session_settings.partitioner == "uniform":
+            split_datasets = split_dataset_uniform(train_dataset, len(self.session_settings.participants))
+        elif self.session_settings.partitioner == "dirichlet":
+            split_datasets = split_dataset_dirichlet(train_dataset, len(self.session_settings.participants), self.session_settings.alpha)
+        else:
+            raise RuntimeError("Unknown dataset distribution")
+
         for ind, node in enumerate(self.nodes):
-            node.overlays[0].aggregate_complete_callback = lambda round_nr, model, i=ind: self.on_aggregate_complete(i, round_nr, model)
-            node.overlays[0].setup(self.session_settings)
+            node.overlays[0].aggregate_complete_callback = lambda round_nr, i=ind: self.on_aggregate_complete(i, round_nr)
+            node.overlays[0].setup(self.session_settings, self.peft_model)
+            node.overlays[0].model_manager.model_trainer.setup_dataset(split_datasets[ind], tokenizer)
             node.overlays[0].model_manager.model_trainer.logger = SimulationLoggerAdapter(node.overlays[0].model_manager.model_trainer.logger, {})
+
+        if not self.args.bypass_training:
+            self.evaluator = ModelEvaluator(self.session_settings)
+            test_dataset = processed_dataset['test']
+            self.evaluator.setup_dataset(test_dataset, tokenizer)
 
         # If we fix the aggregator, we assume unlimited upload/download slots
         if self.args.fix_aggregator:
             self.logger.info("Overriding max. EVA transfers/bw limits for peer %d", lowest_latency_peer_id)
             self.nodes[lowest_latency_peer_id].overlays[0].eva.settings.max_simultaneous_transfers = 100000
 
-        if self.args.bypass_model_transfers:
-            # Inject the nodes in each community
-            for node in self.nodes:
-                node.overlays[0].nodes = self.nodes
+        # Inject the nodes in each community
+        for node in self.nodes:
+            node.overlays[0].nodes = self.nodes
 
         # Generated the statistics files
         with open(os.path.join(self.data_dir, "view_histories.csv"), "w") as out_file:
@@ -173,16 +221,13 @@ class DFLSimulation(LearningSimulation):
         # are selected for the first round.
         rand_sampler = Random(self.args.seed)
         activated_nodes = rand_sampler.sample(active_nodes, min(len(active_nodes), self.args.sample_size))
+        global_adapter = self.nodes[0].overlays[0].model_manager.global_adapter
         for initial_active_node in activated_nodes:
             overlay = initial_active_node.overlays[0]
             self.logger.info("Activating peer %s in round 1", overlay.peer_manager.get_my_short_id())
-            overlay.received_aggregated_model(overlay.my_peer, 1, overlay.model_manager.model)
+            overlay.received_aggregated_adapter(overlay.my_peer, 1, global_adapter)
 
-        activated_peers_pks = [node.overlays[0].my_peer.public_key.key_to_bin() for node in activated_nodes]
-        for node in self.nodes:
-            node.overlays[0].peers_first_round = activated_peers_pks
-
-    async def on_aggregate_complete(self, ind: int, round_nr: int, model):
+    async def on_aggregate_complete(self, ind: int, round_nr: int):
         tot_up, tot_down = 0, 0
         for node in self.nodes:
             tot_up += node.overlays[0].endpoint.bytes_up
@@ -203,7 +248,7 @@ class DFLSimulation(LearningSimulation):
 
             print("Will compute accuracy for round %d!" % round_nr)
             if not self.args.bypass_training:
-                accuracy, loss = self.evaluator.evaluate_accuracy(model, device_name=self.args.accuracy_device_name)
+                accuracy, loss = self.evaluator.evaluate_accuracy(self.peft_model)
             else:
                 accuracy, loss = 0, 0
 

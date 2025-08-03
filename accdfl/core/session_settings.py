@@ -69,7 +69,7 @@ class SessionSettings:
     gl: Optional[GLSettings] = None
     model: Optional[str] = None
     alpha: float = 1
-    partitioner: str = "iid"  # iid, shards or dirichlet
+    partitioner: str = "uniform"  # uniform or dirichlet
     gradient_aggregation: GradientAggregationMethod = GradientAggregationMethod.FEDAVG
     model_seed: int = 0
     model_send_delay: float = 1.0
@@ -77,8 +77,8 @@ class SessionSettings:
     eva_block_size: int = 60000  # This value is extremely high and tuned for the DAS6
     eva_max_simultaneous_transfers: int = 30  # Corresponds to a peak usage of ~3.4 MB/s for an aggregator
     is_simulation: bool = False
-    train_device_name: str = "cpu"
     bypass_training: bool = False  # Whether to bypass model training, can be useful to observe network dynamics
+    device: str = "cpu"
 
 
 def dump_settings(settings: SessionSettings):

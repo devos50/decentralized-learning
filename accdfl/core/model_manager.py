@@ -1,18 +1,12 @@
-import asyncio
 import logging
-import os
-import random
-import sys
-import time
-from typing import Dict, Optional, List
+from typing import Dict, Optional
 
+from peft import PeftModel, get_peft_model_state_dict
 import torch
-import torch.nn as nn
 
 from accdfl.core.gradient_aggregation import GradientAggregationMethod
 from accdfl.core.gradient_aggregation.fedavg import FedAvg
 from accdfl.core.model_trainer import ModelTrainer
-from accdfl.core.models import unserialize_model, serialize_model
 from accdfl.core.session_settings import SessionSettings, dump_settings
 
 
@@ -21,94 +15,50 @@ class ModelManager:
     This class manages the current ML model and training.
     """
 
-    def __init__(self, model: Optional[nn.Module], settings: SessionSettings, participant_index: int):
-        self.model: nn.Module = model
+    def __init__(self, peft_model: Optional[PeftModel], settings: SessionSettings, participant_index: int):
+        self.peft_model: PeftModel = peft_model
+        self.adapter: Dict = get_peft_model_state_dict(peft_model, adapter_name=f"client_{participant_index}")
+        self.global_adapter: Dict = get_peft_model_state_dict(peft_model, adapter_name=f"global")
         self.settings: SessionSettings = settings
         self.participant_index: int = participant_index
         self.logger = logging.getLogger(self.__class__.__name__)
+        self.model_trainer: ModelTrainer = ModelTrainer(self.settings, self.participant_index)
 
-        dataset_base_path: str = self.settings.dataset_base_path or os.environ["HOME"]
-        if self.settings.dataset in ["cifar10", "mnist", "google_speech"]:
-            self.data_dir = os.path.join(dataset_base_path, "dfl-data")
-        else:
-            # The LEAF dataset
-            self.data_dir = os.path.join(dataset_base_path, "leaf", self.settings.dataset)
+        # Keeps track of the incoming trained adapters as aggregator
+        self.incoming_trained_adapters: Dict[bytes, Dict] = {}
 
-        self.model_trainer: ModelTrainer = ModelTrainer(self.data_dir, self.settings, self.participant_index)
-
-        # Keeps track of the incoming trained models as aggregator
-        self.incoming_trained_models: Dict[bytes, nn.Module] = {}
-
-    def process_incoming_trained_model(self, peer_pk: bytes, incoming_model: nn.Module):
-        if peer_pk in self.incoming_trained_models:
-            # We already processed this model
+    def process_incoming_trained_adapter(self, peer_pk: bytes, incoming_adapter: Dict):
+        if peer_pk in self.incoming_trained_adapters:
+            # We already processed this adapter
             return
 
-        self.incoming_trained_models[peer_pk] = incoming_model
+        self.incoming_trained_adapters[peer_pk] = incoming_adapter
 
-    def reset_incoming_trained_models(self):
-        self.incoming_trained_models = {}
+    def reset_incoming_trained_adapters(self):
+        self.incoming_trained_adapters = {}
 
     def get_aggregation_method(self):
         if self.settings.gradient_aggregation == GradientAggregationMethod.FEDAVG:
             return FedAvg
 
-    def aggregate_trained_models(self, weights: List[float] = None) -> Optional[nn.Module]:
-        models = [model for model in self.incoming_trained_models.values()]
-        return self.get_aggregation_method().aggregate(models, weights=weights)
+    def aggregate_trained_adapters(self) -> Dict:
+        adapters = [adapter for adapter in self.incoming_trained_adapters.values()]
+        return self.get_aggregation_method().aggregate(adapters, self.peft_model)
 
     async def train(self) -> int:
-        samples_trained_on = await self.model_trainer.train(self.model, device_name=self.settings.train_device_name)
+        samples_trained_on = await self.model_trainer.train(self.peft_model)
 
-        # Detach the gradients
-        self.model = unserialize_model(serialize_model(self.model), self.settings.dataset, architecture=self.settings.model)
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
         return samples_trained_on
 
-    async def compute_accuracy(self, model: nn.Module):
+    def adopt_adapter(self, new_adapter: Dict):
         """
-        Compute the accuracy/loss of the current model.
-        Optionally, one can provide a custom iterator to compute the accuracy on a custom dataset.
+        Adopt the given adapter as the current model adapter.
         """
-        self.logger.info("Computing accuracy of model")
-
-        # Dump the model and settings to a file
-        model_id = random.randint(1, 1000000)
-        model_file_name = "%d.model" % model_id
-        model_path = os.path.join(self.settings.work_dir, model_file_name)
-        torch.save(model.state_dict(), model_path)
-        dump_settings(self.settings)
-
-        # Get full path to the script
-        import accdfl.util as autil
-        script_dir = os.path.join(os.path.abspath(os.path.dirname(autil.__file__)), "evaluate_model.py")
-        cmd = "%s %s %s %d %s %d" % (sys.executable, script_dir, self.settings.work_dir, model_id,
-                                     self.data_dir, torch.get_num_threads())
-        proc = await asyncio.create_subprocess_shell(
-            cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE)
-
-        stdout, stderr = await proc.communicate()
-        self.logger.info(f'Accuracy evaluator exited with {proc.returncode}]')
-
-        if proc.returncode != 0:
-            if stdout:
-                self.logger.error(f'[stdout]\n{stdout.decode()}')
-            if stderr:
-                self.logger.error(f'[stderr]\n{stderr.decode()}')
-            raise RuntimeError("Accuracy evaluation subprocess exited with non-zero exit code %d: %s" %
-                               (proc.returncode, stderr.decode()))
-
-        os.unlink(model_path)
-
-        # Read the accuracy and the loss from the file
-        results_file = os.path.join(self.settings.work_dir, "%d_results.csv" % model_id)
-        with open(results_file) as in_file:
-            content = in_file.read().strip().split(",")
-
-        os.unlink(results_file)
-
-        return float(content[0]), float(content[1])
+        for key in self.adapter.keys():
+            if key in new_adapter:
+                self.adapter[key].copy_(new_adapter[key])
+            else:
+                self.logger.warning(f"Key {key} not found in the incoming adapter, keeping the existing value.")

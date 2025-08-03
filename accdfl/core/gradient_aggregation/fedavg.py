@@ -1,8 +1,7 @@
-import copy
-from typing import List
+from typing import Dict, List
 
+from peft import PeftModel, set_peft_model_state_dict
 import torch
-from torch import nn
 
 from accdfl.core.gradient_aggregation import GradientAggregation
 
@@ -10,17 +9,11 @@ from accdfl.core.gradient_aggregation import GradientAggregation
 class FedAvg(GradientAggregation):
 
     @staticmethod
-    def aggregate(models: List[nn.Module], weights: List[float]):
-        if not weights:
-            weights = [float(1. / len(models)) for _ in range(len(models))]
-        else:
-            assert len(weights) == len(models)
+    def aggregate(adapters: List[Dict], peft_model: PeftModel) -> None:
+        agg_state = {}
+        for k in adapters[0].keys():
+            stack = torch.stack([sd[k] for sd in adapters], dim=0)
+            avg = stack.mean(dim=0)
+            agg_state[k] = avg
 
-        with torch.no_grad():
-            center_model = copy.deepcopy(models[0])
-            for p in center_model.parameters():
-                p.mul_(0)
-            for m, w in zip(models, weights):
-                for c1, p1 in zip(center_model.parameters(), m.parameters()):
-                    c1.add_(w * p1)
-            return center_model
+        set_peft_model_state_dict(peft_model, agg_state, adapter_name="global")

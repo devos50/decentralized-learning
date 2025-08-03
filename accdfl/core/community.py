@@ -4,15 +4,17 @@ from asyncio import Future, ensure_future
 from binascii import unhexlify, hexlify
 from typing import Optional, Callable, Dict, List
 
+from peft import PeftModel
 import torch
 
 from accdfl.core import TransmissionMethod
-from accdfl.core.models import create_model
 from accdfl.core.model_manager import ModelManager
 from accdfl.core.peer_manager import PeerManager
 from accdfl.core.session_settings import SessionSettings
 from accdfl.util.eva.protocol import EVAProtocol
 from accdfl.util.eva.result import TransferResult
+
+from transformers import PreTrainedModel
 
 from ipv8.community import Community
 from ipv8.requestcache import RequestCache
@@ -94,16 +96,14 @@ class LearningCommunity(Community):
         cur_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
         self.logger.info("Participant %s will go offline (t=%d)", self.peer_manager.get_my_short_id(), cur_time)
 
-    def setup(self, settings: SessionSettings):
+    def setup(self, settings: SessionSettings, peft_model: PeftModel):
         self.settings = settings
         for participant in settings.participants:
             self.peer_manager.add_peer(unhexlify(participant))
 
         # Initialize the model
-        torch.manual_seed(settings.model_seed)
-        model = create_model(settings.dataset, architecture=settings.model)
         participant_index = settings.all_participants.index(hexlify(self.my_id).decode())
-        self.model_manager = ModelManager(model, settings, participant_index)
+        self.model_manager = ModelManager(peft_model, settings, participant_index)
 
         # Setup the model transmission
         if self.settings.transmission_method == TransmissionMethod.EVA:

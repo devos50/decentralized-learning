@@ -1,6 +1,13 @@
-import os
+import torch
+from torch.utils.data import DataLoader
 
-from accdfl.core.datasets import create_dataset
+from datasets import Dataset
+from transformers import AutoTokenizer, DataCollatorWithPadding
+
+import evaluate
+
+from peft import PeftModel
+
 from accdfl.core.session_settings import SessionSettings
 
 
@@ -9,12 +16,36 @@ class ModelEvaluator:
     Contains the logic to evaluate the accuracy of a given model on a test dataset.
     """
 
-    def __init__(self, data_dir: str, settings: SessionSettings):
-        if settings.dataset in ["cifar10", "mnist", "movielens", "google_speech"]:
-            test_dir = data_dir
-        else:
-            test_dir = os.path.join(data_dir, "data", "test")
-        self.dataset = create_dataset(settings, test_dir=test_dir)
+    def __init__(self, settings: SessionSettings):
+        self.settings: SessionSettings = settings
+        self.test_dataset = None
+        self.metric = evaluate.load('accuracy')
 
-    def evaluate_accuracy(self, model, device_name: str = "cpu"):
-        return self.dataset.test(model, device_name)
+    def setup_dataset(self, dataset: Dataset, tokenizer: AutoTokenizer):
+        self.test_dataset = dataset
+        self.tokenizer = tokenizer
+        self.data_collator = DataCollatorWithPadding(tokenizer=self.tokenizer, return_tensors="pt")
+
+    def evaluate_classification_model(self, inference_model):
+        TASK = "txt_classification"
+        eval_dataloader = DataLoader(self.test_dataset.rename_column("label", "labels") if TASK != "img_classification" else self.test_dataset, batch_size=512, collate_fn=self.data_collator)
+
+        inference_model.to(self.settings.device)
+        inference_model.eval()
+        for step, batch in enumerate(eval_dataloader):
+            batch = {key: val.to(self.settings.device) for key, val in batch.items() if isinstance(val, torch.Tensor)}
+            with torch.no_grad():
+                outputs = inference_model(**batch)
+            predictions = outputs.logits.argmax(dim=-1)
+            predictions, references = predictions, batch["labels"]
+            self.metric.add_batch(
+                predictions=predictions,
+                references=references,
+            )
+
+        return self.metric.compute()
+
+    def evaluate_accuracy(self, peft_model: PeftModel):
+        peft_model.set_adapter("global")
+        eval_res = self.evaluate_classification_model(peft_model)
+        return eval_res['accuracy'], eval_res['loss']
