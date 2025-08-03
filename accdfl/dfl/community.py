@@ -537,7 +537,7 @@ class DFLCommunity(LearningCommunity):
         for aggregator in aggregators:
             if aggregator == self.my_id:
                 self.logger.info("Participant %s sending trained adapter to self", self.peer_manager.get_my_short_id())
-                ensure_future(self.received_trained_adapter(self.my_peer, sample_index))
+                ensure_future(self.received_trained_adapter(self.my_peer, sample_index, self.model_manager.adapter))
                 continue
 
             peer = self.get_peer_by_pk(aggregator)
