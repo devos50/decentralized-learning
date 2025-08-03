@@ -41,16 +41,11 @@ def create_base_model(dataset_name: str, dataset: Dataset) -> PreTrainedModel:
 def create_adapters(session_settings: SessionSettings, base_model: PreTrainedModel) -> PeftModel:
     peft_config = LoraConfig(task_type="SEQ_CLS", inference_mode=False, r=8, lora_alpha=16, lora_dropout=0.1)
     # TODO these parameters should be configurable
-    peft_model = get_peft_model(base_model, peft_config)
+    peft_model = get_peft_model(base_model, peft_config, adapter_name="global")
 
     # Create adapters for each user
     for adapter_name in ["client_%d" % i for i in range(len(session_settings.participants))]:
         if adapter_name not in peft_model.peft_config:
             peft_model.add_adapter(adapter_name, peft_config)
-        peft_model.set_adapter(adapter_name)
-
-    # Create a global adapter (for the aggregation)
-    if "global" not in peft_model.peft_config:
-        peft_model.add_adapter("global", peft_config)
 
     return peft_model
