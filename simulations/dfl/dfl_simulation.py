@@ -34,10 +34,6 @@ class DFLSimulation(LearningSimulation):
         self.last_round_complete_time: Optional[float] = None
         self.round_durations: List[float] = []
         self.best_accuracy: float = 0.0
-        self.device: str = "cpu"
-        self.dataset: Optional[Dataset] = None
-        self.peft_config: Optional[LoraConfig] = None
-        self.peft_model: Optional[PeftModel] = None
         self.data_dir = os.path.join("data", "n_%d_%s_s%d_a%d_sf%g_lr%g_sd%ddfl" % (
             self.args.peers, self.args.dataset, self.args.sample_size, self.args.num_aggregators,
             self.args.success_fraction, self.args.learning_rate, self.args.seed))
@@ -88,14 +84,6 @@ class DFLSimulation(LearningSimulation):
             aggregation_timeout=self.args.aggregation_timeout,
         )
 
-        # Determine the device to use for training
-        self.device = (
-            "cuda" if torch.cuda.is_available()
-            else "mps" if torch.backends.mps.is_available()
-            else "cpu"
-        )
-        self.logger.info("Using device %s for training", self.device)
-
         self.session_settings = SessionSettings(
             work_dir=self.data_dir,
             dataset=self.args.dataset,
@@ -114,45 +102,19 @@ class DFLSimulation(LearningSimulation):
             device=self.device,
         )
 
-        # Create the global dataset
-        self.dataset = create_global_dataset(self.session_settings)
-
-        # Process the dataset (tonkenization, etc.)
-        tokenizer = AutoTokenizer.from_pretrained("roberta-base", use_fast=True)
-
-        def preprocess(examples):
-            tokenized = tokenizer(examples['text'], truncation=True, padding=True)
-            return tokenized
-        processed_dataset = self.dataset.map(preprocess, batched=True,  remove_columns=["text"])
-        train_dataset = processed_dataset['train']
-
-        # Create the base model
-        base_model: PreTrainedModel = create_base_model(self.session_settings.dataset, self.dataset)
-
-        # Create the adapters
-        self.peft_config, self.peft_model, adapters, global_adapter = create_adapters(self.session_settings, base_model)
-        self.peft_model.to(self.device)
-
-        # Create each of the datasets
-        if self.session_settings.partitioner == "uniform":
-            split_datasets = split_dataset_uniform(train_dataset, len(self.session_settings.participants))
-        elif self.session_settings.partitioner == "dirichlet":
-            split_datasets = split_dataset_dirichlet(train_dataset, len(self.session_settings.participants), self.session_settings.alpha)
-        else:
-            raise RuntimeError("Unknown dataset distribution")
+        split_datasets, adapters, global_adapter = self.create_datasets_and_model()
 
         for ind, node in enumerate(self.nodes):
             node.overlays[0].aggregate_complete_callback = lambda round_nr, i=ind: self.on_aggregate_complete(i, round_nr)
             node.overlays[0].setup(self.session_settings, self.peft_model)
-            node.overlays[0].model_manager.model_trainer.setup_dataset(split_datasets[ind], tokenizer)
+            node.overlays[0].model_manager.model_trainer.setup_dataset(split_datasets[ind], self.tokenizer)
             node.overlays[0].model_manager.adapter = adapters[ind]
             node.overlays[0].model_manager.global_adapter = global_adapter
             node.overlays[0].model_manager.model_trainer.logger = SimulationLoggerAdapter(node.overlays[0].model_manager.model_trainer.logger, {})
 
         if not self.args.bypass_training:
             self.evaluator = ModelEvaluator(self.session_settings)
-            test_dataset = processed_dataset['test']
-            self.evaluator.setup_dataset(test_dataset, tokenizer)
+            self.evaluator.setup_dataset(self.test_dataset, self.tokenizer)
 
         # If we fix the aggregator, we assume unlimited upload/download slots
         if self.args.fix_aggregator:

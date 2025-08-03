@@ -4,13 +4,16 @@ import json
 import time
 from asyncio import ensure_future
 from binascii import unhexlify
-from typing import List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import torch
-from torch import nn
+from torch import Future, nn
 
 from accdfl.core.community import LearningCommunity
+from accdfl.core.models import serialize_adapter, unserialize_adapter
 from accdfl.util.eva.result import TransferResult
+from pyipv8.ipv8.peer import Peer
+from simulations.bandwidth_scheduler import BWScheduler
 
 
 class DLCommunity(LearningCommunity):
@@ -19,8 +22,14 @@ class DLCommunity(LearningCommunity):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.round: int = 0
-        self.neighbours: List[bytes] = []  # The PKs of the neighbours we will send our model to
-        self.incoming_models: List[Tuple[bytes, nn.Module]] = []  # Incoming models for a round
+        self.neighbours: List[bytes] = []  # The PKs of the neighbours we will send our adapter to
+        self.incoming_adapters: List[Tuple[bytes, Dict]] = []  # Incoming adapters for a round
+        self.nodes = None
+        self.bandwidth: Optional[float] = None
+        self.transfers: List[Tuple[str, str, int, float, float, str, bool]] = []
+
+        self.bw_scheduler: BWScheduler = BWScheduler(self.my_peer.public_key.key_to_bin(),
+                                                     self.peer_manager.get_my_short_id())
 
     def start(self):
         """
@@ -38,12 +47,70 @@ class DLCommunity(LearningCommunity):
                                 self.peer_manager.get_my_short_id())
             self.cancel_pending_task(train_task_name)
 
-    def eva_send_model(self, round, model, peer):
+        self.bw_scheduler.kill_all_transfers()
+
+    def eva_send_adapter(self, round, adapter: Dict, peer):
         start_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
-        serialized_model = serialize_model(model)
+        serialized_adapter = serialize_adapter(adapter)
         response = {"round": round}
         serialized_response = json.dumps(response).encode()
-        return self.schedule_eva_send_model(peer, serialized_response, serialized_model, start_time)
+        return self.schedule_eva_send_adapter(peer, serialized_response, serialized_adapter, start_time)
+
+    def schedule_eva_send_adapter(self, peer: Peer, serialized_response: bytes, binary_data: bytes, start_time: float) -> Future:
+        # Schedule the transfer
+        future = ensure_future(self.bypass_send(peer, serialized_response, binary_data))
+        future.add_done_callback(lambda f: self.on_eva_send_done(f, peer, serialized_response, binary_data, start_time))
+        return future
+    
+    async def bypass_send(self, peer: Peer, serialized_response: bytes, binary_data: bytes):
+        found: bool = False
+        transfer_success: bool = True
+        transfer_time: float = 0
+        for node in self.nodes:
+            if node.overlays[0].my_peer == peer:
+                found = True
+                if not node.overlays[0].is_active:
+                    break
+
+                transfer_start_time = asyncio.get_event_loop().time()
+                if self.bw_scheduler.bw_limit > 0:
+                    transfer_size: int = len(binary_data) + len(serialized_response)
+                    transfer = self.bw_scheduler.add_transfer(node.overlays[0].bw_scheduler, transfer_size)
+                    self.logger.info("Adapter transfer %s => %s started at t=%f",
+                                     self.peer_manager.get_my_short_id(),
+                                     node.overlays[0].peer_manager.get_my_short_id(),
+                                     transfer_start_time)
+                    try:
+                        await transfer.complete_future
+                    except RuntimeError:
+                        transfer_success = False
+                    transfer_time = asyncio.get_event_loop().time() - transfer_start_time
+
+                    transferred_bytes: int = int(transfer.get_transferred_bytes())
+                    self.endpoint.bytes_up += transferred_bytes
+                    node.overlays[0].endpoint.bytes_down += transferred_bytes
+
+                    self.logger.info("Adapter transfer %s => %s %s at t=%f and took %f s.",
+                                     self.peer_manager.get_my_short_id(),
+                                     node.overlays[0].peer_manager.get_my_short_id(),
+                                     "completed" if transfer_success else "failed",
+                                     transfer_start_time, transfer_time)
+                else:
+                    self.endpoint.bytes_up += len(binary_data) + len(serialized_response)
+                    node.overlays[0].endpoint.bytes_down += len(binary_data) + len(serialized_response)
+
+                json_data = json.loads(serialized_response.decode())
+                self.transfers.append((self.peer_manager.get_my_short_id(),
+                                       node.overlays[0].peer_manager.get_my_short_id(), json_data["round"],
+                                       transfer_start_time, transfer_time, "adapter", transfer_success))
+
+                if transfer_success:
+                    res = TransferResult(self.my_peer, serialized_response, binary_data, 0)
+                    ensure_future(node.overlays[0].on_receive(res))
+                break
+
+        if not found:
+            raise RuntimeError("Peer %s not found in node list!" % peer)
 
     def start_round(self, round_nr: int):
         self.round = round_nr
@@ -58,14 +125,13 @@ class DLCommunity(LearningCommunity):
         # Train
         await self.model_manager.train()
 
-        # Detach the tensors of the model by making a copy
-        model_cpy = unserialize_model(serialize_model(self.model_manager.model),
-                                      self.settings.dataset, architecture=self.settings.model)
+        # Detach the tensors of the adapter by making a copy
+        adapter_cpy = unserialize_adapter(serialize_adapter(self.model_manager.adapter))
 
         my_peer_pk = self.my_peer.public_key.key_to_bin()
-        self.incoming_models.append((my_peer_pk, model_cpy))
+        self.incoming_adapters.append((my_peer_pk, adapter_cpy))
 
-        # Send the trained model to your neighbours
+        # Send the trained adapter to your neighbours
         to_send = self.neighbours
         if self.settings.dl.topology == "exp-one-peer":
             nb_ind = (self.round - 1) % len(self.neighbours)
@@ -78,42 +144,37 @@ class DLCommunity(LearningCommunity):
                                     self.peer_manager.get_my_short_id(), self.peer_manager.get_short_id(peer_pk))
                 continue
 
-            self.logger.info("Participant %s sending model of round %d to participant %s",
+            self.logger.info("Participant %s sending adapter of round %d to participant %s",
                              self.peer_manager.get_my_short_id(), self.round,
                              self.peer_manager.get_short_id(peer.public_key.key_to_bin()))
-            ensure_future(self.eva_send_model(self.round, self.model_manager.model, peer))
+            ensure_future(self.eva_send_adapter(self.round, self.model_manager.adapter, peer))
 
-    def aggregate_models(self):
+    def aggregate_adapters(self):
         """
-        Aggregate the received models.
+        Aggregate the received adapters.
         """
-        if not self.incoming_models:
+        if not self.incoming_adapters:
             # Nothing to aggregate
             return
 
         # The round is complete - wrap it up and proceed
-        self.logger.info("Participant %s received %d models, aggregating...",
-                         self.peer_manager.get_my_short_id(), len(self.incoming_models))
-        self.model_manager.incoming_trained_models = dict((x, y) for x, y in self.incoming_models)
+        self.logger.info("Participant %s received %d adapters, aggregating...",
+                         self.peer_manager.get_my_short_id(), len(self.incoming_adapters))
+        self.model_manager.incoming_trained_adapters = dict((x, y) for x, y in self.incoming_adapters)
 
-        # Transfer these models back to the CPU to prepare for aggregation
-        device = torch.device("cpu")
-        for peer_pk in self.model_manager.incoming_trained_models.keys():
-            model = self.model_manager.incoming_trained_models[peer_pk]
-            self.model_manager.incoming_trained_models[peer_pk] = model.to(device)
+        self.model_manager.aggregate_trained_adapters()
+        self.model_manager.adopt_adapter(self.model_manager.global_adapter)
 
-        self.model_manager.model = self.model_manager.aggregate_trained_models()
         if self.round_complete_callback:
             ensure_future(self.round_complete_callback(self.round))
         if self.aggregate_complete_callback:
-            model_cpy = copy.deepcopy(self.model_manager.model)
-            ensure_future(self.aggregate_complete_callback(self.round, model_cpy))
+            ensure_future(self.aggregate_complete_callback(self.round, self.model_manager.adapter))
         self.logger.info("Peer %s completed round %d", self.peer_manager.get_my_short_id(), self.round)
-        self.incoming_models = []
+        self.incoming_adapters = []
 
     async def on_receive(self, result: TransferResult):
         """
-        We received a model from a neighbouring peer. Store it and check if we received enough models to proceed.
+        We received an adapter from a neighbouring peer. Store it and check if we received enough adapters to proceed.
         """
         peer_pk = result.peer.public_key.key_to_bin()
         peer_id = self.peer_manager.get_short_id(peer_pk)
@@ -126,8 +187,8 @@ class DLCommunity(LearningCommunity):
         self.logger.info(f'Participant {my_peer_id} received data from participant {peer_id}: {result.info.decode()}')
 
         json_data = json.loads(result.info.decode())
-        incoming_model = unserialize_model(result.data, self.settings.dataset, architecture=self.settings.model)
-        self.process_incoming_model(incoming_model, peer_pk)
+        incoming_adapter = unserialize_adapter(result.data)
+        self.process_incoming_adapter(incoming_adapter, peer_pk)
 
-    def process_incoming_model(self, incoming_model: nn.Module, peer_pk: bytes):
-        self.incoming_models.append((peer_pk, incoming_model))
+    def process_incoming_adapter(self, incoming_adapter: Dict, peer_pk: bytes):
+        self.incoming_adapters.append((peer_pk, incoming_adapter))

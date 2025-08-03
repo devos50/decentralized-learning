@@ -58,7 +58,7 @@ class ModelEvaluator:
         mean_loss = total_loss / max(n_examples, 1)
         return {"accuracy": acc, "loss": mean_loss}
 
-    def evaluate_accuracy(self, peft_model: PeftModel):
-        peft_model.set_adapter("global")
+    def evaluate_accuracy(self, peft_model: PeftModel, adapter_to_test: str = "global"):
+        peft_model.set_adapter(adapter_to_test)
         eval_res = self.evaluate_classification_model(peft_model)
         return eval_res['accuracy'], eval_res['loss']

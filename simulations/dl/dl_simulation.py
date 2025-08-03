@@ -6,6 +6,7 @@ from binascii import hexlify
 from math import floor, log
 from typing import List
 
+from accdfl.core.model_evaluator import ModelEvaluator
 from accdfl.core.model_manager import ModelManager
 from accdfl.core.session_settings import LearningSettings, SessionSettings, DLSettings
 
@@ -28,10 +29,7 @@ class DLSimulation(LearningSimulation):
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = super().get_ipv8_builder(peer_id)
-        if self.args.bypass_model_transfers:
-            builder.add_overlay("DLBypassNetworkCommunity", "my peer", [], [], {}, [])
-        else:
-            builder.add_overlay("DLCommunity", "my peer", [], [], {}, [])
+        builder.add_overlay("DLCommunity", "my peer", [], [], {}, [])
         return builder
 
     async def setup_simulation(self) -> None:
@@ -74,21 +72,27 @@ class DLSimulation(LearningSimulation):
             partitioner=self.args.partitioner,
             eva_block_size=1000,
             is_simulation=True,
-            train_device_name=self.args.train_device_name,
             bypass_training=self.args.bypass_training,
+            device=self.device,
         )
 
-        self.model_manager = ModelManager(None, self.session_settings, 0)
+        split_datasets, adapters, global_adapter = self.create_datasets_and_model()
 
         for ind, node in enumerate(self.nodes):
-            node.overlays[0].setup(self.session_settings)
+            node.overlays[0].setup(self.session_settings, self.peft_model)
+            node.overlays[0].model_manager.model_trainer.setup_dataset(split_datasets[ind], self.tokenizer)
+            node.overlays[0].model_manager.adapter = adapters[ind]
+            node.overlays[0].model_manager.global_adapter = global_adapter
 
         self.build_topology()
 
-        if self.args.bypass_model_transfers:
-            # Inject the nodes in each community
-            for node in self.nodes:
-                node.overlays[0].nodes = self.nodes
+        # Inject the nodes in each community
+        for node in self.nodes:
+            node.overlays[0].nodes = self.nodes
+
+        if not self.args.bypass_training:
+            self.evaluator = ModelEvaluator(self.session_settings)
+            self.evaluator.setup_dataset(self.test_dataset, self.tokenizer)
 
         # Generated the statistics files
         with open(os.path.join(self.data_dir, "round_durations.csv"), "w") as out_file:
@@ -117,7 +121,7 @@ class DLSimulation(LearningSimulation):
             self.logger.error("Killed %d transfers", transfers_to_kill)
 
         for node in self.nodes:
-            node.overlays[0].aggregate_models()
+            node.overlays[0].aggregate_adapters()
 
         if self.args.rounds and self.round_nr >= self.args.rounds:
             self.on_simulation_finished()
@@ -152,18 +156,21 @@ class DLSimulation(LearningSimulation):
 
             eligible_nodes.append((ind, node))
 
-        # Don't test all models for efficiency reasons, just up to 20% of the entire network
-        eligible_nodes = random.sample(eligible_nodes, min(len(eligible_nodes), int(len(self.nodes) * 0.2)))
+        # Don't test all models for efficiency reasons, just up to 100% of the entire network
+        FRACTION = 1.0
+        eligible_nodes = random.sample(eligible_nodes, min(len(eligible_nodes), int(len(self.nodes) * FRACTION)))
         print("Will test accuracy of %d nodes..." % len(eligible_nodes))
 
+        self.model_manager = ModelManager(self.peft_model, self.session_settings, 0)
+
         for ind, node in eligible_nodes:
-            model = self.nodes[ind].overlays[0].model_manager.model
-            self.model_manager.process_incoming_trained_model(b"%d" % ind, model)
+            adapter = self.nodes[ind].overlays[0].model_manager.adapter
+            self.model_manager.process_incoming_trained_adapter(b"%d" % ind, adapter)
 
         if self.args.dl_accuracy_method == "aggregate":
             if not self.args.bypass_training:
-                avg_model = self.model_manager.aggregate_trained_models()
-                accuracy, loss = self.evaluator.evaluate_accuracy(avg_model, device_name=self.args.accuracy_device_name)
+                avg_adapter = self.model_manager.aggregate_trained_adapters()
+                accuracy, loss = self.evaluator.evaluate_accuracy(avg_adapter, device_name=self.args.accuracy_device_name)
             else:
                 accuracy, loss = 0, 0
 
@@ -171,11 +178,7 @@ class DLSimulation(LearningSimulation):
                 out_file.write("%s,%d,%g,DL,%f,%d,%d,%f,%f\n" % (self.args.dataset, self.args.seed, self.args.learning_rate,
                                                                  get_event_loop().time(), 0, int(cur_time), accuracy, loss))
         elif self.args.dl_accuracy_method == "individual":
-            # Compute the accuracies of all individual models
-            if self.args.dl_test_mode == "das_jobs":
-                results = self.test_models_with_das_jobs()
-            else:
-                results = self.test_models()
+            results = self.test_models()
 
             for ind, acc_res in results.items():
                 accuracy, loss = acc_res
@@ -185,7 +188,7 @@ class DLSimulation(LearningSimulation):
                                    (self.args.dataset, self.args.seed, self.args.learning_rate,
                                     cur_time, ind, round_nr, accuracy, loss))
 
-        self.model_manager.reset_incoming_trained_models()
+        self.model_manager.reset_incoming_trained_adapters()
 
     def build_topology(self):
         self.logger.info("Building a %s topology", self.session_settings.dl.topology)

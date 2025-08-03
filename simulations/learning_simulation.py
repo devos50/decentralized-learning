@@ -4,8 +4,6 @@ import logging
 import os
 import pickle
 import shutil
-import stat
-import subprocess
 import time
 from argparse import Namespace
 from base64 import b64encode
@@ -15,11 +13,18 @@ from typing import Dict, List, Optional, Tuple
 
 import torch
 
+from transformers import AutoTokenizer, PreTrainedModel
 import yappi
 
 import numpy as np
 
+from datasets import Dataset
+from peft import LoraConfig, PeftModel
+
+from accdfl.core.datasets import create_global_dataset
+from accdfl.core.datasets.partition import split_dataset_dirichlet, split_dataset_uniform
 from accdfl.core.model_manager import ModelManager
+from accdfl.core.models import create_adapters, create_base_model
 from accdfl.core.session_settings import SessionSettings
 from accdfl.dfl.community import DFLCommunity
 from accdfl.dl.community import DLCommunity
@@ -32,9 +37,13 @@ from ipv8_service import IPv8
 from simulation.discrete_loop import DiscreteLoop
 from simulation.simulation_endpoint import SimulationEndpoint
 
-from simulations.dl.bypass_network_community import DLBypassNetworkCommunity
 from simulations.gl.bypass_network_community import GLBypassNetworkCommunity
 from simulations.logger import SimulationLoggerAdapter
+
+
+def preprocess(examples, tokenizer):
+    tokenized = tokenizer(examples['text'], truncation=True, padding=True)
+    return tokenized
 
 
 class LearningSimulation(TaskManager):
@@ -51,9 +60,43 @@ class LearningSimulation(TaskManager):
         self.evaluator = None
         self.logger = None
         self.model_manager: Optional[ModelManager] = None
+        self.device: str = "cpu"
+        self.dataset: Optional[Dataset] = None
+        self.train_dataset: Optional[Dataset] = None
+        self.test_dataset: Optional[Dataset] = None
+        self.peft_config: Optional[LoraConfig] = None
+        self.peft_model: Optional[PeftModel] = None
+        self.tokenizer: Optional[AutoTokenizer] = None
 
         self.loop = DiscreteLoop()
         asyncio.set_event_loop(self.loop)
+
+    def create_datasets_and_model(self):
+        # Create the global dataset
+        self.dataset = create_global_dataset(self.session_settings)
+
+        # Process the dataset (tonkenization, etc.)
+        self.tokenizer = AutoTokenizer.from_pretrained("roberta-base", use_fast=True)
+        processed_dataset = self.dataset.map(preprocess, fn_kwargs={"tokenizer": self.tokenizer}, batched=True,  remove_columns=["text"])
+        self.train_dataset = processed_dataset['train']
+        self.test_dataset = processed_dataset['test']
+
+        # Create the base model
+        base_model: PreTrainedModel = create_base_model(self.session_settings.dataset, self.dataset)
+
+        # Create the adapters
+        self.peft_config, self.peft_model, adapters, global_adapter = create_adapters(self.session_settings, base_model)
+        self.peft_model.to(self.device)
+
+        # Create each of the datasets
+        if self.session_settings.partitioner == "uniform":
+            split_datasets = split_dataset_uniform(self.train_dataset, len(self.session_settings.participants))
+        elif self.session_settings.partitioner == "dirichlet":
+            split_datasets = split_dataset_dirichlet(self.train_dataset, len(self.session_settings.participants), self.session_settings.alpha)
+        else:
+            raise RuntimeError("Unknown dataset distribution")
+        
+        return split_datasets, adapters, global_adapter
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = ConfigBuilder().clear_keys().clear_overlays()
@@ -72,7 +115,6 @@ class LearningSimulation(TaskManager):
             instance = IPv8(self.get_ipv8_builder(peer_id).finalize(), endpoint_override=endpoint,
                             extra_communities={
                                 'DLCommunity': DLCommunity,
-                                'DLBypassNetworkCommunity': DLBypassNetworkCommunity,
                                 'DFLCommunity': DFLCommunity,
                                 'GLCommunity': GLCommunity,
                                 'GLBypassNetworkCommunity': GLBypassNetworkCommunity,
@@ -261,6 +303,14 @@ class LearningSimulation(TaskManager):
             with open(os.path.join(self.data_dir, "transfers.csv"), "w") as out_file:
                 out_file.write("from,to,round,start_time,duration,type,success\n")
 
+        # Determine the device to use for training
+        self.device = (
+            "cuda" if torch.cuda.is_available()
+            else "mps" if torch.backends.mps.is_available()
+            else "cpu"
+        )
+        self.logger.info("Using device %s for training", self.device)
+
     def check_activity(self):
         """
         Count the number of online/offline peers and write it away.
@@ -340,14 +390,16 @@ class LearningSimulation(TaskManager):
         Test the accuracy of all models in the model manager locally.
         """
         results: Dict[int, Tuple[float, float]] = {}
-        for ind, model in enumerate(self.model_manager.incoming_trained_models.values()):
-            self.logger.warning("Testing model %d on device %s..." % (ind + 1, self.args.accuracy_device_name))
+        test_id: int = 0
+        for node_id, adapter in self.model_manager.incoming_trained_adapters.items():
+            self.logger.warning("Testing adapter %d on device %s..." % (test_id + 1, self.session_settings.device))
             if not self.args.bypass_training:
-                accuracy, loss = self.evaluator.evaluate_accuracy(model, device_name=self.args.accuracy_device_name)
+                accuracy, loss = self.evaluator.evaluate_accuracy(self.peft_model, adapter_to_test="client_%d" % int(node_id))
             else:
                 accuracy, loss = 0, 0
 
-            results[ind] = (accuracy, loss)
+            results[test_id] = (accuracy, loss)
+            test_id += 1
         return results
 
     def get_statistics(self) -> Dict:
