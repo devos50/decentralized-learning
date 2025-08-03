@@ -5,22 +5,14 @@ from binascii import hexlify
 from random import Random
 from typing import List, Dict, Optional
 
-from peft import LoraConfig, PeftModel
 import torch
 
-from datasets import Dataset
-
 from accdfl.core import NodeMembershipChange
-from accdfl.core.datasets import create_global_dataset
-from accdfl.core.datasets.partition import split_dataset_dirichlet, split_dataset_uniform
 from accdfl.core.model_evaluator import ModelEvaluator
-from accdfl.core.models import create_adapters, create_base_model, serialize_adapter
 from accdfl.core.session_settings import DFLSettings, LearningSettings, SessionSettings
 from accdfl.core.peer_manager import PeerManager
 
 from ipv8.configuration import ConfigBuilder
-
-from transformers import AutoTokenizer, PreTrainedModel
 
 from simulations.learning_simulation import LearningSimulation
 from simulations.logger import SimulationLoggerAdapter
@@ -225,7 +217,11 @@ class DFLSimulation(LearningSimulation):
 
                 if not self.args.bypass_training and self.args.store_best_models and accuracy > self.best_accuracy:
                     self.best_accuracy = accuracy
-                    torch.save(model.state_dict(), os.path.join(self.data_dir, "best.model"))
+                    self.peft_model.save_pretrained(
+                        "adapters/global",
+                        selected_adapters=["global"],   # save just this adapter
+                        safe_serialization=True           # writes adapter_model.safetensors
+                    )
 
             self.latest_accuracy_check_round = round_nr
 
