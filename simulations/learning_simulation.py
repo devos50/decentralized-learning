@@ -21,10 +21,10 @@ import numpy as np
 from datasets import Dataset
 from peft import LoraConfig, PeftModel
 
-from accdfl.core.datasets import create_global_dataset
+from accdfl.core.datasets import create_global_dataset, tokenize_dataset
 from accdfl.core.datasets.partition import split_dataset_dirichlet, split_dataset_uniform
 from accdfl.core.model_manager import ModelManager
-from accdfl.core.models import create_adapters, create_base_model
+from accdfl.core.models import create_adapters, create_base_model, create_tokenizer
 from accdfl.core.session_settings import SessionSettings
 from accdfl.dfl.community import DFLCommunity
 from accdfl.dl.community import DLCommunity
@@ -39,11 +39,6 @@ from simulation.simulation_endpoint import SimulationEndpoint
 
 from simulations.gl.bypass_network_community import GLBypassNetworkCommunity
 from simulations.logger import SimulationLoggerAdapter
-
-
-def preprocess(examples, tokenizer):
-    tokenized = tokenizer(examples['text'], truncation=True, padding=True)
-    return tokenized
 
 
 class LearningSimulation(TaskManager):
@@ -76,13 +71,14 @@ class LearningSimulation(TaskManager):
         self.dataset = create_global_dataset(self.session_settings)
 
         # Process the dataset (tonkenization, etc.)
-        self.tokenizer = AutoTokenizer.from_pretrained("roberta-base", use_fast=True)
-        processed_dataset = self.dataset.map(preprocess, fn_kwargs={"tokenizer": self.tokenizer}, batched=True,  remove_columns=["text"])
-        self.train_dataset = processed_dataset['train']
-        self.test_dataset = processed_dataset['test']
+        self.tokenizer = create_tokenizer(self.session_settings)
+        processed_dataset = tokenize_dataset(self.dataset, self.tokenizer)
+        self.train_dataset = processed_dataset["train"]
+        self.test_dataset = processed_dataset["test"]
+        
 
         # Create the base model
-        base_model: PreTrainedModel = create_base_model(self.session_settings.dataset, self.dataset)
+        base_model: PreTrainedModel = create_base_model(self.session_settings.model, self.session_settings.dataset, self.dataset)
 
         # Create the adapters
         self.peft_config, self.peft_model, adapters, global_adapter = create_adapters(self.session_settings, base_model)

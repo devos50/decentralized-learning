@@ -13,8 +13,6 @@ def get_args(dataset: str, default_lr: float, default_momentum: float = 0):
 
     # Accuracy testing
     parser.add_argument('--dl-test-mode', type=str, default="local")
-    parser.add_argument('--das-test-subprocess-jobs', type=int, default=1)
-    parser.add_argument('--das-test-num-models-per-subprocess', type=int, default=10)
     parser.add_argument('--accuracy-logging-interval', type=int, default=5)
     parser.add_argument('--accuracy-logging-interval-is-in-sec', action=argparse.BooleanOptionalAction)
     parser.add_argument('--dl-accuracy-method', type=str, default="individual")  # individual or aggregate
@@ -31,7 +29,7 @@ def get_args(dataset: str, default_lr: float, default_momentum: float = 0):
     parser.add_argument('--duration', type=int, default=3600)  # Set to 0 to run forever
     parser.add_argument('--rounds', type=int, default=None)
     parser.add_argument('--alpha', type=float, default=1)
-    parser.add_argument('--model', type=str, default=None)
+    parser.add_argument('--model', type=str, default="roberta-base", choices=["roberta-base"])
     parser.add_argument('--partitioner', type=str, default="uniform", choices=["uniform", "dirichlet"])
     parser.add_argument('--peers', type=int, default=10)
     parser.add_argument('--active-participants', type=str, default=None)

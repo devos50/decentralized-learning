@@ -1,3 +1,4 @@
+from asyncio import CancelledError, get_event_loop, sleep
 import logging
 from typing import Optional
 
@@ -43,6 +44,27 @@ class ModelTrainer:
         """
         self.is_training = True
         samples_trained_on = 0
+
+        if self.settings.is_simulation:
+            # If we're running a simulation, we should advance the time of the DiscreteLoop with either the simulated
+            # elapsed time or the elapsed real-world time for training. Otherwise,training would be considered instant
+            # in our simulations. We do this before the actual training so if our sleep gets interrupted, the local
+            # model will not be updated.
+            start_time = get_event_loop().time()
+            if self.simulated_speed:
+                elapsed_time = AUGMENTATION_FACTOR_SIM * self.settings.learning.local_steps * (self.simulated_speed / 1000)
+            else:
+                elapsed_time = 0
+
+            try:
+                await sleep(elapsed_time)
+            except CancelledError:
+                self.is_training = False
+                self.total_training_time += (get_event_loop().time() - start_time)
+                return 0  # Training got interrupted - don't update the model
+            self.total_training_time += elapsed_time
+
+            self.logger.info("Model training completed and took %f s.", elapsed_time)
 
         peft_model.set_adapter("client_%d" % self.participant_index)
         optimizer = torch.optim.AdamW(peft_model.parameters(), lr=self.settings.learning.learning_rate)

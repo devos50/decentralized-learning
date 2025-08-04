@@ -10,3 +10,13 @@ def create_global_dataset(settings: SessionSettings) -> Dataset:
         return dataset
     else:
         raise RuntimeError("Unknown dataset %s" % settings.dataset)
+
+
+def preprocess(examples, tokenizer):
+    tokenized = tokenizer(examples['text'], truncation=True, padding=True)
+    return tokenized
+
+
+def tokenize_dataset(dataset: Dataset, tokenizer) -> Dataset:
+    processed_dataset = dataset.map(preprocess, fn_kwargs={"tokenizer": tokenizer}, batched=True,  remove_columns=["text"])
+    return processed_dataset

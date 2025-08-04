@@ -32,9 +32,6 @@ def get_args(default_lr: float, default_momentum: float = 0):
     parser.add_argument('--alpha', type=float, default=1)
     parser.add_argument('--model', type=str, default=None)
     parser.add_argument('--train-method', type=str, default="local")
-    parser.add_argument('--das-subprocess-jobs', type=int, default=1)
-    parser.add_argument('--das-peers-per-subprocess', type=int, default=10)
-    parser.add_argument('--das-peers-in-this-subprocess', type=str, default="")
     parser.add_argument('--data-dir', type=str, default=os.path.join(os.environ["HOME"], "dfl-data"))
     return parser.parse_args()
 

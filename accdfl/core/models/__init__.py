@@ -2,7 +2,7 @@ import pickle
 from typing import Dict, List, Tuple
 from datasets import Dataset
 from peft import LoraConfig, PeftModel, get_peft_model, get_peft_model_state_dict
-from transformers import AutoModelForSequenceClassification, PreTrainedModel
+from transformers import AutoModelForSequenceClassification, AutoTokenizer, PreTrainedModel
 
 from accdfl.core.session_settings import SessionSettings
 
@@ -21,7 +21,7 @@ def unserialize_adapter(serialized_adapter: bytes):
     return pickle.loads(serialized_adapter)
 
 
-def create_base_model(dataset_name: str, dataset: Dataset) -> PreTrainedModel:
+def create_base_model(base_model_name: str, dataset_name: str, dataset: Dataset) -> PreTrainedModel:
     if dataset_name == "ag_news":
         # Extract the number of classess and their names
         num_labels = dataset['train'].features['label'].num_classes
@@ -33,9 +33,13 @@ def create_base_model(dataset_name: str, dataset: Dataset) -> PreTrainedModel:
         # We will need this for our classifier.
         id2label = {i: label for i, label in enumerate(class_names)}
 
-        return AutoModelForSequenceClassification.from_pretrained("roberta-base", id2label=id2label, cache_dir="data/models")
+        return AutoModelForSequenceClassification.from_pretrained(base_model_name, id2label=id2label, cache_dir="data/models")
     else:
         raise RuntimeError("Unknown dataset %s" % dataset_name)
+
+
+def create_tokenizer(session_settings: SessionSettings) -> AutoTokenizer:
+    return AutoTokenizer.from_pretrained(session_settings.model, use_fast=True)
 
 
 def create_adapters(session_settings: SessionSettings, base_model: PreTrainedModel) -> Tuple[LoraConfig, PeftModel, List[Dict], Dict]:
