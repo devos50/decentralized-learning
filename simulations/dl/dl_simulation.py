@@ -7,8 +7,6 @@ from math import floor, log
 from typing import List
 
 from accdfl.core.gradient_aggregation import get_aggregator
-from accdfl.core.gradient_aggregation.fedadam import FedAdam
-from accdfl.core.gradient_aggregation.fedavg import FedAvg
 from accdfl.core.model_evaluator import ModelEvaluator
 from accdfl.core.model_manager import ModelManager
 from accdfl.core.session_settings import LearningSettings, SessionSettings, DLSettings
@@ -173,6 +171,7 @@ class DLSimulation(LearningSimulation):
         print("Will test accuracy of %d nodes..." % len(eligible_nodes))
 
         self.model_manager = ModelManager(self.peft_model, self.session_settings, 0)
+        self.model_manager.aggregator = self.nodes[0].overlays[0].aggregator
         self.model_manager.global_adapter = self.nodes[0].overlays[0].model_manager.global_adapter
 
         for ind, node in eligible_nodes:
