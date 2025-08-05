@@ -1,5 +1,5 @@
 import datasets
-from datasets import Dataset
+from datasets import ClassLabel, Dataset
 
 from accdfl.core.session_settings import SessionSettings
 
@@ -7,6 +7,14 @@ from accdfl.core.session_settings import SessionSettings
 def create_global_dataset(settings: SessionSettings) -> Dataset:
     if settings.dataset == "ag_news":
         dataset = datasets.load_dataset(settings.dataset, cache_dir="data/datasets")
+        return dataset
+    elif settings.dataset == "newsgroups":
+        dataset = datasets.load_dataset("SetFit/20_newsgroups", cache_dir="data/datasets")
+        # We need to do some small transformations
+        unique_classes = sorted(set(dataset['train']['label']))
+        label_feature = ClassLabel(names=unique_classes)
+        dataset = dataset.cast_column('label', label_feature)
+        dataset = dataset.remove_columns('label_text')
         return dataset
     else:
         raise RuntimeError("Unknown dataset %s" % settings.dataset)
