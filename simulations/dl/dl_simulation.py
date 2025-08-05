@@ -102,7 +102,7 @@ class DLSimulation(LearningSimulation):
         for node in self.nodes:
             node.overlays[0].start_round(self.round_nr)
         self.register_task("round_done", self.on_round_done, interval=self.args.dl_round_timeout)
-        if self.args.accuracy_logging_is_in_sec:
+        if self.args.accuracy_logging_interval_is_in_sec:
             self.register_task("check_accuracy", self.compute_all_accuracies, interval=self.args.accuracy_logging_interval)
         await super().start_simulation()
 
@@ -124,7 +124,7 @@ class DLSimulation(LearningSimulation):
             node.overlays[0].aggregate_adapters()
 
         # Should we check the accuracy?
-        if not self.args.accuracy_logging_is_in_sec and self.args.accuracy_logging_interval > 0 and self.round_nr % self.args.accuracy_logging_interval == 0:
+        if not self.args.accuracy_logging_interval_is_in_sec and self.args.accuracy_logging_interval > 0 and self.round_nr % self.args.accuracy_logging_interval == 0:
             self.compute_all_accuracies()
 
         if self.args.rounds and self.round_nr >= self.args.rounds:
