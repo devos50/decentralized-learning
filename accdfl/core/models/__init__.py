@@ -56,9 +56,11 @@ def create_adapters(session_settings: SessionSettings, base_model: PreTrainedMod
 
     # Create adapters for each user
     for adapter_name in ["client_%d" % i for i in range(len(session_settings.participants))]:
-        if adapter_name not in peft_model.peft_config:
-            peft_model.add_adapter(adapter_name, peft_config)
-            adapter: Dict = get_peft_model_state_dict(peft_model, adapter_name=adapter_name)
-            adapters.append(adapter)
+        peft_model.add_adapter(adapter_name, peft_config)
+
+    # Get the adapter dictionaries
+    for adapter_name in ["client_%d" % i for i in range(len(session_settings.participants))]:
+        adapter: Dict = get_peft_model_state_dict(peft_model, adapter_name=adapter_name)
+        adapters.append(adapter)
 
     return peft_config, peft_model, adapters, global_adapter
