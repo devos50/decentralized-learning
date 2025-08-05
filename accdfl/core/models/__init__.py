@@ -51,16 +51,21 @@ def create_adapters(session_settings: SessionSettings, base_model: PreTrainedMod
     # TODO these parameters should be configurable
     peft_model = get_peft_model(base_model, peft_config, adapter_name="global")
 
-    global_adapter: Dict = get_peft_model_state_dict(peft_model, adapter_name="global")
-    adapters = []
-
     # Create adapters for each user
     for adapter_name in ["client_%d" % i for i in range(len(session_settings.participants))]:
         peft_model.add_adapter(adapter_name, peft_config)
 
-    # Get the adapter dictionaries
+    # Create the adapter dictionaries, we get the keys directly from the PEFT model
+    adapters = []
+    model_state_dict: Dict = peft_model.state_dict()
     for adapter_name in ["client_%d" % i for i in range(len(session_settings.participants))]:
-        adapter: Dict = get_peft_model_state_dict(peft_model, adapter_name=adapter_name)
+        adapter: Dict = {}
+        for key in model_state_dict.keys():
+            if f".{adapter_name}." in key:
+                adapter[key] = model_state_dict[key]
         adapters.append(adapter)
+
+    # Add the global adapter
+    global_adapter = {k: v for k, v in model_state_dict.items() if ".global." in k}
 
     return peft_config, peft_model, adapters, global_adapter
