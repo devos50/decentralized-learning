@@ -81,7 +81,7 @@ class DLSimulation(LearningSimulation):
 
         split_datasets, adapters, global_adapter = self.create_datasets_and_model()
 
-        aggregator = get_aggregator(self.args.aggregate)
+        aggregator = get_aggregator(self.args.aggregate, self.peft_model, global_adapter)
 
         for ind, node in enumerate(self.nodes):
             node.overlays[0].aggregator = aggregator

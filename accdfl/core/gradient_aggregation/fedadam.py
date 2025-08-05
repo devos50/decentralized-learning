@@ -14,10 +14,7 @@ class FedAdam(GradientAggregation):
         self,
         peft_model: PeftModel,
         global_adapter: Dict,
-        lr: float = 1e-2,
-        betas: tuple = (0.9, 0.999),
-        eps: float = 1e-8,
-        weight_decay: float = 0.0,
+        lr: float = 5e-3,
     ):
         self.global_name = global_adapter["name"]
 
@@ -28,7 +25,7 @@ class FedAdam(GradientAggregation):
         ]
 
         self.opt = torch.optim.AdamW(
-            global_params, lr=lr, betas=betas, eps=eps, weight_decay=weight_decay
+            global_params, lr=lr,
         )
         self.peft_model = peft_model
         self.gkeys = set(global_adapter["keys"])
