@@ -174,7 +174,7 @@ class DLSimulation(LearningSimulation):
         if self.args.dl_accuracy_method == "aggregate":
             if not self.args.bypass_training:
                 avg_adapter = self.model_manager.aggregate_trained_adapters()
-                accuracy, loss = self.evaluator.evaluate_accuracy(avg_adapter, device_name=self.args.accuracy_device_name)
+                accuracy, loss = self.evaluator.evaluate_accuracy(avg_adapter)
             else:
                 accuracy, loss = 0, 0
 

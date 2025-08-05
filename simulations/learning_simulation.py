@@ -387,12 +387,14 @@ class LearningSimulation(TaskManager):
         """
         results: Dict[int, Tuple[float, float]] = {}
         test_id: int = 0
-        for node_id, adapter in self.model_manager.incoming_trained_adapters.items():
+        for node_id in self.model_manager.incoming_trained_adapters.keys():
             self.logger.warning("Testing adapter %d on device %s..." % (test_id + 1, self.session_settings.device))
             if not self.args.bypass_training:
                 accuracy, loss = self.evaluator.evaluate_accuracy(self.peft_model, adapter_to_test="client_%d" % int(node_id))
             else:
                 accuracy, loss = 0, 0
+
+            self.logger.warning("Adapter %d: accuracy = %f, loss = %f" % (test_id + 1, accuracy, loss))
 
             results[test_id] = (accuracy, loss)
             test_id += 1
