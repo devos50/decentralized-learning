@@ -1,23 +1,47 @@
 import datasets
 from datasets import ClassLabel, Dataset
 
+from flwr_datasets import FederatedDataset
+from flwr_datasets.partitioner import DirichletPartitioner, IidPartitioner
+
 from accdfl.core.session_settings import SessionSettings
 
 
-def create_global_dataset(settings: SessionSettings) -> Dataset:
+def create_global_dataset(settings: SessionSettings) -> FederatedDataset:
+    # Create the partitioner
+    if settings.partitioner == "uniform":
+        partitioner = IidPartitioner(num_partitions=len(settings.participants))
+    elif settings.partitioner == "dirichlet":
+        partitioner = DirichletPartitioner(
+            num_partitions=len(settings.participants),
+            partition_by="label",
+            alpha=settings.alpha,
+            min_partition_size=10,
+            shuffle=True,
+            seed=42,
+        )
+
     if settings.dataset in ["ag_news", "emotion"]:
-        dataset = datasets.load_dataset(settings.dataset, cache_dir="data/datasets")
-        return dataset
+        dataset = FederatedDataset(
+            dataset=settings.dataset,
+            partitioners={"train": partitioner},
+            cache_dir="data/datasets",
+        )
     elif settings.dataset == "newsgroups":
-        dataset = datasets.load_dataset("SetFit/20_newsgroups", cache_dir="data/datasets")
+        dataset = FederatedDataset(
+            dataset="SetFit/20_newsgroups",
+            partitioners={"train": partitioner},
+            cache_dir="data/datasets",
+        )
         # We need to do some small transformations
         unique_classes = sorted(set(dataset['train']['label']))
         label_feature = ClassLabel(names=unique_classes)
         dataset = dataset.cast_column('label', label_feature)
         dataset = dataset.remove_columns('label_text')
-        return dataset
     else:
         raise RuntimeError("Unknown dataset %s" % settings.dataset)
+    
+    return dataset
 
 
 def preprocess(examples, tokenizer):

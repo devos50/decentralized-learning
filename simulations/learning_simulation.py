@@ -22,7 +22,6 @@ from datasets import Dataset
 from peft import LoraConfig, PeftModel
 
 from accdfl.core.datasets import create_global_dataset, tokenize_dataset
-from accdfl.core.datasets.partition import split_dataset_dirichlet, split_dataset_uniform
 from accdfl.core.model_manager import ModelManager
 from accdfl.core.models import create_adapters, create_base_model, create_tokenizer
 from accdfl.core.session_settings import SessionSettings
@@ -57,7 +56,6 @@ class LearningSimulation(TaskManager):
         self.model_manager: Optional[ModelManager] = None
         self.device: str = "cpu"
         self.dataset: Optional[Dataset] = None
-        self.train_dataset: Optional[Dataset] = None
         self.test_dataset: Optional[Dataset] = None
         self.peft_config: Optional[LoraConfig] = None
         self.peft_model: Optional[PeftModel] = None
@@ -69,29 +67,26 @@ class LearningSimulation(TaskManager):
     def create_datasets_and_model(self):
         # Create the global dataset
         self.dataset = create_global_dataset(self.session_settings)
-
-        # Process the dataset (tonkenization, etc.)
-        self.tokenizer = create_tokenizer(self.session_settings)
-        processed_dataset = tokenize_dataset(self.dataset, self.tokenizer)
-        self.train_dataset = processed_dataset["train"]
-        self.test_dataset = processed_dataset["test"]
-        
+        self.dataset._prepare_dataset()
 
         # Create the base model
-        base_model: PreTrainedModel = create_base_model(self.session_settings.model, self.session_settings.dataset, self.dataset)
+        base_model: PreTrainedModel = create_base_model(self.session_settings.model, self.session_settings.dataset, self.dataset._dataset)
 
         # Create the adapters
         self.peft_config, self.peft_model, adapters, global_adapter = create_adapters(self.session_settings, base_model)
         self.peft_model.to(self.device)
 
         # Create each of the datasets
-        if self.session_settings.partitioner == "uniform":
-            split_datasets = split_dataset_uniform(self.train_dataset, len(self.session_settings.participants))
-        elif self.session_settings.partitioner == "dirichlet":
-            split_datasets = split_dataset_dirichlet(self.train_dataset, len(self.session_settings.participants), self.session_settings.alpha)
-        else:
-            raise RuntimeError("Unknown dataset distribution")
-        
+        split_datasets = [self.dataset.load_partition(i, "train") for i in range(len(self.session_settings.participants))]
+        for ind, split_dataset in enumerate(split_datasets):
+            self.logger.info(f"Dataset {ind} size: {len(split_dataset)}")
+
+        # Tokenize the datasets (tonkenization, etc.)
+        self.tokenizer = create_tokenizer(self.session_settings)
+        for ind in range(len(split_datasets)):
+            split_datasets[ind] = tokenize_dataset(split_datasets[ind], self.tokenizer)
+        self.test_dataset = tokenize_dataset(self.dataset.load_split("test"), self.tokenizer)
+
         return split_datasets, adapters, global_adapter
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
