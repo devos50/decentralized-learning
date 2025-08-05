@@ -41,7 +41,7 @@ class GLCommunity(LearningCommunity):
         self.start_next_round()
 
     def eva_send_model(self, round: int, model_age: int, model, peer):
-        start_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
+        start_time = asyncio.get_event_loop().time()
         serialized_model = serialize_model(model)
         response = {"round": round, "model_age": model_age}
         serialized_response = json.dumps(response).encode()

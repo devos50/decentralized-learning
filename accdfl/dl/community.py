@@ -50,7 +50,7 @@ class DLCommunity(LearningCommunity):
         self.bw_scheduler.kill_all_transfers()
 
     def eva_send_adapter(self, round, adapter: Dict, peer):
-        start_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
+        start_time = asyncio.get_event_loop().time()
         serialized_adapter = serialize_adapter(adapter)
         response = {"round": round}
         serialized_response = json.dumps(response).encode()

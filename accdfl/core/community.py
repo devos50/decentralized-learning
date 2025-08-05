@@ -1,11 +1,9 @@
 import asyncio
-import time
 from asyncio import Future, ensure_future
 from binascii import unhexlify, hexlify
 from typing import Optional, Callable, Dict, List
 
 from peft import PeftModel
-import torch
 
 from accdfl.core import TransmissionMethod
 from accdfl.core.model_manager import ModelManager
@@ -13,8 +11,6 @@ from accdfl.core.peer_manager import PeerManager
 from accdfl.core.session_settings import SessionSettings
 from accdfl.util.eva.protocol import EVAProtocol
 from accdfl.util.eva.result import TransferResult
-
-from transformers import PreTrainedModel
 
 from ipv8.community import Community
 from ipv8.requestcache import RequestCache
@@ -88,12 +84,12 @@ class LearningCommunity(Community):
 
     def go_online(self):
         self.is_active = True
-        cur_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
+        cur_time = asyncio.get_event_loop().time()
         self.logger.info("Participant %s comes online (t=%d)", self.peer_manager.get_my_short_id(), cur_time)
 
     def go_offline(self, graceful: bool = True):
         self.is_active = False
-        cur_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
+        cur_time = asyncio.get_event_loop().time()
         self.logger.info("Participant %s will go offline (t=%d)", self.peer_manager.get_my_short_id(), cur_time)
 
     def setup(self, settings: SessionSettings, peft_model: PeftModel):
@@ -140,7 +136,7 @@ class LearningCommunity(Community):
                 lambda _: self.schedule_eva_send_model(peer, serialized_response, binary_data, start_time))
         else:
             # The transfer seems to be completed - record the transfer time
-            end_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
+            end_time = asyncio.get_event_loop().time()
 
     def schedule_eva_send_model(self, peer: Peer, serialized_response: bytes, binary_data: bytes, start_time: float) -> Future:
         # Schedule the transfer

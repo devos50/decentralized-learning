@@ -71,7 +71,6 @@ class DLSimulation(LearningSimulation):
             alpha=self.args.alpha,
             partitioner=self.args.partitioner,
             eva_block_size=1000,
-            is_simulation=True,
             bypass_training=self.args.bypass_training,
             device=self.device,
         )

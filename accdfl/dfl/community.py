@@ -109,7 +109,7 @@ class DFLCommunity(LearningCommunity):
         self.add_message_handler(AggAckPayload, self.on_agg_ack)
 
     def log_event(self, round: int, event: str):
-        cur_time = asyncio.get_event_loop().time() if self.settings.is_simulation else time.time()
+        cur_time = asyncio.get_event_loop().time()
         self.events.append((cur_time, self.peer_manager.get_my_short_id(), round, event))
 
     def start(self, advertise_join: bool = False):

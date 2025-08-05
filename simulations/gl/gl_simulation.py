@@ -55,7 +55,6 @@ class GLSimulation(LearningSimulation):
             alpha=self.args.alpha,
             partitioner=self.args.partitioner,
             eva_block_size=1000,
-            is_simulation=True,
             train_device_name=self.args.train_device_name,
             bypass_training=self.args.bypass_training,
         )

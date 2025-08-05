@@ -1,3 +1,4 @@
+import logging
 import pickle
 from typing import Dict, List, Tuple
 from datasets import Dataset
@@ -5,6 +6,9 @@ from peft import LoraConfig, PeftModel, get_peft_model, get_peft_model_state_dic
 from transformers import AutoModelForSequenceClassification, AutoTokenizer, PreTrainedModel
 
 from accdfl.core.session_settings import SessionSettings
+
+
+logger = logging.getLogger(__name__)
 
 
 def serialize_adapter(adapter: Dict) -> bytes:
