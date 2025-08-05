@@ -5,13 +5,22 @@ from typing import List
 from torch import nn
 
 
-class GradientAggregationMethod(IntEnum):
-    FEDAVG = 1
+def get_aggregator(name: str) -> 'GradientAggregation':
+    """
+    Get the aggregator class by name.
+    """
+    if name == "fedadam":
+        from accdfl.core.gradient_aggregation.fedadam import FedAdam
+        return FedAdam()
+    elif name == "fedavg":
+        from accdfl.core.gradient_aggregation.fedavg import FedAvg
+        return FedAvg()
+    else:
+        raise ValueError(f"Unknown aggregator: {name}")
 
 
 class GradientAggregation:
 
-    @staticmethod
     @abstractmethod
-    def aggregate(models: List[nn.Module], weights: List[float]):
+    def aggregate(self, models: List[nn.Module], weights: List[float]):
         pass

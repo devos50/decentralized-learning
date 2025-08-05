@@ -6,6 +6,9 @@ from binascii import hexlify
 from math import floor, log
 from typing import List
 
+from accdfl.core.gradient_aggregation import get_aggregator
+from accdfl.core.gradient_aggregation.fedadam import FedAdam
+from accdfl.core.gradient_aggregation.fedavg import FedAvg
 from accdfl.core.model_evaluator import ModelEvaluator
 from accdfl.core.model_manager import ModelManager
 from accdfl.core.session_settings import LearningSettings, SessionSettings, DLSettings
@@ -73,11 +76,15 @@ class DLSimulation(LearningSimulation):
             eva_block_size=1000,
             bypass_training=self.args.bypass_training,
             device=self.device,
+            aggregate=self.args.aggregate,
         )
 
         split_datasets, adapters, global_adapter = self.create_datasets_and_model()
 
+        aggregator = get_aggregator(self.args.aggregate)
+
         for ind, node in enumerate(self.nodes):
+            node.overlays[0].aggregator = aggregator
             node.overlays[0].setup(self.session_settings, self.peft_model)
             node.overlays[0].model_manager.model_trainer.setup_dataset(split_datasets[ind], self.tokenizer)
             node.overlays[0].model_manager.adapter = adapters[ind]
