@@ -40,7 +40,7 @@ class ModelManager:
 
     def aggregate_trained_adapters(self):
         adapters = [adapter for adapter in self.incoming_trained_adapters.values()]
-        self.aggregator.aggregate(adapters, self.global_adapter, self.peft_model)
+        self.aggregator.aggregate(adapters)
 
     async def train(self) -> int:
         samples_trained_on = await self.model_trainer.train(self.peft_model)
