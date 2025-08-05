@@ -26,7 +26,7 @@ def unserialize_adapter(serialized_adapter: bytes):
 
 
 def create_base_model(base_model_name: str, dataset_name: str, dataset: Dataset) -> PreTrainedModel:
-    if dataset_name in ["ag_news", "newsgroups"]:
+    if dataset_name in ["ag_news", "emotion", "newsgroups"]:
         # Extract the number of classess and their names
         num_labels = dataset['train'].features['label'].num_classes
         class_names = dataset["train"].features["label"].names

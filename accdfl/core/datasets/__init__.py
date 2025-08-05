@@ -5,7 +5,7 @@ from accdfl.core.session_settings import SessionSettings
 
 
 def create_global_dataset(settings: SessionSettings) -> Dataset:
-    if settings.dataset == "ag_news":
+    if settings.dataset in ["ag_news", "emotion"]:
         dataset = datasets.load_dataset(settings.dataset, cache_dir="data/datasets")
         return dataset
     elif settings.dataset == "newsgroups":
