@@ -187,7 +187,7 @@ class DLSimulation(LearningSimulation):
 
             with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
                 out_file.write("%s,%d,%g,DL,%f,%d,%d,%f,%f\n" % (self.args.dataset, self.args.seed, self.args.learning_rate,
-                                                                 get_event_loop().time(), 0, int(cur_time), accuracy, loss))
+                                                                 get_event_loop().time(), 0, self.round_nr, accuracy, loss))
         elif self.args.dl_accuracy_method == "individual":
             results = self.test_models()
 
