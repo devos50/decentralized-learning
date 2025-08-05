@@ -33,10 +33,11 @@ def test_adapter_aggregation_and_adoptation(settings, model_and_adapters):
     dataset, tokenizer, peft_config, peft_model, adapters, global_adapter = model_and_adapters
     model_manager = ModelManager(peft_model, settings, 0)
     model_manager.adapter = adapters[0]
+    model_manager.global_adapter = global_adapter
     assert len(adapters) == 2, "There should be two adapters for two participants"
 
-    weight_name = "base_model.model.roberta.encoder.layer.3.attention.self.query.lora_A.weight"
-    weights = global_adapter[weight_name]
+    weight_name = "base_model.model.roberta.encoder.layer.3.attention.self.query.lora_A.global.weight"
+    weights = peft_model.state_dict()[weight_name]
     global_weights_before = weights.clone().detach()
 
     # Try aggregating adapter 1 and 2
@@ -46,16 +47,19 @@ def test_adapter_aggregation_and_adoptation(settings, model_and_adapters):
     model_manager.aggregate_trained_adapters()
 
     # Check if the global adapter has changed
-    global_weights_after = global_adapter[weight_name].clone().detach()
+    weights = peft_model.state_dict()[weight_name]
+    global_weights_after = weights.clone().detach()
     assert not torch.allclose(global_weights_before, global_weights_after), "Global adapter weights should change after aggregation"
 
-    client1_weights_before = adapters[0][weight_name].clone().detach()
-    client2_weights_before = adapters[1][weight_name].clone().detach()
+    weights = peft_model.state_dict()[weight_name.replace("global", "client_0")]
+    client1_weights_before = weights.clone().detach()
+    weights = peft_model.state_dict()[weight_name.replace("global", "client_1")]
+    client2_weights_before = weights.clone().detach()
     model_manager.adopt_adapter(global_adapter)
 
     # Check if the client adapter has changed
-    client1_weights_after = adapters[0][weight_name].clone().detach()
+    client1_weights_after = peft_model.state_dict()[weight_name.replace("global", "client_0")].clone().detach()
     assert not torch.allclose(client1_weights_before, client1_weights_after), "Client 1 adapter weights should change after adopting the global adapter"
 
-    client2_weights_after = adapters[1][weight_name].clone().detach()
+    client2_weights_after = peft_model.state_dict()[weight_name.replace("global", "client_1")].clone().detach()
     assert torch.allclose(client2_weights_before, client2_weights_after), "Client 2 adapter weights should not change after adopting the global adapter"

@@ -43,7 +43,7 @@ class ModelManager:
 
     def aggregate_trained_adapters(self):
         adapters = [adapter for adapter in self.incoming_trained_adapters.values()]
-        self.get_aggregation_method().aggregate(adapters, self.global_adapter)
+        self.get_aggregation_method().aggregate(adapters, self.global_adapter, self.peft_model)
 
     async def train(self) -> int:
         samples_trained_on = await self.model_trainer.train(self.peft_model)
@@ -57,8 +57,12 @@ class ModelManager:
         """
         Adopt the given adapter as the current model adapter.
         """
-        for key in self.adapter.keys():
-            if key in new_adapter:
-                self.adapter[key].copy_(new_adapter[key])
+        model_state_dict = self.peft_model.state_dict()
+
+        for key in new_adapter["keys"]:
+            # Get the associated key in our adapter
+            our_key = key.replace(new_adapter["name"], self.adapter["name"])
+            if our_key in self.adapter["keys"]:
+                model_state_dict[our_key].copy_(model_state_dict[key])
             else:
-                self.logger.warning(f"Key {key} not found in the incoming adapter, keeping the existing value.")
+                self.logger.warning(f"Key {key} not found in our adapter, keeping the existing value.")

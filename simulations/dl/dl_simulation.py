@@ -166,6 +166,7 @@ class DLSimulation(LearningSimulation):
         print("Will test accuracy of %d nodes..." % len(eligible_nodes))
 
         self.model_manager = ModelManager(self.peft_model, self.session_settings, 0)
+        self.model_manager.global_adapter = self.nodes[0].overlays[0].model_manager.global_adapter
 
         for ind, node in eligible_nodes:
             adapter = self.nodes[ind].overlays[0].model_manager.adapter

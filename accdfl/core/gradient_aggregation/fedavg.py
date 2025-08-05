@@ -2,14 +2,17 @@ from typing import Dict, List
 
 import torch
 
+from peft import PeftModel
+
 from accdfl.core.gradient_aggregation import GradientAggregation
 
 
 class FedAvg(GradientAggregation):
 
     @staticmethod
-    def aggregate(adapters: List[Dict], global_adapter: Dict) -> None:
-        for k in adapters[0].keys():
-            stack = torch.stack([sd[k] for sd in adapters], dim=0)
+    def aggregate(adapters: List[Dict], global_adapter: Dict, peft_model: PeftModel) -> None:
+        state_dict = peft_model.state_dict()
+        for k in global_adapter["keys"]:
+            stack = torch.stack([state_dict[k.replace(global_adapter["name"], adapter["name"])] for adapter in adapters], dim=0)
             avg = stack.mean(dim=0)
-            global_adapter[k].copy_(avg)
+            state_dict[k].copy_(avg)
