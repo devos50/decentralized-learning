@@ -63,9 +63,11 @@ def create_adapters(session_settings: SessionSettings, base_model: PreTrainedMod
         for key in model_state_dict.keys():
             if f".{adapter_name}." in key:
                 adapter[key] = model_state_dict[key]
+        adapter = {k.replace(f".{adapter_name}", ""): v for k, v in adapter.items()}
         adapters.append(adapter)
 
     # Add the global adapter
     global_adapter = {k: v for k, v in model_state_dict.items() if ".global." in k}
+    global_adapter = {k.replace(".global", ""): v for k, v in global_adapter.items()}
 
     return peft_config, peft_model, adapters, global_adapter
