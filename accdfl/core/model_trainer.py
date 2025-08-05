@@ -66,11 +66,18 @@ class ModelTrainer:
         peft_model.set_adapter("client_%d" % self.participant_index)
         optimizer = torch.optim.AdamW(peft_model.parameters(), lr=self.settings.learning.learning_rate)
         peft_model.train()
-        train_dataloader = DataLoader(self.dataset, batch_size=16, shuffle=True, collate_fn=self.data_collator)
+        train_dataloader = DataLoader(self.dataset, batch_size=self.settings.learning.batch_size, shuffle=True, collate_fn=self.data_collator)
         train_set_it = iter(train_dataloader)
 
         for local_step in range(self.settings.learning.local_steps):
-            batch = next(train_set_it)
+            try:
+                batch = next(train_set_it)
+            except StopIteration:
+                # Restart the iterator if we run out of data
+                train_dataloader = DataLoader(self.dataset, batch_size=self.settings.learning.batch_size, shuffle=True, collate_fn=self.data_collator)
+                train_set_it = iter(train_dataloader)
+                batch = next(train_set_it)
+
             optimizer.zero_grad()
             inputs = {k: v.to(self.settings.device) for k, v in batch.items() if k != 'labels'}
             samples_trained_on += len(batch['labels'])
