@@ -690,6 +690,7 @@ class DFLCommunity(LearningCommunity):
                 self.aggregation_timeouts.add(task_name)
 
             model_manager = ModelManager(self.model_manager.peft_model, self.settings, self.model_manager.participant_index)
+            model_manager.global_adapter = self.model_manager.global_adapter
             self.aggregations[index] = model_manager
 
         if index not in self.aggregations_completed:
