@@ -9,11 +9,9 @@ from math import floor
 from random import Random
 from typing import Dict, Optional, List, Tuple, Set
 
-import torch
-from torch import nn
-
 from transformers import PreTrainedModel
 
+from accdfl.core.gradient_aggregation import GradientAggregation
 from accdfl.core.models import serialize_adapter, unserialize_adapter
 from ipv8.lazy_community import lazy_wrapper_wd
 from ipv8.messaging.payload_headers import BinMemberAuthenticationPayload, GlobalTimeDistributionPayload
@@ -92,6 +90,7 @@ class DFLCommunity(LearningCommunity):
         self.ongoing_training_task_name: Optional[str] = None
         self.train_sample_estimate: int = 0
         self.advertise_index: int = 1
+        self.aggregator: Optional[GradientAggregation] = None
         self.aggregations: Dict[int, ModelManager] = {}
         self.aggregation_timeouts = set()
         self.aggregations_completed = set()
@@ -691,6 +690,7 @@ class DFLCommunity(LearningCommunity):
 
             model_manager = ModelManager(self.model_manager.peft_model, self.settings, self.model_manager.participant_index)
             model_manager.global_adapter = self.model_manager.global_adapter
+            model_manager.aggregator = self.aggregator
             self.aggregations[index] = model_manager
 
         if index not in self.aggregations_completed:
