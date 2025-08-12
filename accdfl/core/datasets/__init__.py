@@ -21,15 +21,21 @@ def create_global_dataset(settings: SessionSettings) -> FederatedDataset:
             seed=42,
         )
 
-    if settings.dataset in ["ag_news", "emotion"]:
+    hf_dataset_name = settings.dataset
+    if settings.dataset == "newsgroups":
+        hf_dataset_name = "SetFit/20_newsgroups"
+    elif settings.dataset == "cifar10":
+        hf_dataset_name = "uoft-cs/cifar10"
+
+    if settings.dataset in ["ag_news", "emotion", "cifar10"]:
         dataset = FederatedDataset(
-            dataset=settings.dataset,
+            dataset=hf_dataset_name,
             partitioners={"train": partitioner},
             cache_dir="data/datasets",
         )
     elif settings.dataset == "newsgroups":
         dataset = FederatedDataset(
-            dataset="SetFit/20_newsgroups",
+            dataset=hf_dataset_name,
             partitioners={"train": partitioner},
             cache_dir="data/datasets",
         )

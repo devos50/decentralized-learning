@@ -79,7 +79,7 @@ class DLSimulation(LearningSimulation):
 
         for ind, node in enumerate(self.nodes):
             node.overlays[0].setup(self.session_settings, self.peft_model)
-            node.overlays[0].model_manager.model_trainer.setup_dataset(split_datasets[ind], self.tokenizer)
+            node.overlays[0].model_manager.model_trainer.setup_dataset(split_datasets[ind], self.tokenizer, self.data_collator)
             node.overlays[0].model_manager.adapter = adapters[ind]
             node.overlays[0].model_manager.global_adapter = global_adapter
 
@@ -91,7 +91,7 @@ class DLSimulation(LearningSimulation):
 
         if not self.args.bypass_training:
             self.evaluator = ModelEvaluator(self.session_settings)
-            self.evaluator.setup_dataset(self.test_dataset, self.tokenizer)
+            self.evaluator.setup_dataset(self.test_dataset, self.tokenizer, self.data_collator)
 
         # Generated the statistics files
         with open(os.path.join(self.data_dir, "round_durations.csv"), "w") as out_file:

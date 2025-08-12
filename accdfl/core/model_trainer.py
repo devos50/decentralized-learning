@@ -32,11 +32,11 @@ class ModelTrainer:
         self.is_training: bool = False
         self.dataset: Optional[Dataset] = None
         self.tokenizer: Optional[AutoTokenizer] = None
-    
-    def setup_dataset(self, dataset: Dataset, tokenizer: AutoTokenizer):
+
+    def setup_dataset(self, dataset: Dataset, tokenizer: Optional[AutoTokenizer], data_collator: Optional[DataCollatorWithPadding]):
         self.dataset = dataset
         self.tokenizer = tokenizer
-        self.data_collator = DataCollatorWithPadding(tokenizer=self.tokenizer, return_tensors="pt")
+        self.data_collator = data_collator
 
     async def train(self, peft_model) -> int:
         """

@@ -1,3 +1,4 @@
+from typing import Optional
 import torch
 from torch.utils.data import DataLoader
 
@@ -20,15 +21,14 @@ class ModelEvaluator:
         self.settings: SessionSettings = settings
         self.test_dataset = None
 
-    def setup_dataset(self, dataset: Dataset, tokenizer: AutoTokenizer):
+    def setup_dataset(self, dataset: Dataset, tokenizer: AutoTokenizer, data_collator: Optional[DataCollatorWithPadding]):
         self.test_dataset = dataset
         self.tokenizer = tokenizer
-        self.data_collator = DataCollatorWithPadding(tokenizer=self.tokenizer, return_tensors="pt")
+        self.data_collator = data_collator
 
     def evaluate_classification_model(self, inference_model):
-        TASK = "txt_classification"
         metric = evaluate.load('accuracy')
-        eval_dataloader = DataLoader(self.test_dataset.rename_column("label", "labels") if TASK != "img_classification" else self.test_dataset, batch_size=512, collate_fn=self.data_collator)
+        eval_dataloader = DataLoader(self.test_dataset, batch_size=512, collate_fn=self.data_collator)
 
         inference_model.to(self.settings.device)
         inference_model.eval()

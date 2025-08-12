@@ -2,8 +2,8 @@ import logging
 import pickle
 from typing import Dict, List, Tuple
 from datasets import Dataset
-from peft import LoraConfig, PeftModel, get_peft_model, get_peft_model_state_dict
-from transformers import AutoModelForSequenceClassification, AutoTokenizer, PreTrainedModel
+from peft import LoraConfig, PeftModel, get_peft_model
+from transformers import AutoModelForSequenceClassification, AutoTokenizer, PreTrainedModel, ViTForImageClassification
 
 from accdfl.core.session_settings import SessionSettings
 
@@ -38,6 +38,8 @@ def create_base_model(base_model_name: str, dataset_name: str, dataset: Dataset)
         id2label = {i: label for i, label in enumerate(class_names)}
 
         return AutoModelForSequenceClassification.from_pretrained(base_model_name, id2label=id2label, cache_dir="data/models")
+    elif dataset_name == "cifar10":
+        return ViTForImageClassification.from_pretrained(base_model_name, num_labels=10, ignore_mismatched_sizes=True, cache_dir="data/models")
     else:
         raise RuntimeError("Unknown dataset %s" % dataset_name)
 
@@ -47,7 +49,10 @@ def create_tokenizer(session_settings: SessionSettings) -> AutoTokenizer:
 
 
 def create_adapters(session_settings: SessionSettings, base_model: PreTrainedModel) -> Tuple[LoraConfig, PeftModel, List[Dict], Dict]:
-    peft_config = LoraConfig(task_type="SEQ_CLS", inference_mode=False, r=8, lora_alpha=16, lora_dropout=0.1)
+    if session_settings.model == "roberta-base":
+        peft_config = LoraConfig(task_type="SEQ_CLS", inference_mode=False, r=8, lora_alpha=16, lora_dropout=0.1)
+    elif session_settings.model == "google/vit-base-patch16-224":
+        peft_config = LoraConfig(inference_mode=False, r=8, lora_alpha=16, lora_dropout=0.1, target_modules=["attention.query", "attention.key"])
     # TODO these parameters should be configurable
     peft_model = get_peft_model(base_model, peft_config, adapter_name="global")
 

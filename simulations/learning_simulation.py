@@ -13,7 +13,7 @@ from typing import Dict, List, Optional, Tuple
 
 import torch
 
-from transformers import AutoTokenizer, PreTrainedModel
+from transformers import AutoTokenizer, PreTrainedModel, DataCollatorWithPadding, ViTImageProcessor
 import yappi
 
 import numpy as np
@@ -60,6 +60,7 @@ class LearningSimulation(TaskManager):
         self.peft_config: Optional[LoraConfig] = None
         self.peft_model: Optional[PeftModel] = None
         self.tokenizer: Optional[AutoTokenizer] = None
+        self.data_collator: Optional[DataCollatorWithPadding] = None
 
         self.loop = DiscreteLoop()
         asyncio.set_event_loop(self.loop)
@@ -82,10 +83,26 @@ class LearningSimulation(TaskManager):
             self.logger.info(f"Dataset {ind} size: {len(split_dataset)}")
 
         # Tokenize the datasets (tonkenization, etc.)
-        self.tokenizer = create_tokenizer(self.session_settings)
-        for ind in range(len(split_datasets)):
-            split_datasets[ind] = tokenize_dataset(split_datasets[ind], self.tokenizer)
-        self.test_dataset = tokenize_dataset(self.dataset.load_split("test"), self.tokenizer)
+        if self.session_settings.model == "google/vit-base-patch16-224":
+            feature_extractor = ViTImageProcessor.from_pretrained(self.session_settings.model, cache_dir="data/models")
+
+            def transform(batch):
+                # batch["img"] is a list of PIL Images; batch["label"] is a list/array of ints
+                out = feature_extractor(batch["img"], return_tensors="pt")
+                # Make sure labels are a 1D LongTensor of length batch_size
+                out["labels"] = torch.tensor(batch["label"], dtype=torch.long)
+                return out
+
+            for ind in range(len(split_datasets)):
+                split_datasets[ind] = split_datasets[ind].with_transform(transform)
+            self.test_dataset = self.dataset.load_split("test").with_transform(transform)
+
+        else:
+            self.tokenizer = create_tokenizer(self.session_settings)
+            self.data_collator = DataCollatorWithPadding(tokenizer=self.tokenizer, return_tensors="pt")
+            for ind in range(len(split_datasets)):
+                split_datasets[ind] = tokenize_dataset(split_datasets[ind], self.tokenizer)
+            self.test_dataset = tokenize_dataset(self.dataset.load_split("test"), self.tokenizer).rename_column("label", "labels")
 
         return split_datasets, adapters, global_adapter
 
