@@ -53,5 +53,6 @@ def get_args(dataset: str, default_lr: float, default_momentum: float = 0):
     parser.add_argument('--activity-log-interval', type=int, default=None)
     parser.add_argument('--flush-statistics-interval', type=int, default=600)
     parser.add_argument('--write-view-histories', action=argparse.BooleanOptionalAction)
+    parser.add_argument('--aggregate', type=str, default="fedavg", choices=["fedavg", "fedadam"])
 
     return parser.parse_args()

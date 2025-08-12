@@ -4,8 +4,8 @@ from typing import Dict, Optional
 from peft import PeftModel
 import torch
 
-from accdfl.core.gradient_aggregation import GradientAggregationMethod
-from accdfl.core.gradient_aggregation.fedavg import FedAvg
+from accdfl.core.gradient_aggregation import GradientAggregation
+from accdfl.core.gradient_aggregation.fedadam import FedAdam
 from accdfl.core.model_trainer import ModelTrainer
 from accdfl.core.session_settings import SessionSettings
 
@@ -23,6 +23,7 @@ class ModelManager:
         self.participant_index: int = participant_index
         self.logger = logging.getLogger(self.__class__.__name__)
         self.model_trainer: ModelTrainer = ModelTrainer(self.settings, self.participant_index)
+        self.aggregator: Optional[GradientAggregation] = None
 
         # Keeps track of the incoming trained adapters as aggregator
         self.incoming_trained_adapters: Dict[bytes, Dict] = {}
@@ -37,13 +38,9 @@ class ModelManager:
     def reset_incoming_trained_adapters(self):
         self.incoming_trained_adapters = {}
 
-    def get_aggregation_method(self):
-        if self.settings.gradient_aggregation == GradientAggregationMethod.FEDAVG:
-            return FedAvg
-
     def aggregate_trained_adapters(self):
         adapters = [adapter for adapter in self.incoming_trained_adapters.values()]
-        self.get_aggregation_method().aggregate(adapters, self.global_adapter, self.peft_model)
+        self.aggregator.aggregate(adapters)
 
     async def train(self) -> int:
         samples_trained_on = await self.model_trainer.train(self.peft_model)

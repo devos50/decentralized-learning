@@ -10,6 +10,7 @@ import torch
 from torch import Future, nn
 
 from accdfl.core.community import LearningCommunity
+from accdfl.core.gradient_aggregation import GradientAggregation
 from accdfl.core.models import serialize_adapter, unserialize_adapter
 from accdfl.util.eva.result import TransferResult
 from pyipv8.ipv8.peer import Peer
@@ -27,6 +28,7 @@ class DLCommunity(LearningCommunity):
         self.nodes = None
         self.bandwidth: Optional[float] = None
         self.transfers: List[Tuple[str, str, int, float, float, str, bool]] = []
+        self.aggregator: Optional[GradientAggregation] = None
 
         self.bw_scheduler: BWScheduler = BWScheduler(self.my_peer.public_key.key_to_bin(),
                                                      self.peer_manager.get_my_short_id())
@@ -161,6 +163,7 @@ class DLCommunity(LearningCommunity):
         self.logger.info("Participant %s received %d adapters, aggregating...",
                          self.peer_manager.get_my_short_id(), len(self.incoming_adapters))
         self.model_manager.incoming_trained_adapters = dict((x, y) for x, y in self.incoming_adapters)
+        self.model_manager.aggregator = self.aggregator
 
         self.model_manager.aggregate_trained_adapters()
         self.model_manager.adopt_adapter(self.model_manager.global_adapter)

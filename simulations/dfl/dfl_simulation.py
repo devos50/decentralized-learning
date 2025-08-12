@@ -8,6 +8,9 @@ from typing import List, Dict, Optional
 import torch
 
 from accdfl.core import NodeMembershipChange
+from accdfl.core.gradient_aggregation import get_aggregator
+from accdfl.core.gradient_aggregation.fedadam import FedAdam
+from accdfl.core.gradient_aggregation.fedavg import FedAvg
 from accdfl.core.model_evaluator import ModelEvaluator
 from accdfl.core.session_settings import DFLSettings, LearningSettings, SessionSettings
 from accdfl.core.peer_manager import PeerManager
@@ -26,9 +29,9 @@ class DFLSimulation(LearningSimulation):
         self.last_round_complete_time: Optional[float] = None
         self.round_durations: List[float] = []
         self.best_accuracy: float = 0.0
-        self.data_dir = os.path.join("data", "n_%d_%s_s%d_a%d_sf%g_lr%g_sd%ddfl" % (
+        self.data_dir = os.path.join("data", "n_%d_%s_s%d_a%d_sf%g_lr%g_sd%d_%s_dfl" % (
             self.args.peers, self.args.dataset, self.args.sample_size, self.args.num_aggregators,
-            self.args.success_fraction, self.args.learning_rate, self.args.seed))
+            self.args.success_fraction, self.args.learning_rate, self.args.seed, self.args.aggregate))
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = super().get_ipv8_builder(peer_id)
@@ -91,11 +94,15 @@ class DFLSimulation(LearningSimulation):
             eva_block_size=1000,
             bypass_training=self.args.bypass_training,
             device=self.device,
+            aggregate=self.args.aggregate,
         )
 
         split_datasets, adapters, global_adapter = self.create_datasets_and_model()
 
+        aggregator = get_aggregator(self.args.aggregate, self.peft_model, global_adapter)
+
         for ind, node in enumerate(self.nodes):
+            node.overlays[0].aggregator = aggregator
             node.overlays[0].aggregate_complete_callback = lambda round_nr, i=ind: self.on_aggregate_complete(i, round_nr)
             node.overlays[0].setup(self.session_settings, self.peft_model)
             node.overlays[0].model_manager.model_trainer.setup_dataset(split_datasets[ind], self.tokenizer, self.data_collator)

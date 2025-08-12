@@ -1,11 +1,10 @@
 import os
 from dataclasses import dataclass
-from typing import List, Optional, Type
+from typing import List, Optional
 
 from dataclasses_json import dataclass_json
 
 from accdfl.core import TransmissionMethod
-from accdfl.core.gradient_aggregation import GradientAggregationMethod
 
 
 @dataclass
@@ -70,7 +69,6 @@ class SessionSettings:
     model: Optional[str] = None
     alpha: float = 1
     partitioner: str = "uniform"  # uniform or dirichlet
-    gradient_aggregation: GradientAggregationMethod = GradientAggregationMethod.FEDAVG
     model_seed: int = 0
     model_send_delay: float = 1.0
     transmission_method: TransmissionMethod = TransmissionMethod.EVA
@@ -78,3 +76,4 @@ class SessionSettings:
     eva_max_simultaneous_transfers: int = 30  # Corresponds to a peak usage of ~3.4 MB/s for an aggregator
     bypass_training: bool = False  # Whether to bypass model training, can be useful to observe network dynamics
     device: str = "cpu"
+    aggregate: str = "fedavg"  # fedavg or fedadam

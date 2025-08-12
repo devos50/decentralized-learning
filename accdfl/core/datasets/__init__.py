@@ -1,10 +1,30 @@
-import datasets
+import datasets as hfds
 from datasets import ClassLabel, Dataset
 
 from flwr_datasets import FederatedDataset
 from flwr_datasets.partitioner import DirichletPartitioner, IidPartitioner
 
 from accdfl.core.session_settings import SessionSettings
+
+
+def _newsgroups_preproc(ds_dict: hfds.DatasetDict) -> hfds.DatasetDict:
+    # Build id -> name mapping using the *unpartitioned* train split
+    train = ds_dict["train"]
+    id2name = {}
+    for i, t in zip(train["label"], train["label_text"]):
+        if i not in id2name:
+            id2name[i] = t
+    names = [id2name[i] for i in range(max(id2name) + 1)]
+    label_feature = ClassLabel(names=names)
+
+    fixed = {}
+    for split, ds in ds_dict.items():
+        if "label" in ds.column_names:
+            ds = ds.cast_column("label", label_feature)
+        if "label_text" in ds.column_names:
+            ds = ds.remove_columns(["label_text"])
+        fixed[split] = ds
+    return hfds.DatasetDict(fixed)
 
 
 def create_global_dataset(settings: SessionSettings) -> FederatedDataset:
@@ -37,13 +57,9 @@ def create_global_dataset(settings: SessionSettings) -> FederatedDataset:
         dataset = FederatedDataset(
             dataset=hf_dataset_name,
             partitioners={"train": partitioner},
+            preprocessor=_newsgroups_preproc,
             cache_dir="data/datasets",
         )
-        # We need to do some small transformations
-        unique_classes = sorted(set(dataset['train']['label']))
-        label_feature = ClassLabel(names=unique_classes)
-        dataset = dataset.cast_column('label', label_feature)
-        dataset = dataset.remove_columns('label_text')
     else:
         raise RuntimeError("Unknown dataset %s" % settings.dataset)
     
