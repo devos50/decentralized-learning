@@ -82,11 +82,10 @@ class ModelTrainer:
 
             is_lm = (self.settings.model in ["gpt2"])
             if is_lm:
-                outputs = peft_model(
-                    input_ids=batch["input_ids"],
-                    attention_mask=batch.get("attention_mask"),
-                    labels=batch["labels"],
-                )
+                input_ids = batch["input_ids"].to(self.settings.device)
+                labels = batch["labels"].to(self.settings.device)
+                masks = batch["attention_mask"].to(self.settings.device)
+                outputs = peft_model(input_ids=input_ids, labels=labels, attention_mask=masks)
                 loss = outputs.loss
             else:
                 inputs = {k: v.to(self.settings.device) for k, v in batch.items() if k != 'labels'}
