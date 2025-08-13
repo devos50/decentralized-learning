@@ -41,6 +41,17 @@ class DLSettings:
     """
     topology: str = "k-regular"
     el: bool = False
+    k: int = 2
+
+
+@dataclass
+class TeleportationSettings:
+    """
+    Setting related to teleportation.
+    """
+    topology: str = "k-regular"
+    k: int = 2
+    sample_size: int = 1
 
 
 @dataclass_json
@@ -58,6 +69,7 @@ class SessionSettings:
     dataset_base_path: str = None
     dfl: Optional[DFLSettings] = None
     dl: Optional[DLSettings] = None
+    teleportation: Optional[TeleportationSettings] = None
     model: Optional[str] = None
     alpha: float = 1
     partitioner: str = "uniform"  # uniform or dirichlet

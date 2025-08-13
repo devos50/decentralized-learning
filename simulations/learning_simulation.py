@@ -27,6 +27,7 @@ from accdfl.core.models import create_adapters, create_base_model, create_tokeni
 from accdfl.core.session_settings import SessionSettings
 from accdfl.dfl.community import DFLCommunity
 from accdfl.dl.community import DLCommunity
+from accdfl.teleportation.community import TeleportationCommunity
 
 from ipv8.configuration import ConfigBuilder
 from ipv8.taskmanager import TaskManager
@@ -138,6 +139,7 @@ class LearningSimulation(TaskManager):
                             extra_communities={
                                 'DLCommunity': DLCommunity,
                                 'DFLCommunity': DFLCommunity,
+                                'TeleportationCommunity': TeleportationCommunity,
                             })
             await instance.start()
 

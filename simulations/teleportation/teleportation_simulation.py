@@ -4,13 +4,14 @@ from argparse import Namespace
 from asyncio import get_event_loop
 from binascii import hexlify
 from math import floor, log
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from accdfl.core.gradient_aggregation import get_aggregator
 from accdfl.core.model_evaluator import ModelEvaluator
 from accdfl.core.model_manager import ModelManager
-from accdfl.core.session_settings import LearningSettings, SessionSettings, DLSettings
+from accdfl.core.session_settings import LearningSettings, SessionSettings, TeleportationSettings
 
+from accdfl.teleportation.sample_manager import SampleManager
 from ipv8.configuration import ConfigBuilder
 
 from simulations.learning_simulation import LearningSimulation
@@ -18,19 +19,19 @@ from simulations.learning_simulation import LearningSimulation
 import networkx as nx
 
 
-class DLSimulation(LearningSimulation):
+class TeleportationSimulation(LearningSimulation):
 
     def __init__(self, args: Namespace) -> None:
         super().__init__(args)
         self.num_round_completed = 0
         self.participants_ids: List[int] = []
         self.round_nr: int = 1
-        self.data_dir = os.path.join("data", "n_%d_%s_sd%d_%s" % (self.args.peers, self.args.dataset, self.args.seed, "dl" if not self.args.el else "el"))
-        self.topologies: Dict[int, nx.DiGraph] = {}
+        self.data_dir = os.path.join("data", "n_%d_%s_sd%d_teleportation" % (self.args.peers, self.args.dataset, self.args.seed))
+        self.topology: Optional[nx.Graph] = None
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = super().get_ipv8_builder(peer_id)
-        builder.add_overlay("DLCommunity", "my peer", [], [], {}, [])
+        builder.add_overlay("TeleportationCommunity", "my peer", [], [], {}, [])
         return builder
 
     async def setup_simulation(self) -> None:
@@ -56,10 +57,10 @@ class DLSimulation(LearningSimulation):
             local_steps=self.args.local_steps,
         )
 
-        dl_settings = DLSettings(
+        teleportation_settings = TeleportationSettings(
             topology=self.args.topology,
-            el=self.args.el,
-            k=self.args.k,
+            sample_size=self.args.sample_size,
+            k=floor(log(self.args.sample_size, 2)) if self.args.k is None else self.args.k,
         )
 
         self.session_settings = SessionSettings(
@@ -71,7 +72,7 @@ class DLSimulation(LearningSimulation):
                               self.nodes],
             target_participants=len(self.nodes),
             dataset_base_path=self.args.dataset_base_path,
-            dl=dl_settings,
+            teleportation=teleportation_settings,
             model=self.args.model,
             alpha=self.args.alpha,
             partitioner=self.args.partitioner,
@@ -108,8 +109,10 @@ class DLSimulation(LearningSimulation):
 
     async def start_simulation(self) -> None:
         self.round_start_time = get_event_loop().time()
-        for node in self.nodes:
-            node.overlays[0].start_round(self.round_nr)
+
+        first_sample: List[int] = SampleManager.get_sample(1, len(self.nodes), self.args.sample_size)
+        for node_id in first_sample:
+            self.nodes[node_id].overlays[0].start_round(self.round_nr)
         self.register_task("round_done", self.on_round_done, interval=self.args.dl_round_timeout)
         if self.args.accuracy_logging_interval_is_in_sec:
             self.register_task("check_accuracy", self.compute_all_accuracies, interval=self.args.accuracy_logging_interval)
@@ -129,9 +132,6 @@ class DLSimulation(LearningSimulation):
         if transfers_to_kill > 0:
             self.logger.error("Killed %d transfers", transfers_to_kill)
 
-        for node in self.nodes:
-            node.overlays[0].aggregate_adapters()
-
         # Should we check the accuracy?
         if not self.args.accuracy_logging_interval_is_in_sec and self.args.accuracy_logging_interval > 0 and self.round_nr % self.args.accuracy_logging_interval == 0:
             self.compute_all_accuracies()
@@ -143,9 +143,10 @@ class DLSimulation(LearningSimulation):
         self.round_nr += 1
         nodes_started = 0
 
-        for node in self.nodes:
-            if node.overlays[0].is_active:
-                node.overlays[0].start_round(self.round_nr)
+        sample: List[int] = SampleManager.get_sample(self.round_nr, len(self.nodes), self.args.sample_size)
+        for node_id in sample:
+            if self.nodes[node_id].overlays[0].is_active:
+                self.nodes[node_id].overlays[0].start_round(self.round_nr)
                 nodes_started += 1
 
         self.logger.error("Round %d started (with %d nodes)", self.round_nr, nodes_started)
@@ -162,12 +163,13 @@ class DLSimulation(LearningSimulation):
                             cur_time, tot_up, tot_down)
 
         # Put all the models in the model manager
+        sample: List[int] = SampleManager.get_sample(self.round_nr, len(self.nodes), self.args.sample_size)
         eligible_nodes = []
-        for ind, node in enumerate(self.nodes):
-            if not self.nodes[ind].overlays[0].is_active:
+        for node_id in sample:
+            if not self.nodes[node_id].overlays[0].is_active:
                 continue
 
-            eligible_nodes.append((ind, node))
+            eligible_nodes.append((node_id, self.nodes[node_id]))
 
         # Don't test all models for efficiency reasons, just up to 100% of the entire network
         FRACTION = 1.0
@@ -205,21 +207,14 @@ class DLSimulation(LearningSimulation):
 
         self.model_manager.reset_incoming_trained_adapters()
 
-    def build_topology(self, round_nr: int) -> nx.Graph:
-        if round_nr in self.topologies:
-            return self.topologies[round_nr]
-
-        # Build the topology
-        if self.session_settings.dl.topology == "k-regular":
-            k: int = floor(log(len(self.nodes), 2)) if self.args.k is None else self.args.k
-            self.logger.info("Building %d-regular graph topology for round %d", k, round_nr)
-            return nx.random_regular_graph(k, len(self.nodes), seed=self.args.seed + round_nr)
+    def build_topology(self) -> nx.Graph:
+        if self.session_settings.teleportation.topology == "k-regular":
+            self.logger.info("Building %d-regular graph topology", self.session_settings.teleportation.k)
+            return nx.random_regular_graph(self.session_settings.teleportation.k, self.session_settings.teleportation.sample_size, seed=self.args.seed)
         else:
-            raise RuntimeError("Unknown DL topology %s" % self.session_settings.dl.topology)
+            raise RuntimeError("Unknown teleportation topology %s" % self.session_settings.teleportation.topology)
 
-    def get_topology(self, round_nr: int) -> nx.Graph:
-        if self.session_settings.dl.el:
-            return self.build_topology(round_nr)
-
-        # Just return a single topology
-        return self.build_topology(1)
+    def get_topology(self) -> nx.Graph:
+        if not self.topology:
+            self.topology = self.build_topology()
+        return self.topology
