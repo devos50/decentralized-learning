@@ -57,8 +57,44 @@ class ModelEvaluator:
         acc = metric.compute()["accuracy"]
         mean_loss = total_loss / max(n_examples, 1)
         return {"accuracy": acc, "loss": mean_loss}
+    
+    def compute_perplexity(self, eval_model, encodings):
+        max_length = 512 # eval_model.config.n_positions
+        stride = 512
+        seq_len = encodings.input_ids.size(1)
+        
+        nlls = []
+        prev_end_loc = 0
+        for begin_loc in range(0, seq_len, stride):
+            end_loc = min(begin_loc + max_length, seq_len)
+            trg_len = end_loc - prev_end_loc  # may be different from stride on last loop
+            input_ids = encodings.input_ids[:, begin_loc:end_loc].to(self.settings.device)
+            target_ids = input_ids.clone()
+            target_ids[:, :-trg_len] = -100
+
+            eval_model.eval()
+        
+            with torch.no_grad():
+                outputs = eval_model(input_ids, labels=target_ids)
+        
+                # loss is calculated using CrossEntropyLoss which averages over valid labels
+                # N.B. the model only calculates loss over trg_len - 1 labels, because it internally shifts the labels
+                # to the left by 1.
+                neg_log_likelihood = outputs.loss
+        
+            nlls.append(neg_log_likelihood)
+        
+            prev_end_loc = end_loc
+            if end_loc == seq_len:
+                break
+        
+        return torch.exp(torch.stack(nlls).mean())
 
     def evaluate_accuracy(self, peft_model: PeftModel, adapter_to_test: str = "global"):
         peft_model.set_adapter(adapter_to_test)
-        eval_res = self.evaluate_classification_model(peft_model)
+        if self.settings.model == "gpt2":
+            encodings = self.tokenizer("\n\n".join(self.test_dataset["text"]), return_tensors="pt")
+            eval_res = self.compute_perplexity(peft_model, encodings)
+        else:
+            eval_res = self.evaluate_classification_model(peft_model)
         return eval_res['accuracy'], eval_res['loss']

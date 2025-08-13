@@ -53,6 +53,13 @@ def create_global_dataset(settings: SessionSettings) -> FederatedDataset:
             partitioners={"train": partitioner},
             cache_dir="data/datasets",
         )
+    elif settings.dataset == "wikitext":
+        dataset = FederatedDataset(
+            dataset=hf_dataset_name,
+            subset="wikitext-2-raw-v1",
+            partitioners={"train": partitioner},
+            cache_dir="data/datasets",
+        )
     elif settings.dataset == "newsgroups":
         dataset = FederatedDataset(
             dataset=hf_dataset_name,
@@ -74,3 +81,28 @@ def preprocess(examples, tokenizer):
 def tokenize_dataset(dataset: Dataset, tokenizer) -> Dataset:
     processed_dataset = dataset.map(preprocess, fn_kwargs={"tokenizer": tokenizer}, batched=True,  remove_columns=["text"])
     return processed_dataset
+
+
+def preprocess_txt(examples, tokenizer):
+        return tokenizer(examples["text"])
+
+def tokenize_txt_dataset(dataset: Dataset, tokenizer) -> Dataset:
+    processed_dataset = dataset.map(preprocess_txt, fn_kwargs={"tokenizer": tokenizer}, batched=True,  remove_columns=["text"])
+    return processed_dataset
+
+
+def group_texts(examples):
+    block_size = 128
+
+    # Concatenate within this batch
+    concatenated = {k: sum(examples[k], []) for k in examples.keys()}  # keys: input_ids, attention_mask
+    total_length = len(concatenated["input_ids"])
+    total_length = (total_length // block_size) * block_size
+
+    result = {
+        k: [t[i : i + block_size] for i in range(0, total_length, block_size)]
+        for k, t in concatenated.items()
+    }
+    # For causal LM, labels are a copy of input_ids (the model handles the shift internally)
+    result["labels"] = result["input_ids"].copy()
+    return result

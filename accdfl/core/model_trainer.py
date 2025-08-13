@@ -83,7 +83,7 @@ class ModelTrainer:
             samples_trained_on += len(batch['labels'])
             labels = batch['labels'].to(self.settings.device)
             outputs = peft_model(**inputs)
-            loss = cross_entropy(outputs.logits, labels)  # Calculate loss
+            loss = cross_entropy(outputs.logits, labels) if self.settings.model != "gpt2" else outputs.loss
 
             loss.backward()
             optimizer.step()

@@ -21,7 +21,7 @@ import numpy as np
 from datasets import Dataset
 from peft import LoraConfig, PeftModel
 
-from accdfl.core.datasets import create_global_dataset, tokenize_dataset
+from accdfl.core.datasets import create_global_dataset, group_texts, tokenize_dataset, tokenize_txt_dataset
 from accdfl.core.model_manager import ModelManager
 from accdfl.core.models import create_adapters, create_base_model, create_tokenizer
 from accdfl.core.session_settings import SessionSettings
@@ -96,7 +96,25 @@ class LearningSimulation(TaskManager):
             for ind in range(len(split_datasets)):
                 split_datasets[ind] = split_datasets[ind].with_transform(transform)
             self.test_dataset = self.dataset.load_split("test").with_transform(transform)
+        elif self.session_settings.model == "gpt2":
+            self.tokenizer = create_tokenizer(self.session_settings)
 
+            print(self.tokenizer)
+            
+            def text_collate(examples):
+                input_ids = torch.stack([torch.tensor(d["input_ids"]) for d in examples])
+                labels = torch.stack([torch.tensor(d["labels"]) for d in examples])
+                attention_mask = torch.stack([torch.tensor(d["attention_mask"]) for d in examples])
+                return {"input_ids": input_ids, "labels": labels, "attention_mask": attention_mask}
+
+            self.data_collator = text_collate
+
+            # Tokenize and group
+            for ind in range(len(split_datasets)):
+                ds_tok = tokenize_txt_dataset(split_datasets[ind], self.tokenizer)
+                split_datasets[ind] = ds_tok.map(group_texts, batched=True, batch_size=1000, num_proc=4)
+            test_tok = tokenize_txt_dataset(self.dataset.load_split("test"), self.tokenizer)
+            self.test_dataset = test_tok.map(group_texts, batched=True, batch_size=1000, num_proc=4)
         else:
             self.tokenizer = create_tokenizer(self.session_settings)
             self.data_collator = DataCollatorWithPadding(tokenizer=self.tokenizer, return_tensors="pt")
