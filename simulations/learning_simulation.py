@@ -332,7 +332,7 @@ class LearningSimulation(TaskManager):
             "cuda" if torch.cuda.is_available()
             else "mps" if torch.backends.mps.is_available()
             else "cpu"
-        )
+        ) if not self.args.device else self.args.device
         self.logger.info("Using device %s for training", self.device)
 
     def check_activity(self):
