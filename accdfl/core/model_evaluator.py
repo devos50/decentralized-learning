@@ -68,7 +68,7 @@ class ModelEvaluator:
         # Otherwise, make sure your collator returns tensors incl. 'labels'.
         eval_dataloader = DataLoader(
             self.test_dataset,
-            batch_size=512,
+            batch_size=256,
             collate_fn=self.data_collator,
             shuffle=False,
         )
@@ -97,7 +97,7 @@ class ModelEvaluator:
         mean_nll = total_nll / max(total_tokens, 1)
         ppl = math.exp(mean_nll)
         print(ppl)
-        return {"accuracy": None, "loss": mean_nll, "perplexity": ppl}
+        return {"accuracy": 0.0, "loss": mean_nll, "perplexity": ppl}
 
     def evaluate_accuracy(self, peft_model: PeftModel, adapter_to_test: str = "global"):
         peft_model.set_adapter(adapter_to_test)
