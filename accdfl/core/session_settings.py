@@ -40,14 +40,7 @@ class DLSettings:
     Setting related to decentralized learning.
     """
     topology: str = "exp-one-peer"
-
-
-@dataclass
-class GLSettings:
-    """
-    Setting related to gossip learning.
-    """
-    round_timeout: float = 60
+    el: bool = False
 
 
 @dataclass_json
@@ -65,7 +58,6 @@ class SessionSettings:
     dataset_base_path: str = None
     dfl: Optional[DFLSettings] = None
     dl: Optional[DLSettings] = None
-    gl: Optional[GLSettings] = None
     model: Optional[str] = None
     alpha: float = 1
     partitioner: str = "uniform"  # uniform or dirichlet

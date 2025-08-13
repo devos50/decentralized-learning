@@ -27,7 +27,6 @@ from accdfl.core.models import create_adapters, create_base_model, create_tokeni
 from accdfl.core.session_settings import SessionSettings
 from accdfl.dfl.community import DFLCommunity
 from accdfl.dl.community import DLCommunity
-from accdfl.gl.community import GLCommunity
 
 from ipv8.configuration import ConfigBuilder
 from ipv8.taskmanager import TaskManager
@@ -36,7 +35,6 @@ from ipv8_service import IPv8
 from simulation.discrete_loop import DiscreteLoop
 from simulation.simulation_endpoint import SimulationEndpoint
 
-from simulations.gl.bypass_network_community import GLBypassNetworkCommunity
 from simulations.logger import SimulationLoggerAdapter
 
 
@@ -140,8 +138,6 @@ class LearningSimulation(TaskManager):
                             extra_communities={
                                 'DLCommunity': DLCommunity,
                                 'DFLCommunity': DFLCommunity,
-                                'GLCommunity': GLCommunity,
-                                'GLBypassNetworkCommunity': GLBypassNetworkCommunity,
                             })
             await instance.start()
 

@@ -56,7 +56,10 @@ class DLSimulation(LearningSimulation):
             local_steps=self.args.local_steps,
         )
 
-        dl_settings = DLSettings(topology=self.args.topology or "ring")
+        dl_settings = DLSettings(
+            topology=self.args.topology or "ring",
+            el=self.args.el,
+        )
 
         self.session_settings = SessionSettings(
             work_dir=self.data_dir,
