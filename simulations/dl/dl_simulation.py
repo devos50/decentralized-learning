@@ -4,7 +4,7 @@ from argparse import Namespace
 from asyncio import get_event_loop
 from binascii import hexlify
 from math import floor, log
-from typing import List
+from typing import Dict, List
 
 from accdfl.core.gradient_aggregation import get_aggregator
 from accdfl.core.model_evaluator import ModelEvaluator
@@ -13,7 +13,6 @@ from accdfl.core.session_settings import LearningSettings, SessionSettings, DLSe
 
 from ipv8.configuration import ConfigBuilder
 
-from simulations.dl import ExponentialTwoGraph, GetDynamicOnePeerSendRecvRanks
 from simulations.learning_simulation import LearningSimulation
 
 import networkx as nx
@@ -27,6 +26,7 @@ class DLSimulation(LearningSimulation):
         self.participants_ids: List[int] = []
         self.round_nr: int = 1
         self.data_dir = os.path.join("data", "n_%d_%s_sd%d_dl" % (self.args.peers, self.args.dataset, self.args.seed))
+        self.topologies: Dict[int, nx.DiGraph] = {}
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = super().get_ipv8_builder(peer_id)
@@ -91,11 +91,11 @@ class DLSimulation(LearningSimulation):
             node.overlays[0].model_manager.adapter = adapters[ind]
             node.overlays[0].model_manager.global_adapter = global_adapter
 
-        self.build_topology()
-
-        # Inject the nodes in each community
-        for node in self.nodes:
+        # Inject the nodes and ourselves in each community
+        for ind, node in enumerate(self.nodes):
+            node.overlays[0].simulation = self
             node.overlays[0].nodes = self.nodes
+            node.overlays[0].node_id = ind
 
         if not self.args.bypass_training:
             self.evaluator = ModelEvaluator(self.session_settings)
@@ -204,28 +204,21 @@ class DLSimulation(LearningSimulation):
 
         self.model_manager.reset_incoming_trained_adapters()
 
-    def build_topology(self):
-        self.logger.info("Building a %s topology", self.session_settings.dl.topology)
-        if self.session_settings.dl.topology == "ring":
-            # Build a simple ring topology
-            for ind in self.participants_ids:
-                nb_node = self.nodes[(ind + 1) % len(self.participants_ids)]
-                self.nodes[ind].overlays[0].neighbours = [nb_node.overlays[0].my_peer.public_key.key_to_bin()]
-        elif self.session_settings.dl.topology == "exp-one-peer":
-            G = ExponentialTwoGraph(len(self.participants_ids))
-            for node_ind in range(len(self.participants_ids)):
-                g = GetDynamicOnePeerSendRecvRanks(G, node_ind)
-                nb_ids = [next(g)[0][0] for _ in range(len(list(G.neighbors(node_ind))) - 1)]
-                for nb_ind in nb_ids:
-                    nb_pk = self.nodes[self.participants_ids[0] + nb_ind].overlays[0].my_peer.public_key.key_to_bin()
-                    self.nodes[self.participants_ids[0] + node_ind].overlays[0].neighbours.append(nb_pk)
-        elif self.session_settings.dl.topology == "k-regular":
+    def build_topology(self, round_nr: int) -> nx.Graph:
+        if round_nr in self.topologies:
+            return self.topologies[round_nr]
+
+        # Build the topology
+        if self.session_settings.dl.topology == "k-regular":
             k: int = floor(log(len(self.nodes), 2)) if self.args.k is None else self.args.k
-            self.logger.info("Building %d-regular graph topology", k)
-            G = nx.random_regular_graph(k, len(self.nodes), seed=self.args.seed)
-            for node_ind in range(len(self.nodes)):
-                for nb_node_ind in list(G.neighbors(node_ind)):
-                    nb_pk = self.nodes[nb_node_ind].overlays[0].my_peer.public_key.key_to_bin()
-                    self.nodes[node_ind].overlays[0].neighbours.append(nb_pk)
+            self.logger.info("Building %d-regular graph topology for round %d", k, round_nr)
+            return nx.random_regular_graph(k, len(self.nodes), seed=self.args.seed + round_nr)
         else:
             raise RuntimeError("Unknown DL topology %s" % self.session_settings.dl.topology)
+
+    def get_topology(self, round_nr: int) -> nx.Graph:
+        if self.session_settings.dl.el:
+            return self.build_topology(round_nr)
+
+        # Just return a single topology
+        return self.build_topology(1)

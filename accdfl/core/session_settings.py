@@ -39,7 +39,7 @@ class DLSettings:
     """
     Setting related to decentralized learning.
     """
-    topology: str = "exp-one-peer"
+    topology: str = "k-regular"
     el: bool = False
 
 

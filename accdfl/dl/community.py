@@ -1,13 +1,12 @@
 import asyncio
-import copy
 import json
-import time
 from asyncio import ensure_future
 from binascii import unhexlify
 from typing import Dict, List, Optional, Tuple
 
-import torch
-from torch import Future, nn
+import networkx as nx
+
+from torch import Future
 
 from accdfl.core.community import LearningCommunity
 from accdfl.core.gradient_aggregation import GradientAggregation
@@ -23,12 +22,13 @@ class DLCommunity(LearningCommunity):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.round: int = 0
-        self.neighbours: List[bytes] = []  # The PKs of the neighbours we will send our adapter to
         self.incoming_adapters: List[Tuple[bytes, Dict]] = []  # Incoming adapters for a round
         self.nodes = None
+        self.node_id: int = -1
         self.bandwidth: Optional[float] = None
         self.transfers: List[Tuple[str, str, int, float, float, str, bool]] = []
         self.aggregator: Optional[GradientAggregation] = None
+        self.simulation = None
 
         self.bw_scheduler: BWScheduler = BWScheduler(self.my_peer.public_key.key_to_bin(),
                                                      self.peer_manager.get_my_short_id())
@@ -38,8 +38,6 @@ class DLCommunity(LearningCommunity):
         Start to participate in the training process.
         """
         super().start()
-        if not self.neighbours:
-            raise RuntimeError("No neighbours for peer %s", self.peer_manager.get_my_short_id())
 
     def go_offline(self, graceful: bool = True):
         super().go_offline(graceful=graceful)
@@ -134,16 +132,13 @@ class DLCommunity(LearningCommunity):
         self.incoming_adapters.append((my_peer_pk, adapter_cpy))
 
         # Send the trained adapter to your neighbours
-        to_send = self.neighbours
-        if self.settings.dl.topology == "exp-one-peer":
-            nb_ind = (self.round - 1) % len(self.neighbours)
-            to_send = [self.neighbours[nb_ind]]
-
-        for peer_pk in to_send:
-            peer = self.get_peer_by_pk(peer_pk)
+        topology: nx.Graph = self.simulation.get_topology(self.round)
+        for nb_node_id in topology.neighbors(self.node_id):
+            nb_peer_pk = self.nodes[nb_node_id].overlays[0].my_peer.public_key.key_to_bin()
+            peer = self.get_peer_by_pk(nb_peer_pk)
             if not peer:
                 self.logger.warning("Participant %s cannot find Peer object for participant %s!",
-                                    self.peer_manager.get_my_short_id(), self.peer_manager.get_short_id(peer_pk))
+                                    self.peer_manager.get_my_short_id(), self.peer_manager.get_short_id(nb_peer_pk))
                 continue
 
             self.logger.info("Participant %s sending adapter of round %d to participant %s",
