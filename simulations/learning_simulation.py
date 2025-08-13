@@ -98,8 +98,6 @@ class LearningSimulation(TaskManager):
             self.test_dataset = self.dataset.load_split("test").with_transform(transform)
         elif self.session_settings.model == "gpt2":
             self.tokenizer = create_tokenizer(self.session_settings)
-
-            print(self.tokenizer)
             
             def text_collate(examples):
                 input_ids = torch.stack([torch.tensor(d["input_ids"]) for d in examples])

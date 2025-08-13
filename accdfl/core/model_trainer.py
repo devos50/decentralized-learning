@@ -79,11 +79,22 @@ class ModelTrainer:
                 batch = next(train_set_it)
 
             optimizer.zero_grad()
-            inputs = {k: v.to(self.settings.device) for k, v in batch.items() if k != 'labels'}
-            samples_trained_on += len(batch['labels'])
-            labels = batch['labels'].to(self.settings.device)
-            outputs = peft_model(**inputs)
-            loss = cross_entropy(outputs.logits, labels) if self.settings.model != "gpt2" else outputs[0]
+
+            is_lm = (self.settings.model in ["gpt2"])
+            if is_lm:
+                outputs = peft_model(
+                    input_ids=batch["input_ids"],
+                    attention_mask=batch.get("attention_mask"),
+                    labels=batch["labels"],
+                )
+                loss = outputs.loss
+            else:
+                inputs = {k: v.to(self.settings.device) for k, v in batch.items() if k != 'labels'}
+                samples_trained_on += len(batch['labels'])
+                labels = batch['labels'].to(self.settings.device)
+                outputs = peft_model(**inputs)
+                loss = cross_entropy(outputs.logits, labels)
+            
 
             loss.backward()
             optimizer.step()
