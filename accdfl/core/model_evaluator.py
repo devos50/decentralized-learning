@@ -1,3 +1,4 @@
+import math
 from typing import Optional
 import torch
 from torch.utils.data import DataLoader
@@ -58,43 +59,51 @@ class ModelEvaluator:
         mean_loss = total_loss / max(n_examples, 1)
         return {"accuracy": acc, "loss": mean_loss}
     
-    def compute_perplexity(self, eval_model, encodings):
-        max_length = 512 # eval_model.config.n_positions
-        stride = 512
-        seq_len = encodings.input_ids.size(1)
-        
-        nlls = []
-        prev_end_loc = 0
-        for begin_loc in range(0, seq_len, stride):
-            end_loc = min(begin_loc + max_length, seq_len)
-            trg_len = end_loc - prev_end_loc  # may be different from stride on last loop
-            input_ids = encodings.input_ids[:, begin_loc:end_loc].to(self.settings.device)
-            target_ids = input_ids.clone()
-            target_ids[:, :-trg_len] = -100
+    def evaluate_lm(self, eval_model):
+        """Compute token-avg NLL and perplexity on a pre-tokenized dataset."""
+        eval_model.to(self.settings.device)
+        eval_model.eval()
 
-            eval_model.eval()
-        
-            with torch.no_grad():
-                outputs = eval_model(input_ids, labels=target_ids)
-        
-                # loss is calculated using CrossEntropyLoss which averages over valid labels
-                # N.B. the model only calculates loss over trg_len - 1 labels, because it internally shifts the labels
-                # to the left by 1.
-                neg_log_likelihood = outputs.loss
-        
-            nlls.append(neg_log_likelihood)
-        
-            prev_end_loc = end_loc
-            if end_loc == seq_len:
-                break
-        
-        return torch.exp(torch.stack(nlls).mean())
+        # If you used fixed-size blocks with no padding, default collator is fine.
+        # Otherwise, make sure your collator returns tensors incl. 'labels'.
+        eval_dataloader = DataLoader(
+            self.test_dataset,
+            batch_size=512,
+            collate_fn=self.data_collator,
+            shuffle=False,
+        )
+
+        total_nll = 0.0
+        total_tokens = 0
+
+        with torch.no_grad():
+            for batch in eval_dataloader:
+                # move to device
+                batch = {k: v.to(self.settings.device) if torch.is_tensor(v) else v for k, v in batch.items()}
+
+                # forward with labels so model computes CE (ignore_index=-100)
+                outputs = eval_model(
+                    input_ids=batch["input_ids"],
+                    attention_mask=batch.get("attention_mask"),
+                    labels=batch["labels"],
+                )
+                loss = outputs.loss  # scalar CE averaged over valid labels in the batch
+
+                # weight by the number of valid (non -100) label tokens
+                valid = (batch["labels"] != -100).sum().item()
+                total_nll += loss.item() * valid
+                total_tokens += valid
+
+        mean_nll = total_nll / max(total_tokens, 1)
+        ppl = math.exp(mean_nll)
+        print(ppl)
+        return {"accuracy": None, "loss": mean_nll, "perplexity": ppl}
 
     def evaluate_accuracy(self, peft_model: PeftModel, adapter_to_test: str = "global"):
         peft_model.set_adapter(adapter_to_test)
         if self.settings.model == "gpt2":
             encodings = self.tokenizer("\n\n".join(self.test_dataset["text"]), return_tensors="pt")
-            eval_res = self.compute_perplexity(peft_model, encodings)
+            eval_res = self.evaluate_lm(peft_model, encodings)
         else:
             eval_res = self.evaluate_classification_model(peft_model)
         return eval_res['accuracy'], eval_res['loss']
