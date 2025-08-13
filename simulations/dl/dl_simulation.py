@@ -25,7 +25,7 @@ class DLSimulation(LearningSimulation):
         self.num_round_completed = 0
         self.participants_ids: List[int] = []
         self.round_nr: int = 1
-        self.data_dir = os.path.join("data", "n_%d_%s_sd%d_dl" % (self.args.peers, self.args.dataset, self.args.seed))
+        self.data_dir = os.path.join("data", "n_%d_%s_sd%d_%s" % (self.args.peers, self.args.dataset, self.args.seed, "dl" if not self.args.el else "el"))
         self.topologies: Dict[int, nx.DiGraph] = {}
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
@@ -189,7 +189,7 @@ class DLSimulation(LearningSimulation):
                 accuracy, loss = 0, 0
 
             with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
-                out_file.write("%s,%d,%g,DL,%f,%d,%d,%f,%f\n" % (self.args.dataset, self.args.seed, self.args.learning_rate,
+                out_file.write("%s,%d,%g,%s,%f,%d,%d,%f,%f\n" % (self.args.dataset, self.args.seed, self.args.learning_rate, "DL" if not self.args.el else "EL",
                                                                  get_event_loop().time(), 0, self.round_nr, accuracy, loss))
         elif self.args.dl_accuracy_method == "individual":
             results = self.test_models()
@@ -198,8 +198,8 @@ class DLSimulation(LearningSimulation):
                 accuracy, loss = acc_res
                 round_nr = self.nodes[ind].overlays[0].round
                 with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
-                    out_file.write("%s,%d,%g,DL,%f,%d,%d,%f,%f\n" %
-                                   (self.args.dataset, self.args.seed, self.args.learning_rate,
+                    out_file.write("%s,%d,%g,%s,%f,%d,%d,%f,%f\n" %
+                                   (self.args.dataset, self.args.seed, self.args.learning_rate, "DL" if not self.args.el else "EL",
                                     cur_time, ind, round_nr, accuracy, loss))
 
         self.model_manager.reset_incoming_trained_adapters()
