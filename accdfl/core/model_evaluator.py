@@ -102,8 +102,7 @@ class ModelEvaluator:
     def evaluate_accuracy(self, peft_model: PeftModel, adapter_to_test: str = "global"):
         peft_model.set_adapter(adapter_to_test)
         if self.settings.model == "gpt2":
-            encodings = self.tokenizer("\n\n".join(self.test_dataset["text"]), return_tensors="pt")
-            eval_res = self.evaluate_lm(peft_model, encodings)
+            eval_res = self.evaluate_lm(peft_model)
         else:
             eval_res = self.evaluate_classification_model(peft_model)
         return eval_res['accuracy'], eval_res['loss']
