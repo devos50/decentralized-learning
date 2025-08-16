@@ -320,7 +320,7 @@ class LearningSimulation(TaskManager):
     async def setup_simulation(self) -> None:
         self.logger.info("Setting up simulation with %d peers..." % self.args.peers)
         with open(os.path.join(self.data_dir, "accuracies.csv"), "w") as out_file:
-            out_file.write("dataset,seed,learning_rate,group,time,peer,round,accuracy,loss\n")
+            out_file.write("dataset,seed,learning_rate,group,time,peer,round,accuracy,loss,bytes_up,bytes_down,train_time\n")
 
         if self.args.activity_log_interval:
             with open(os.path.join(self.data_dir, "activities.csv"), "w") as out_file:
@@ -471,6 +471,19 @@ class LearningSimulation(TaskManager):
             "time": asyncio.get_event_loop().time(),
             "global": aggregate_stats
         }
+    
+    def get_bw_totals(self) -> Tuple[int, int]:
+        tot_up, tot_down = 0, 0
+        for node in self.nodes:
+            tot_up += node.overlays[0].endpoint.bytes_up
+            tot_down += node.overlays[0].endpoint.bytes_down
+        return tot_up, tot_down
+
+    def get_total_train_time(self) -> int:
+        total_train_time = 0
+        for node in self.nodes:
+            total_train_time += node.overlays[0].model_manager.model_trainer.total_training_time
+        return total_train_time
 
     def flush_statistics(self):
         """

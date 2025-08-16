@@ -193,13 +193,11 @@ class DFLSimulation(LearningSimulation):
             overlay.received_aggregated_adapter(overlay.my_peer, 1, global_adapter)
 
     async def on_aggregate_complete(self, ind: int, round_nr: int):
-        tot_up, tot_down = 0, 0
-        for node in self.nodes:
-            tot_up += node.overlays[0].endpoint.bytes_up
-            tot_down += node.overlays[0].endpoint.bytes_down
+        tot_up, tot_down = self.get_bw_totals()
+        train_time: float = self.get_total_train_time()
 
         cur_time = get_event_loop().time()
-        print("Round %d completed @ t=%f - bytes up: %d, bytes down: %d" % (round_nr, cur_time, tot_up, tot_down))
+        print("Round %d completed @ t=%f - bytes up: %d, bytes down: %d, train time: %f" % (round_nr, cur_time, tot_up, tot_down, train_time))
 
         if round_nr > self.latest_accuracy_check_round:
             if not self.last_round_complete_time:
@@ -219,8 +217,8 @@ class DFLSimulation(LearningSimulation):
 
             with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
                 group = "\"s=%d, a=%d\"" % (self.args.sample_size, self.args.num_aggregators)
-                out_file.write("%s,%d,%g,%s,%f,%d,%d,%f,%f\n" % (self.args.dataset, self.args.seed, self.args.learning_rate, group, get_event_loop().time(),
-                                                                 ind, round_nr, accuracy, loss))
+                out_file.write("%s,%d,%g,%s,%f,%d,%d,%f,%f,%d,%d,%f\n" % (self.args.dataset, self.args.seed, self.args.learning_rate, group, cur_time,
+                                                                 ind, round_nr, accuracy, loss, tot_up, tot_down, train_time))
 
                 if not self.args.bypass_training and self.args.store_best_models and accuracy > self.best_accuracy:
                     self.best_accuracy = accuracy

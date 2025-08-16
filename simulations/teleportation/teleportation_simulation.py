@@ -160,14 +160,11 @@ class TeleportationSimulation(LearningSimulation):
 
     def compute_all_accuracies(self):
         cur_time = get_event_loop().time()
+        tot_up, tot_down = self.get_bw_totals()
+        train_time: float = self.get_total_train_time()
 
-        tot_up, tot_down = 0, 0
-        for node in self.nodes:
-            tot_up += node.overlays[0].endpoint.bytes_up
-            tot_down += node.overlays[0].endpoint.bytes_down
-
-        self.logger.warning("Computing accuracies for all models, current time: %f, bytes up: %d, bytes down: %d",
-                            cur_time, tot_up, tot_down)
+        self.logger.warning("Computing accuracies for all models, current time: %f, bytes up: %d, bytes down: %d, total train time: %f",
+                            cur_time, tot_up, tot_down, train_time)
 
         # Put all the models in the model manager
         sample: List[int] = SampleManager.get_sample(self.round_nr, len(self.nodes), self.args.sample_size)
@@ -201,8 +198,8 @@ class TeleportationSimulation(LearningSimulation):
             print("Accuracy/loss: %f/%f" % (accuracy, loss))
 
             with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
-                out_file.write("%s,%d,%g,Teleportation,%f,%d,%d,%f,%f\n" % (self.args.dataset, self.args.seed, self.args.learning_rate,
-                                                                            get_event_loop().time(), 0, self.round_nr, accuracy, loss))
+                out_file.write("%s,%d,%g,Teleportation,%f,%d,%d,%f,%f,%d,%d,%f\n" % (self.args.dataset, self.args.seed, self.args.learning_rate,
+                                                                            cur_time, 0, self.round_nr, accuracy, loss, tot_up, tot_down, train_time))
         elif self.args.dl_accuracy_method == "individual":
             results = self.test_models()
 
@@ -210,9 +207,9 @@ class TeleportationSimulation(LearningSimulation):
                 accuracy, loss = acc_res
                 round_nr = self.nodes[ind].overlays[0].round
                 with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
-                    out_file.write("%s,%d,%g,%s,%f,%d,%d,%f,%f\n" %
+                    out_file.write("%s,%d,%g,%s,%f,%d,%d,%f,%f,%d,%d,%f\n" %
                                    (self.args.dataset, self.args.seed, self.args.learning_rate, "DL" if not self.args.el else "EL",
-                                    cur_time, ind, round_nr, accuracy, loss))
+                                    cur_time, ind, round_nr, accuracy, loss, tot_up, tot_down, train_time))
 
         self.model_manager.reset_incoming_trained_adapters()
 
