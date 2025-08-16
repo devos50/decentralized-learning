@@ -194,8 +194,8 @@ class TeleportationSimulation(LearningSimulation):
             print("Accuracy/loss: %f/%f" % (accuracy, loss))
 
             with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
-                out_file.write("%s,%d,%g,%s,%f,%d,%d,%f,%f\n" % (self.args.dataset, self.args.seed, self.args.learning_rate, "DL" if not self.args.el else "EL",
-                                                                 get_event_loop().time(), 0, self.round_nr, accuracy, loss))
+                out_file.write("%s,%d,%g,Teleportation,%f,%d,%d,%f,%f\n" % (self.args.dataset, self.args.seed, self.args.learning_rate,
+                                                                            get_event_loop().time(), 0, self.round_nr, accuracy, loss))
         elif self.args.dl_accuracy_method == "individual":
             results = self.test_models()
 
