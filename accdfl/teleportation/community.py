@@ -163,6 +163,7 @@ class TeleportationCommunity(LearningCommunity):
         self.model_manager.aggregator = self.aggregator
 
         self.model_manager.aggregate_trained_adapters()
+        self.model_manager.adopt_adapter(self.model_manager.global_adapter)
 
         # if self.round_complete_callback:
         #     ensure_future(self.round_complete_callback(self.round))
@@ -203,7 +204,7 @@ class TeleportationCommunity(LearningCommunity):
             # Send the adapter to the nodes in the next sample
             current_sample: List[int] = SampleManager.get_sample(self.round, len(self.nodes), self.settings.teleportation.sample_size)
             my_rank: int = current_sample.index(self.node_id)
-            next_sample: List[int] = SampleManager.get_sample(self.round, len(self.nodes), self.settings.teleportation.sample_size)
+            next_sample: List[int] = SampleManager.get_sample(self.round + 1, len(self.nodes), self.settings.teleportation.sample_size)
 
             peer_pk = self.nodes[next_sample[my_rank]].overlays[0].my_peer.public_key.key_to_bin()
             peer = self.get_peer_by_pk(peer_pk)

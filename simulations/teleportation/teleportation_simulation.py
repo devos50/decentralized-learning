@@ -174,7 +174,7 @@ class TeleportationSimulation(LearningSimulation):
         # Don't test all models for efficiency reasons, just up to 100% of the entire network
         FRACTION = 1.0
         eligible_nodes = random.sample(eligible_nodes, min(len(eligible_nodes), int(len(self.nodes) * FRACTION)))
-        print("Will test accuracy of %d nodes..." % len(eligible_nodes))
+        print("Will test accuracy of %d nodes in round %d..." % (len(eligible_nodes), self.round_nr))
 
         self.model_manager = ModelManager(self.peft_model, self.session_settings, 0)
         self.model_manager.aggregator = self.nodes[0].overlays[0].aggregator
@@ -190,6 +190,8 @@ class TeleportationSimulation(LearningSimulation):
                 accuracy, loss = self.evaluator.evaluate_accuracy(self.peft_model, adapter_to_test="global")
             else:
                 accuracy, loss = 0, 0
+
+            print("Accuracy/loss: %f/%f" % (accuracy, loss))
 
             with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
                 out_file.write("%s,%d,%g,%s,%f,%d,%d,%f,%f\n" % (self.args.dataset, self.args.seed, self.args.learning_rate, "DL" if not self.args.el else "EL",
