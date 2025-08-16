@@ -28,7 +28,6 @@ class TeleportationCommunity(LearningCommunity):
         self.bandwidth: Optional[float] = None
         self.transfers: List[Tuple[str, str, int, float, float, str, bool]] = []
         self.aggregator: Optional[GradientAggregation] = None
-        self.simulation = None
         self.node_id: int = -1
 
         self.bw_scheduler: BWScheduler = BWScheduler(self.my_peer.public_key.key_to_bin(),
@@ -74,13 +73,13 @@ class TeleportationCommunity(LearningCommunity):
                     break
 
                 transfer_start_time = asyncio.get_event_loop().time()
+                transfer_size: int = self.serialized_adapter_size + len(serialized_response)
                 if self.bw_scheduler.bw_limit > 0:
-                    transfer_size: int = len(binary_data) + len(serialized_response)
                     transfer = self.bw_scheduler.add_transfer(node.overlays[0].bw_scheduler, transfer_size)
-                    self.logger.info("Adapter transfer %s => %s started at t=%f",
+                    self.logger.info("Adapter transfer %s => %s started at t=%f (size: %d)",
                                      self.peer_manager.get_my_short_id(),
                                      node.overlays[0].peer_manager.get_my_short_id(),
-                                     transfer_start_time)
+                                     transfer_start_time, transfer_size)
                     try:
                         await transfer.complete_future
                     except RuntimeError:
@@ -97,8 +96,8 @@ class TeleportationCommunity(LearningCommunity):
                                      "completed" if transfer_success else "failed",
                                      transfer_start_time, transfer_time)
                 else:
-                    self.endpoint.bytes_up += len(binary_data) + len(serialized_response)
-                    node.overlays[0].endpoint.bytes_down += len(binary_data) + len(serialized_response)
+                    self.endpoint.bytes_up += transfer_size
+                    node.overlays[0].endpoint.bytes_down += transfer_size
 
                 json_data = json.loads(serialized_response.decode())
                 self.transfers.append((self.peer_manager.get_my_short_id(),
@@ -219,3 +218,4 @@ class TeleportationCommunity(LearningCommunity):
 
     def process_incoming_adapter_from_next_sample(self, incoming_adapter: Dict, peer_pk: bytes):
         self.model_manager.adopt_adapter(incoming_adapter)
+        self.simulation.on_node_round_done()

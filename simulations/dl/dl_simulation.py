@@ -28,6 +28,8 @@ class DLSimulation(LearningSimulation):
         self.data_dir = os.path.join("data", "n_%d_%s_sd%d_%s" % (self.args.peers, self.args.dataset, self.args.seed, "dl" if not self.args.el else "el"))
         self.topologies: Dict[int, nx.DiGraph] = {}
 
+        self.nodes_done_in_round: int = 0
+
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = super().get_ipv8_builder(peer_id)
         builder.add_overlay("DLCommunity", "my peer", [], [], {}, [])
@@ -88,6 +90,7 @@ class DLSimulation(LearningSimulation):
         for ind, node in enumerate(self.nodes):
             node.overlays[0].aggregator = aggregator
             node.overlays[0].setup(self.session_settings, self.peft_model)
+            node.overlays[0].serialized_adapter_size = self.serialized_adapter_size
             node.overlays[0].model_manager.model_trainer.setup_dataset(split_datasets[ind], self.tokenizer, self.data_collator)
             node.overlays[0].model_manager.adapter = adapters[ind]
             node.overlays[0].model_manager.global_adapter = global_adapter
@@ -110,10 +113,14 @@ class DLSimulation(LearningSimulation):
         self.round_start_time = get_event_loop().time()
         for node in self.nodes:
             node.overlays[0].start_round(self.round_nr)
-        self.register_task("round_done", self.on_round_done, interval=self.args.dl_round_timeout)
         if self.args.accuracy_logging_interval_is_in_sec:
             self.register_task("check_accuracy", self.compute_all_accuracies, interval=self.args.accuracy_logging_interval)
         await super().start_simulation()
+
+    def on_node_round_done(self):
+        self.nodes_done_in_round += 1
+        if self.nodes_done_in_round == len(self.nodes):
+            self.on_round_done()
 
     def on_round_done(self):
         self.logger.error("Round %d done", self.round_nr)
@@ -129,9 +136,6 @@ class DLSimulation(LearningSimulation):
         if transfers_to_kill > 0:
             self.logger.error("Killed %d transfers", transfers_to_kill)
 
-        for node in self.nodes:
-            node.overlays[0].aggregate_adapters()
-
         # Should we check the accuracy?
         if not self.args.accuracy_logging_interval_is_in_sec and self.args.accuracy_logging_interval > 0 and self.round_nr % self.args.accuracy_logging_interval == 0:
             self.compute_all_accuracies()
@@ -141,6 +145,7 @@ class DLSimulation(LearningSimulation):
             self.loop.stop()
 
         self.round_nr += 1
+        self.nodes_done_in_round = 0
         nodes_started = 0
 
         for node in self.nodes:

@@ -23,7 +23,7 @@ from peft import LoraConfig, PeftModel
 
 from accdfl.core.datasets import create_global_dataset, group_texts, tokenize_dataset, tokenize_txt_dataset
 from accdfl.core.model_manager import ModelManager
-from accdfl.core.models import create_adapters, create_base_model, create_tokenizer
+from accdfl.core.models import create_adapters, create_base_model, create_tokenizer, serialize_adapter
 from accdfl.core.session_settings import SessionSettings
 from accdfl.dfl.community import DFLCommunity
 from accdfl.dl.community import DLCommunity
@@ -60,6 +60,7 @@ class LearningSimulation(TaskManager):
         self.peft_model: Optional[PeftModel] = None
         self.tokenizer: Optional[AutoTokenizer] = None
         self.data_collator: Optional[DataCollatorWithPadding] = None
+        self.serialized_adapter_size: int = 0  # The size of the serialized adapter in bytes
 
         self.loop = DiscreteLoop()
         asyncio.set_event_loop(self.loop)
@@ -75,6 +76,14 @@ class LearningSimulation(TaskManager):
         # Create the adapters
         self.peft_config, self.peft_model, adapters, global_adapter = create_adapters(self.session_settings, base_model)
         self.peft_model.to(self.device)
+
+        # Compute the size of the serialized adapter
+        model_state_dict: Dict = self.peft_model.state_dict()
+        global_adapter_dict: Dict = {}
+        for k in global_adapter["keys"]:
+            global_adapter_dict[k] = model_state_dict[k]
+        self.serialized_adapter_size = len(serialize_adapter(global_adapter_dict))
+        self.logger.info("Serialized adapter size: %d bytes", self.serialized_adapter_size)
 
         # Create each of the datasets
         split_datasets = [self.dataset.load_partition(i, "train") for i in range(len(self.session_settings.participants))]

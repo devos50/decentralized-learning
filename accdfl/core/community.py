@@ -26,11 +26,13 @@ class LearningCommunity(Community):
         self.my_id = self.my_peer.public_key.key_to_bin()
         self.round_complete_callback: Optional[Callable] = None
         self.aggregate_complete_callback: Optional[Callable] = None
+        self.simulation = None
 
         self.peers_list: List[Peer] = []
 
         # Settings
         self.settings: Optional[SessionSettings] = None
+        self.serialized_adapter_size: int = 0  # Size of the serialized adapter in bytes
 
         # State
         self.is_active = False

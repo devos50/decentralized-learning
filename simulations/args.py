@@ -19,7 +19,7 @@ def get_args(dataset: str, default_lr: float, default_momentum: float = 0):
 
     # Traces
     parser.add_argument('--availability-traces', type=str, default=None)
-    parser.add_argument('--traces', type=str, default="none", choices=["none", "fedscale", "diablo"])
+    parser.add_argument('--traces', type=str, default="diablo", choices=["none", "fedscale", "diablo"])
     parser.add_argument('--seed', type=int, default=42)
 
     # Other settings
@@ -43,8 +43,6 @@ def get_args(dataset: str, default_lr: float, default_momentum: float = 0):
     parser.add_argument('--topology', type=str, default="k-regular")
     parser.add_argument('--k', type=int, default=None)
     parser.add_argument('--latencies-file', type=str, default="data/latencies.txt")
-    parser.add_argument('--gl-round-timeout', type=int, default=60)
-    parser.add_argument('--dl-round-timeout', type=int, default=120)
     parser.add_argument('--fix-aggregator', action=argparse.BooleanOptionalAction)
     parser.add_argument('--success-fraction', type=float, default=1.0)
     parser.add_argument('--liveness-success-fraction', type=float, default=0.4)

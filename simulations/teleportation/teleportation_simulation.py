@@ -28,6 +28,7 @@ class TeleportationSimulation(LearningSimulation):
         self.round_nr: int = 1
         self.data_dir = os.path.join("data", "n_%d_%s_sd%d_teleportation" % (self.args.peers, self.args.dataset, self.args.seed))
         self.topology: Optional[nx.Graph] = None
+        self.nodes_done_in_round: int = 0
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = super().get_ipv8_builder(peer_id)
@@ -89,6 +90,7 @@ class TeleportationSimulation(LearningSimulation):
         for ind, node in enumerate(self.nodes):
             node.overlays[0].aggregator = aggregator
             node.overlays[0].setup(self.session_settings, self.peft_model)
+            node.overlays[0].serialized_adapter_size = self.serialized_adapter_size
             node.overlays[0].model_manager.model_trainer.setup_dataset(split_datasets[ind], self.tokenizer, self.data_collator)
             node.overlays[0].model_manager.adapter = adapters[ind]
             node.overlays[0].model_manager.global_adapter = global_adapter
@@ -113,10 +115,14 @@ class TeleportationSimulation(LearningSimulation):
         first_sample: List[int] = SampleManager.get_sample(1, len(self.nodes), self.args.sample_size)
         for node_id in first_sample:
             self.nodes[node_id].overlays[0].start_round(self.round_nr)
-        self.register_task("round_done", self.on_round_done, interval=self.args.dl_round_timeout)
         if self.args.accuracy_logging_interval_is_in_sec:
             self.register_task("check_accuracy", self.compute_all_accuracies, interval=self.args.accuracy_logging_interval)
         await super().start_simulation()
+
+    def on_node_round_done(self):
+        self.nodes_done_in_round += 1
+        if self.nodes_done_in_round == self.args.sample_size:
+            self.on_round_done()
 
     def on_round_done(self):
         self.logger.error("Round %d done", self.round_nr)
@@ -142,6 +148,7 @@ class TeleportationSimulation(LearningSimulation):
 
         self.round_nr += 1
         nodes_started = 0
+        self.nodes_done_in_round = 0
 
         sample: List[int] = SampleManager.get_sample(self.round_nr, len(self.nodes), self.args.sample_size)
         for node_id in sample:
