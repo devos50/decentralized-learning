@@ -93,17 +93,20 @@ class LearningSimulation(TaskManager):
         # Tokenize the datasets (tonkenization, etc.)
         if self.session_settings.model == "google/vit-base-patch16-224":
             feature_extractor = ViTImageProcessor.from_pretrained(self.session_settings.model, cache_dir="data/models")
+            img_feature_name = "img" if self.session_settings.dataset != "food101" else "image"
 
             def transform(batch):
                 # batch["img"] is a list of PIL Images; batch["label"] is a list/array of ints
-                out = feature_extractor(batch["img"], return_tensors="pt")
+                out = feature_extractor(batch[img_feature_name], return_tensors="pt")
                 # Make sure labels are a 1D LongTensor of length batch_size
                 out["labels"] = torch.tensor(batch["label"], dtype=torch.long)
                 return out
 
             for ind in range(len(split_datasets)):
                 split_datasets[ind] = split_datasets[ind].with_transform(transform)
-            self.test_dataset = self.dataset.load_split("test").with_transform(transform)
+
+            self.test_split_name = "test" if self.session_settings.dataset != "food101" else "validation"
+            self.test_dataset = self.dataset.load_split(self.test_split_name).with_transform(transform)
         elif self.session_settings.model == "gpt2":
             self.tokenizer = create_tokenizer(self.session_settings)
             

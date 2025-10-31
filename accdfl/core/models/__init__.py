@@ -42,6 +42,8 @@ def create_base_model(base_model_name: str, dataset_name: str, dataset: Dataset)
         return AutoModelForCausalLM.from_pretrained(base_model_name, cache_dir="data/models")
     elif dataset_name == "cifar10":
         return ViTForImageClassification.from_pretrained(base_model_name, num_labels=10, ignore_mismatched_sizes=True, cache_dir="data/models")
+    elif dataset_name == "food101":
+        return ViTForImageClassification.from_pretrained(base_model_name, num_labels=101, ignore_mismatched_sizes=True, cache_dir="data/models")
     else:
         raise RuntimeError("Unknown dataset %s" % dataset_name)
 
