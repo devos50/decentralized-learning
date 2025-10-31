@@ -96,10 +96,20 @@ class LearningSimulation(TaskManager):
             img_feature_name = "img" if self.session_settings.dataset != "food101" else "image"
 
             def transform(batch):
-                # batch["img"] is a list of PIL Images; batch["label"] is a list/array of ints
-                out = feature_extractor(batch[img_feature_name], return_tensors="pt")
-                # Make sure labels are a 1D LongTensor of length batch_size
-                out["labels"] = torch.tensor(batch["label"], dtype=torch.long)
+                # Ensure every image is 3-channel RGB
+                imgs = []
+                for im in batch[img_feature_name]:  # list of PIL Images
+                    # If PIL image and not already RGB, convert
+                    if hasattr(im, "mode"):
+                        if im.mode != "RGB":
+                            im = im.convert("RGB")
+                    else:
+                        # (Paranoia) if something slips in that isn't PIL, raise early
+                        raise TypeError(f"Expected PIL.Image, got {type(im)}")
+                    imgs.append(im)
+
+                out = feature_extractor(images=imgs, return_tensors="pt")  # ViT/ImageProcessor
+                out["labels"] = torch.as_tensor(batch["label"], dtype=torch.long)
                 return out
 
             for ind in range(len(split_datasets)):
