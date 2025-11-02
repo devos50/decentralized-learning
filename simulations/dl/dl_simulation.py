@@ -192,7 +192,7 @@ class DLSimulation(LearningSimulation):
                 accuracy, loss = 0, 0
 
             with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
-                out_file.write("%s,%d,%g,%s,%f,%d,%d,%f,%f,%d,%d,%f\n" % (self.args.dataset, self.args.seed, self.args.learning_rate, "DL" if not self.args.el else "EL",
+                out_file.write("%s,%d,%g,%d,%s,%f,%d,%d,%f,%f,%d,%d,%f\n" % (self.args.dataset, self.args.seed, self.args.learning_rate, self.args.local_steps, "DL" if not self.args.el else "EL",
                                                                  cur_time, 0, self.round_nr, accuracy, loss, tot_up, tot_down, train_time))
         elif self.args.dl_accuracy_method == "individual":
             results = self.test_models()
@@ -201,8 +201,8 @@ class DLSimulation(LearningSimulation):
                 accuracy, loss = acc_res
                 round_nr = self.nodes[ind].overlays[0].round
                 with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
-                    out_file.write("%s,%d,%g,%s,%f,%d,%d,%f,%f,%d,%d,%f\n" %
-                                   (self.args.dataset, self.args.seed, self.args.learning_rate, "DL" if not self.args.el else "EL",
+                    out_file.write("%s,%d,%g,%d,%s,%f,%d,%d,%f,%f,%d,%d,%f\n" %
+                                   (self.args.dataset, self.args.seed, self.args.learning_rate, self.args.local_steps, "DL" if not self.args.el else "EL",
                                     cur_time, ind, round_nr, accuracy, loss, tot_up, tot_down, train_time))
 
         self.model_manager.reset_incoming_trained_adapters()

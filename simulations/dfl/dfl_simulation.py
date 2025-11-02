@@ -29,9 +29,9 @@ class DFLSimulation(LearningSimulation):
         self.last_round_complete_time: Optional[float] = None
         self.round_durations: List[float] = []
         self.best_accuracy: float = 0.0
-        self.data_dir = os.path.join("data", "n_%d_%s_s%d_a%d_sf%g_lr%g_sd%d_%s_dfl" % (
+        self.data_dir = os.path.join("data", "n_%d_%s_s%d_a%d_sf%g_lr%g_sd%d_ls%d_%s_dfl" % (
             self.args.peers, self.args.dataset, self.args.sample_size, self.args.num_aggregators,
-            self.args.success_fraction, self.args.learning_rate, self.args.seed, self.args.aggregate))
+            self.args.success_fraction, self.args.learning_rate, self.args.seed, self.args.local_steps, self.args.aggregate))
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = super().get_ipv8_builder(peer_id)
@@ -217,7 +217,7 @@ class DFLSimulation(LearningSimulation):
 
             with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
                 group = "\"s=%d, a=%d\"" % (self.args.sample_size, self.args.num_aggregators)
-                out_file.write("%s,%d,%g,%s,%f,%d,%d,%f,%f,%d,%d,%f\n" % (self.args.dataset, self.args.seed, self.args.learning_rate, group, cur_time,
+                out_file.write("%s,%d,%g,%d,%s,%f,%d,%d,%f,%f,%d,%d,%f\n" % (self.args.dataset, self.args.seed, self.args.learning_rate, self.args.local_steps, group, cur_time,
                                                                  ind, round_nr, accuracy, loss, tot_up, tot_down, train_time))
 
                 if not self.args.bypass_training and self.args.store_best_models and accuracy > self.best_accuracy:

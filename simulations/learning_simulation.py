@@ -333,7 +333,7 @@ class LearningSimulation(TaskManager):
     async def setup_simulation(self) -> None:
         self.logger.info("Setting up simulation with %d peers..." % self.args.peers)
         with open(os.path.join(self.data_dir, "accuracies.csv"), "w") as out_file:
-            out_file.write("dataset,seed,learning_rate,group,time,peer,round,accuracy,loss,bytes_up,bytes_down,train_time\n")
+            out_file.write("dataset,seed,learning_rate,local_steps,group,time,peer,round,accuracy,loss,bytes_up,bytes_down,train_time\n")
 
         if self.args.activity_log_interval:
             with open(os.path.join(self.data_dir, "activities.csv"), "w") as out_file:
