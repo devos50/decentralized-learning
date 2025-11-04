@@ -16,6 +16,9 @@ def get_aggregator(name: str, peft_model: PeftModel, global_adapter: Dict) -> 'G
     elif name == "fedavg":
         from accdfl.core.gradient_aggregation.fedavg import FedAvg
         return FedAvg(peft_model, global_adapter)
+    elif name == "fednesterov":
+        from accdfl.core.gradient_aggregation.fednesterov import FedNesterov
+        return FedNesterov(peft_model, global_adapter)
     else:
         raise ValueError(f"Unknown aggregator: {name}")
 

@@ -64,7 +64,7 @@ class ModelTrainer:
         self.total_training_time += elapsed_time
 
         peft_model.set_adapter("client_%d" % self.participant_index)
-        optimizer = torch.optim.AdamW(peft_model.parameters(), lr=self.settings.learning.learning_rate)
+        optimizer = torch.optim.AdamW(peft_model.parameters(), lr=self.settings.learning.learning_rate) HERE WE NEED TO DIFFERENTIATE BETWEEN SERVER AND CLIENT OPTIMIZERS
         peft_model.train()
         train_dataloader = DataLoader(self.dataset, batch_size=self.settings.learning.batch_size, shuffle=True, collate_fn=self.data_collator)
         train_set_it = iter(train_dataloader)
