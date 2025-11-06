@@ -12,7 +12,10 @@ class LearningSettings:
     """
     Settings related to the learning process.
     """
-    learning_rate: float
+    client_learning_rate: float
+    client_optimizer: str
+    server_learning_rate: float
+    server_optimizer: str
     momentum: float
     weight_decay: float
     batch_size: int
@@ -54,6 +57,14 @@ class TeleportationSettings:
     sample_size: int = 1
 
 
+@dataclass
+class DiLoCoSettings:
+    """
+    Setting related to DiLoCo.
+    """
+    pass
+
+
 @dataclass_json
 @dataclass
 class SessionSettings:
@@ -70,6 +81,7 @@ class SessionSettings:
     dfl: Optional[DFLSettings] = None
     dl: Optional[DLSettings] = None
     teleportation: Optional[TeleportationSettings] = None
+    diloco: Optional[DiLoCoSettings] = None
     model: Optional[str] = None
     alpha: float = 1
     partitioner: str = "uniform"  # uniform or dirichlet

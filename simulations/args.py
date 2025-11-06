@@ -1,12 +1,15 @@
 import argparse
 
 
-def get_args(dataset: str, default_lr: float, default_momentum: float = 0):
+def get_args(dataset: str):
     parser = argparse.ArgumentParser()
 
     # Learning settings
-    parser.add_argument('--learning-rate', type=float, default=default_lr)
-    parser.add_argument('--momentum', type=float, default=default_momentum)
+    parser.add_argument('--client-learning-rate', type=float, default=4e-4)
+    parser.add_argument('--client-optimizer', type=str, default="adamW", choices=["adamW"])
+    parser.add_argument('--server-learning-rate', type=float, default=0.7)
+    parser.add_argument('--server-optimizer', type=str, default="nesterov", choices=["nesterov"])
+    parser.add_argument('--momentum', type=float, default=0.9)
     parser.add_argument('--weight-decay', type=float, default=0)
     parser.add_argument('--batch-size', type=int, default=16)
     parser.add_argument('--local-steps', type=int, default=5)

@@ -11,6 +11,7 @@ from random import Random
 from statistics import median, mean
 from typing import Dict, List, Optional, Tuple
 
+from accdfl.diloco.community import DiLoCoCommunity
 import torch
 
 from transformers import AutoTokenizer, PreTrainedModel, DataCollatorWithPadding, ViTImageProcessor
@@ -162,6 +163,7 @@ class LearningSimulation(TaskManager):
                                 'DLCommunity': DLCommunity,
                                 'DFLCommunity': DFLCommunity,
                                 'TeleportationCommunity': TeleportationCommunity,
+                                'DiLoCoCommunity': DiLoCoCommunity,
                             })
             await instance.start()
 
