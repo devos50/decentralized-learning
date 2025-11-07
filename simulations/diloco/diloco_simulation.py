@@ -126,7 +126,7 @@ class DiLoCoSimulation(LearningSimulation):
                 accuracy, loss = 0, 0
 
             with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
-                out_file.write("%s,%d,%g,%d,%s,%f,%d,%d,%f,%f,%d,%d,%f\n" % (self.args.dataset, self.args.seed, self.args.learning_rate, self.args.local_steps, "diloco", cur_time,
+                out_file.write("%s,%d,%g,%d,%s,%f,%d,%d,%f,%f,%d,%d,%f\n" % (self.args.dataset, self.args.seed, self.args.client_learning_rate, self.args.local_steps, "diloco", cur_time,
                                                                  ind, round_nr, accuracy, loss, tot_up, tot_down, train_time))
 
             self.latest_accuracy_check_round = round_nr
