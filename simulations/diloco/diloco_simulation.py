@@ -103,10 +103,8 @@ class DiLoCoSimulation(LearningSimulation):
         
         self.round_completed_counts.pop(round_nr)
 
-        tot_up, tot_down = 0, 0
-        for node in self.nodes:
-            tot_up += node.overlays[0].endpoint.bytes_up
-            tot_down += node.overlays[0].endpoint.bytes_down
+        tot_up, tot_down = self.get_bw_totals()
+        train_time: float = self.get_total_train_time()
 
         cur_time = get_event_loop().time()
         print("Round %d completed @ t=%f - bytes up: %d, bytes down: %d" % (round_nr, cur_time, tot_up, tot_down))
@@ -128,9 +126,8 @@ class DiLoCoSimulation(LearningSimulation):
                 accuracy, loss = 0, 0
 
             with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
-                group = "\"s=%d, a=%d\"" % (self.args.sample_size, self.args.num_aggregators)
-                out_file.write("%s,%d,%g,%s,%f,%d,%d,%f,%f\n" % (self.args.dataset, self.args.seed, self.args.client_learning_rate, group, get_event_loop().time(),
-                                                                 ind, round_nr, accuracy, loss))
+                out_file.write("%s,%d,%g,%d,%s,%f,%d,%d,%f,%f,%d,%d,%f\n" % (self.args.dataset, self.args.seed, self.args.learning_rate, self.args.local_steps, "diloco", cur_time,
+                                                                 ind, round_nr, accuracy, loss, tot_up, tot_down, train_time))
 
             self.latest_accuracy_check_round = round_nr
 
@@ -147,96 +144,4 @@ class DiLoCoSimulation(LearningSimulation):
         self.round_start_time = get_event_loop().time()
         for node in self.nodes:
             node.overlays[0].start_round(self.round_nr)
-        if self.args.accuracy_logging_interval_is_in_sec:
-            self.register_task("check_accuracy", self.compute_all_accuracies, interval=self.args.accuracy_logging_interval)
         await super().start_simulation()
-
-    def on_node_round_done(self):
-        self.nodes_done_in_round += 1
-        if self.nodes_done_in_round == len(self.nodes):
-            self.on_round_done()
-
-    def on_round_done(self):
-        self.logger.error("Round %d done", self.round_nr)
-        transfers_to_kill = 0
-        for node in self.nodes:
-            if node.overlays[0].bw_scheduler.outgoing_transfers:
-                for ongoing_transfer in node.overlays[0].bw_scheduler.outgoing_transfers:
-                    self.logger.warning("Transfer %s still going on after round completed", ongoing_transfer)
-                    transfers_to_kill += 1
-
-            node.overlays[0].bw_scheduler.kill_all_transfers()
-
-        if transfers_to_kill > 0:
-            self.logger.error("Killed %d transfers", transfers_to_kill)
-
-        # Should we check the accuracy?
-        if not self.args.accuracy_logging_interval_is_in_sec and self.args.accuracy_logging_interval > 0 and self.round_nr % self.args.accuracy_logging_interval == 0:
-            self.compute_all_accuracies()
-
-        if self.args.rounds and self.round_nr >= self.args.rounds:
-            self.on_simulation_finished()
-            self.loop.stop()
-
-        self.round_nr += 1
-        self.nodes_done_in_round = 0
-        nodes_started = 0
-
-        for node in self.nodes:
-            if node.overlays[0].is_active:
-                node.overlays[0].start_round(self.round_nr)
-                nodes_started += 1
-
-        self.logger.error("Round %d started (with %d nodes)", self.round_nr, nodes_started)
-
-    def compute_all_accuracies(self):
-        cur_time = get_event_loop().time()
-        tot_up, tot_down = self.get_bw_totals()
-        train_time: float = self.get_total_train_time()
-
-        self.logger.warning("Computing accuracies for all models, current time: %f, bytes up: %d, bytes down: %d, total train time: %f",
-                            cur_time, tot_up, tot_down, train_time)
-
-        # Put all the models in the model manager
-        eligible_nodes = []
-        for ind, node in enumerate(self.nodes):
-            if not self.nodes[ind].overlays[0].is_active:
-                continue
-
-            eligible_nodes.append((ind, node))
-
-        # Don't test all models for efficiency reasons, just up to 100% of the entire network
-        FRACTION = 1.0
-        eligible_nodes = random.sample(eligible_nodes, min(len(eligible_nodes), int(len(self.nodes) * FRACTION)))
-        print("Will test accuracy of %d nodes..." % len(eligible_nodes))
-
-        self.model_manager = ModelManager(self.peft_model, self.session_settings, 0)
-        self.model_manager.aggregator = self.nodes[0].overlays[0].aggregator
-        self.model_manager.global_adapter = self.nodes[0].overlays[0].model_manager.global_adapter
-
-        for ind, node in eligible_nodes:
-            adapter = self.nodes[ind].overlays[0].model_manager.adapter
-            self.model_manager.process_incoming_trained_adapter(b"%d" % ind, adapter)
-
-        if self.args.dl_accuracy_method == "aggregate":
-            if not self.args.bypass_training:
-                self.model_manager.aggregate_trained_adapters()
-                accuracy, loss = self.evaluator.evaluate_accuracy(self.peft_model, adapter_to_test="global")
-            else:
-                accuracy, loss = 0, 0
-
-            with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
-                out_file.write("%s,%d,%g,%d,%s,%f,%d,%d,%f,%f,%d,%d,%f\n" % (self.args.dataset, self.args.seed, self.args.learning_rate, self.args.local_steps, "DL" if not self.args.el else "EL",
-                                                                 cur_time, 0, self.round_nr, accuracy, loss, tot_up, tot_down, train_time))
-        elif self.args.dl_accuracy_method == "individual":
-            results = self.test_models()
-
-            for ind, acc_res in results.items():
-                accuracy, loss = acc_res
-                round_nr = self.nodes[ind].overlays[0].round
-                with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
-                    out_file.write("%s,%d,%g,%d,%s,%f,%d,%d,%f,%f,%d,%d,%f\n" %
-                                   (self.args.dataset, self.args.seed, self.args.learning_rate, self.args.local_steps, "DL" if not self.args.el else "EL",
-                                    cur_time, ind, round_nr, accuracy, loss, tot_up, tot_down, train_time))
-
-        self.model_manager.reset_incoming_trained_adapters()
