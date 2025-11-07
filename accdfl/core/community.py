@@ -4,9 +4,12 @@ from binascii import unhexlify, hexlify
 from typing import Optional, Callable, Dict, List
 
 from peft import PeftModel
+from transformers import PreTrainedModel
 
 from accdfl.core import TransmissionMethod
+from accdfl.core.gradient_aggregation import GradientAggregation, get_server_optimizer
 from accdfl.core.model_manager import ModelManager
+from accdfl.core.models import create_base_model
 from accdfl.core.peer_manager import PeerManager
 from accdfl.core.session_settings import SessionSettings
 from accdfl.util.eva.protocol import EVAProtocol
@@ -94,14 +97,17 @@ class LearningCommunity(Community):
         cur_time = asyncio.get_event_loop().time()
         self.logger.info("Participant %s will go offline (t=%d)", self.peer_manager.get_my_short_id(), cur_time)
 
-    def setup(self, settings: SessionSettings, peft_model: PeftModel):
+    def setup(self, settings: SessionSettings, dataset) -> None:
         self.settings = settings
         for participant in settings.participants:
             self.peer_manager.add_peer(unhexlify(participant))
 
-        # Initialize the model
+        # Initialize the model and optimizer
+        model: PreTrainedModel = create_base_model(self.settings.model, self.settings.dataset, dataset._dataset)
         participant_index = settings.all_participants.index(hexlify(self.my_id).decode())
-        self.model_manager = ModelManager(peft_model, settings, participant_index)
+        self.model_manager = ModelManager(model, settings, participant_index)
+        server_optimizer: GradientAggregation = get_server_optimizer(self.settings.learning.server_optimizer, model)
+        self.model_manager.server_optimizer = server_optimizer
 
         # Setup the model transmission
         if self.settings.transmission_method == TransmissionMethod.EVA:

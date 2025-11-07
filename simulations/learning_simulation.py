@@ -14,17 +14,16 @@ from typing import Dict, List, Optional, Tuple
 from accdfl.diloco.community import DiLoCoCommunity
 import torch
 
-from transformers import AutoTokenizer, PreTrainedModel, DataCollatorWithPadding, ViTImageProcessor
+from transformers import AutoTokenizer, DataCollatorWithPadding, ViTImageProcessor
 import yappi
 
 import numpy as np
 
 from datasets import Dataset
-from peft import LoraConfig, PeftModel
 
 from accdfl.core.datasets import create_global_dataset, group_texts, tokenize_dataset, tokenize_txt_dataset
 from accdfl.core.model_manager import ModelManager
-from accdfl.core.models import create_adapters, create_base_model, create_tokenizer, serialize_adapter
+from accdfl.core.models import create_tokenizer
 from accdfl.core.session_settings import SessionSettings
 from accdfl.dfl.community import DFLCommunity
 from accdfl.dl.community import DLCommunity
@@ -57,34 +56,16 @@ class LearningSimulation(TaskManager):
         self.device: str = "cpu"
         self.dataset: Optional[Dataset] = None
         self.test_dataset: Optional[Dataset] = None
-        self.peft_config: Optional[LoraConfig] = None
-        self.peft_model: Optional[PeftModel] = None
         self.tokenizer: Optional[AutoTokenizer] = None
         self.data_collator: Optional[DataCollatorWithPadding] = None
-        self.serialized_adapter_size: int = 0  # The size of the serialized adapter in bytes
 
         self.loop = DiscreteLoop()
         asyncio.set_event_loop(self.loop)
 
-    def create_datasets_and_model(self):
+    def create_datasets(self):
         # Create the global dataset
         self.dataset = create_global_dataset(self.session_settings)
         self.dataset._prepare_dataset()
-
-        # Create the base model
-        base_model: PreTrainedModel = create_base_model(self.session_settings.model, self.session_settings.dataset, self.dataset._dataset)
-
-        # Create the adapters
-        self.peft_config, self.peft_model, adapters, global_adapter = create_adapters(self.session_settings, base_model)
-        self.peft_model.to(self.device)
-
-        # Compute the size of the serialized adapter
-        model_state_dict: Dict = self.peft_model.state_dict()
-        global_adapter_dict: Dict = {}
-        for k in global_adapter["keys"]:
-            global_adapter_dict[k] = model_state_dict[k]
-        self.serialized_adapter_size = len(serialize_adapter(global_adapter_dict))
-        self.logger.info("Serialized adapter size: %d bytes", self.serialized_adapter_size)
 
         # Create each of the datasets
         split_datasets = [self.dataset.load_partition(i, "train") for i in range(len(self.session_settings.participants))]
@@ -142,7 +123,7 @@ class LearningSimulation(TaskManager):
                 split_datasets[ind] = tokenize_dataset(split_datasets[ind], self.tokenizer)
             self.test_dataset = tokenize_dataset(self.dataset.load_split("test"), self.tokenizer).rename_column("label", "labels")
 
-        return split_datasets, adapters, global_adapter
+        return split_datasets
 
     def get_ipv8_builder(self, peer_id: int) -> ConfigBuilder:
         builder = ConfigBuilder().clear_keys().clear_overlays()

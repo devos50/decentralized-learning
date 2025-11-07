@@ -1,10 +1,16 @@
 from asyncio import Future, ensure_future
+import asyncio
 from binascii import hexlify, unhexlify
+import json
 from typing import Dict, List, Optional, Tuple
+
+import numpy as np
+import torch
 from accdfl.core.community import LearningCommunity
-from accdfl.core.gradient_aggregation import GradientAggregation
+from accdfl.core.models import serialize_chunk
 from accdfl.diloco.reduction_manager import ReductionManager
 from accdfl.diloco.round import Round
+from accdfl.util.eva.result import TransferResult
 from simulations.bandwidth_scheduler import BWScheduler
 
 
@@ -20,7 +26,6 @@ class DiLoCoCommunity(LearningCommunity):
         self.node_id: int = -1
         self.bandwidth: Optional[float] = None
         self.transfers: List[Tuple[str, str, int, float, float, str, bool]] = []
-        self.aggregator: Optional[GradientAggregation] = None
 
         self.bw_scheduler: BWScheduler = BWScheduler(self.my_peer.public_key.key_to_bin(),
                                                      self.peer_manager.get_my_short_id())
@@ -41,21 +46,35 @@ class DiLoCoCommunity(LearningCommunity):
         Perform a single round. This method is expected to be called by a global coordinator.
         """
         self.logger.info("Peer %s starting round %d", self.peer_manager.get_my_short_id(), self.round)
+        round_info: Round = self.round_info[self.round]
 
         # Train
-        await self.model_manager.train()
+        gradients, _ = await self.model_manager.train()
 
-        # 2. Share the model chunks in a ring all-reduce fashion
-        my_rank = await self.do_ring_allreduce(self.round_info[self.round])
-    
-    async def do_ring_allreduce(self, round_info: Round) -> int:
+        # 2. Synchronize the gradients in a ring all-reduce fashion
+        await self.do_ring_allreduce(self.round_info[self.round], gradients)
+
+        aggregated_gradients = round_info.reduction_manager.get_aggregated_gradients()
+        self.logger.info("Peer %s done with all-reduce in round %d", self.peer_manager.get_my_short_id(), round_info.round_nr)
+        round_info.reduction_manager = None
+
+        # Apply the outer optimizer
+        self.model_manager.apply_outer_optimizer(aggregated_gradients)
+
+        # Round completed!
+        self.logger.info("Participant %s completed round %d", self.peer_manager.get_my_short_id(), round_info.round_nr)
+        if self.round_complete_callback:
+            ensure_future(self.round_complete_callback(round_info.round_nr, self.model_manager.model))
+        self.round_info.pop(round_info.round_nr)
+
+    async def do_ring_allreduce(self, round_info: Round, gradients: list) -> None:
         round_nr: int = round_info.round_nr
-        participants = await self.determine_available_peers_for_sample(round_nr, self.settings.dfl.sample_size)
+        participants = [peer.public_key.key_to_bin() for peer in self.get_peers()]
         participants = sorted(participants)
         total_participants: int = len(participants)
         my_rank: int = participants.index(self.my_id)
 
-        round_info.reduction_manager = ReductionManager(round, self.model_manager.model, participants, my_rank)
+        round_info.reduction_manager = ReductionManager(round, gradients, participants, my_rank)
         round_info.reduction_manager.prepare()
 
         # Prepare all futures
@@ -84,5 +103,47 @@ class DiLoCoCommunity(LearningCommunity):
                 round_info.out_of_order_chunks.pop(step)
 
             await round_info.reduction_manager.receive_futures[step]
+    
+    def eva_send_chunk(self, round: int, step: int, chunk_idx: int, chunk, peer):
+        start_time = asyncio.get_event_loop().time()
+        serialized_chunk = serialize_chunk(chunk)
+        response = {"round": round, "step": step, "idx": chunk_idx, "type": "chunk"}
+        serialized_response = json.dumps(response).encode()
+        return self.schedule_eva_send_model(peer, serialized_response, serialized_chunk, start_time)
+    
+    async def on_receive(self, result: TransferResult):
+        peer_pk = result.peer.public_key.key_to_bin()
+        peer_id = self.peer_manager.get_short_id(peer_pk)
+        my_peer_id = self.peer_manager.get_my_short_id()
 
-        return my_rank
+        self.logger.info(f'Participant {my_peer_id} received data from participant {peer_id}: {result.info.decode()}')
+        json_data = json.loads(result.info.decode())
+
+        if json_data["type"] == "chunk":
+            incoming_chunk = torch.from_numpy(np.frombuffer(result.data, dtype=np.float32).copy())
+            self.received_model_chunk(json_data["round"], json_data["step"], json_data["idx"], incoming_chunk)
+            return
+        else:
+            raise RuntimeError("Received unknown message type %s" % json_data["type"])
+
+    def received_model_chunk(self, round_nr: int, step: int, chunk_idx: int, chunk) -> None:
+        if round_nr not in self.round_info:
+            # We received a chunk but haven't started this round yet - store it.
+            new_round = Round(round_nr)
+            self.round_info[round_nr] = new_round
+            new_round.out_of_order_chunks[step] = (chunk_idx, chunk)
+        else:
+            # Otherwise, process it right away!
+            reduction_manager = self.round_info[round_nr].reduction_manager
+            if reduction_manager:
+                # We started the reduction process already
+
+                # Are we waiting for this particular chunk? If so, process it right away.
+                if reduction_manager.step == step:
+                    self.round_info[round_nr].reduction_manager.process_received_chunk(step, chunk_idx, chunk)
+                else:
+                    # Otherwise, store it for processing later.
+                    self.round_info[round_nr].out_of_order_chunks[step] = (chunk_idx, chunk)
+            else:
+                # We didn't start the reduction process yet so just store it
+                self.round_info[round_nr].out_of_order_chunks[step] = (chunk_idx, chunk)

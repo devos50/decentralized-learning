@@ -3,11 +3,13 @@ import random
 from argparse import Namespace
 from asyncio import get_event_loop
 from binascii import hexlify
-from typing import List
+from typing import Dict, List, Optional
 
-from accdfl.core.gradient_aggregation import get_aggregator
+import torch
+
 from accdfl.core.model_evaluator import ModelEvaluator
 from accdfl.core.model_manager import ModelManager
+from accdfl.core.models import create_base_model
 from accdfl.core.session_settings import DiLoCoSettings, LearningSettings, SessionSettings
 
 from ipv8.configuration import ConfigBuilder
@@ -20,8 +22,12 @@ class DiLoCoSimulation(LearningSimulation):
     def __init__(self, args: Namespace) -> None:
         super().__init__(args)
         self.num_round_completed = 0
+        self.latest_accuracy_check_round: int = 0
+        self.last_round_complete_time: Optional[float] = None
         self.participants_ids: List[int] = []
         self.round_nr: int = 1
+        self.round_completed_counts: Dict[int, int] = {}
+        self.round_durations: List[float] = []
         self.data_dir = os.path.join("data", "n_%d_%s_sd%d_diloco" % (self.args.peers, self.args.dataset, self.args.seed))
         self.nodes_done_in_round: int = 0
 
@@ -65,20 +71,14 @@ class DiLoCoSimulation(LearningSimulation):
             eva_block_size=1000,
             bypass_training=self.args.bypass_training,
             device=self.device,
-            aggregate=self.args.aggregate,
         )
 
-        split_datasets, adapters, global_adapter = self.create_datasets_and_model()
-
-        aggregator = get_aggregator(self.args.aggregate, self.peft_model, global_adapter)
+        split_datasets = self.create_datasets()
 
         for ind, node in enumerate(self.nodes):
-            node.overlays[0].aggregator = aggregator
-            node.overlays[0].setup(self.session_settings, self.peft_model)
-            node.overlays[0].serialized_adapter_size = self.serialized_adapter_size
+            node.overlays[0].round_complete_callback = lambda round_nr, model, i=ind: self.on_round_complete(i, round_nr, model)
+            node.overlays[0].setup(self.session_settings, self.dataset)
             node.overlays[0].model_manager.model_trainer.setup_dataset(split_datasets[ind], self.tokenizer, self.data_collator)
-            node.overlays[0].model_manager.adapter = adapters[ind]
-            node.overlays[0].model_manager.global_adapter = global_adapter
 
         # Inject the nodes and ourselves in each community
         for ind, node in enumerate(self.nodes):
@@ -93,6 +93,55 @@ class DiLoCoSimulation(LearningSimulation):
         # Generated the statistics files
         with open(os.path.join(self.data_dir, "round_durations.csv"), "w") as out_file:
             out_file.write("round,duration\n")
+
+    async def on_round_complete(self, ind: int, round_nr: int, model):
+        if round_nr not in self.round_completed_counts:
+            self.round_completed_counts[round_nr] = 0
+        self.round_completed_counts[round_nr] += 1
+        if self.round_completed_counts[round_nr] < len(self.session_settings.participants):
+            return
+        
+        self.round_completed_counts.pop(round_nr)
+
+        tot_up, tot_down = 0, 0
+        for node in self.nodes:
+            tot_up += node.overlays[0].endpoint.bytes_up
+            tot_down += node.overlays[0].endpoint.bytes_down
+
+        cur_time = get_event_loop().time()
+        print("Round %d completed @ t=%f - bytes up: %d, bytes down: %d" % (round_nr, cur_time, tot_up, tot_down))
+
+        if round_nr > self.latest_accuracy_check_round:
+            if not self.last_round_complete_time:
+                self.round_durations.append(cur_time)
+            else:
+                self.round_durations.append(cur_time - self.last_round_complete_time)
+            self.last_round_complete_time = cur_time
+
+        if self.args.accuracy_logging_interval > 0 and round_nr % self.args.accuracy_logging_interval == 0 and \
+                round_nr > self.latest_accuracy_check_round:
+
+            print("Will compute accuracy for round %d!" % round_nr)
+            if not self.args.bypass_training:
+                accuracy, loss = self.evaluator.evaluate_accuracy(model)
+            else:
+                accuracy, loss = 0, 0
+
+            with open(os.path.join(self.data_dir, "accuracies.csv"), "a") as out_file:
+                group = "\"s=%d, a=%d\"" % (self.args.sample_size, self.args.num_aggregators)
+                out_file.write("%s,%d,%g,%s,%f,%d,%d,%f,%f\n" % (self.args.dataset, self.args.seed, self.args.client_learning_rate, group, get_event_loop().time(),
+                                                                 ind, round_nr, accuracy, loss))
+
+            self.latest_accuracy_check_round = round_nr
+
+        if self.args.rounds and round_nr >= self.args.rounds:
+            self.on_simulation_finished()
+            self.loop.stop()
+
+        # Otherwise, start the next round
+        self.round_nr += 1
+        for node in self.nodes:
+            node.overlays[0].start_round(self.round_nr)
 
     async def start_simulation(self) -> None:
         self.round_start_time = get_event_loop().time()

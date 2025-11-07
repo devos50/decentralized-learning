@@ -4,11 +4,9 @@ import torch
 from torch.utils.data import DataLoader
 
 from datasets import Dataset
-from transformers import AutoTokenizer, DataCollatorWithPadding
+from transformers import AutoTokenizer, DataCollatorWithPadding, PreTrainedModel
 
 import evaluate
-
-from peft import PeftModel
 
 from accdfl.core.session_settings import SessionSettings
 
@@ -99,10 +97,9 @@ class ModelEvaluator:
         print(ppl)
         return {"accuracy": 0.0, "loss": mean_nll, "perplexity": ppl}
 
-    def evaluate_accuracy(self, peft_model: PeftModel, adapter_to_test: str = "global"):
-        peft_model.set_adapter(adapter_to_test)
+    def evaluate_accuracy(self, model: PreTrainedModel):
         if self.settings.model == "gpt2":
-            eval_res = self.evaluate_lm(peft_model)
+            eval_res = self.evaluate_lm(model)
         else:
-            eval_res = self.evaluate_classification_model(peft_model)
+            eval_res = self.evaluate_classification_model(model)
         return eval_res['accuracy'], eval_res['loss']

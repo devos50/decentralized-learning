@@ -10,7 +10,6 @@ from torch import Future
 
 from accdfl.core.community import LearningCommunity
 from accdfl.core.gradient_aggregation import GradientAggregation
-from accdfl.core.models import serialize_adapter, unserialize_adapter
 from accdfl.teleportation.sample_manager import SampleManager
 from accdfl.util.eva.result import TransferResult
 from pyipv8.ipv8.peer import Peer

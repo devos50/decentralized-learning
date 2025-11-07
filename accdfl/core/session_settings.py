@@ -92,4 +92,3 @@ class SessionSettings:
     eva_max_simultaneous_transfers: int = 30  # Corresponds to a peak usage of ~3.4 MB/s for an aggregator
     bypass_training: bool = False  # Whether to bypass model training, can be useful to observe network dynamics
     device: str = "cpu"
-    aggregate: str = "fedavg"  # fedavg or fedadam

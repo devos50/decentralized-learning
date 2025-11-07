@@ -12,7 +12,6 @@ from typing import Dict, Optional, List, Tuple, Set
 from transformers import PreTrainedModel
 
 from accdfl.core.gradient_aggregation import GradientAggregation
-from accdfl.core.models import serialize_adapter, unserialize_adapter
 from ipv8.lazy_community import lazy_wrapper_wd
 from ipv8.messaging.payload_headers import BinMemberAuthenticationPayload, GlobalTimeDistributionPayload
 from ipv8.types import Peer

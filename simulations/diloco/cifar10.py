@@ -1,7 +1,6 @@
 from asyncio import ensure_future
 
 from simulations.args import get_args
-from simulations.dfl.dfl_simulation import DFLSimulation
 from simulations.diloco.diloco_simulation import DiLoCoSimulation
 
 if __name__ == "__main__":
