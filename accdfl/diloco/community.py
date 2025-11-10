@@ -11,6 +11,7 @@ from accdfl.core.models import serialize_chunk
 from accdfl.diloco.reduction_manager import ReductionManager
 from accdfl.diloco.round import Round
 from accdfl.util.eva.result import TransferResult
+from pyipv8.ipv8.peer import Peer
 from simulations.bandwidth_scheduler import BWScheduler
 
 
@@ -111,6 +112,56 @@ class DiLoCoCommunity(LearningCommunity):
         serialized_response = json.dumps(response).encode()
         return self.schedule_eva_send_model(peer, serialized_response, serialized_chunk, start_time)
     
+    def schedule_eva_send_model(self, peer: Peer, serialized_response: bytes, binary_data: bytes, start_time: float) -> Future:
+        future = ensure_future(self.bypass_send(peer, serialized_response, binary_data))
+        future.add_done_callback(lambda f: self.on_eva_send_done(f, peer, serialized_response, binary_data, start_time))
+        return future
+    
+    async def bypass_send(self, peer: Peer, serialized_response: bytes, binary_data: bytes):
+        found: bool = False
+        transfer_success: bool = True
+        transfer_time: float = 0
+        for node in self.nodes:
+            if node.overlays[0].my_peer == peer:
+                found = True
+                if not node.overlays[0].is_active:
+                    break
+
+                transfer_start_time = asyncio.get_event_loop().time()
+                transfer_size: int = len(binary_data) + len(serialized_response)
+                if self.bw_scheduler.bw_limit > 0:
+                    transfer = self.bw_scheduler.add_transfer(node.overlays[0].bw_scheduler, transfer_size)
+                    self.logger.info("Transfer %s => %s started at t=%f (size: %d)",
+                                     self.peer_manager.get_my_short_id(),
+                                     node.overlays[0].peer_manager.get_my_short_id(),
+                                     transfer_start_time, transfer_size)
+                    try:
+                        await transfer.complete_future
+                    except RuntimeError:
+                        transfer_success = False
+                    transfer_time = asyncio.get_event_loop().time() - transfer_start_time
+
+                    transferred_bytes: int = int(transfer.get_transferred_bytes())
+                    self.endpoint.bytes_up += transferred_bytes
+                    node.overlays[0].endpoint.bytes_down += transferred_bytes
+
+                    self.logger.info("Transfer %s => %s %s at t=%f and took %f s.",
+                                     self.peer_manager.get_my_short_id(),
+                                     node.overlays[0].peer_manager.get_my_short_id(),
+                                     "completed" if transfer_success else "failed",
+                                     transfer_start_time, transfer_time)
+                else:
+                    self.endpoint.bytes_up += transfer_size
+                    node.overlays[0].endpoint.bytes_down += transfer_size
+
+                if transfer_success:
+                    res = TransferResult(self.my_peer, serialized_response, binary_data, 0)
+                    ensure_future(node.overlays[0].on_receive(res))
+                break
+
+        if not found:
+            raise RuntimeError("Peer %s not found in node list!" % peer)
+
     async def on_receive(self, result: TransferResult):
         peer_pk = result.peer.public_key.key_to_bin()
         peer_id = self.peer_manager.get_short_id(peer_pk)

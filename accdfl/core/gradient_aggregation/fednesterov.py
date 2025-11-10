@@ -3,6 +3,8 @@ from accdfl.core.gradient_aggregation.fedopt import FedOpt
 
 import torch
 
+from accdfl.core.session_settings import SessionSettings
+
 
 class FedNesterov(FedOpt):
     """
@@ -11,9 +13,10 @@ class FedNesterov(FedOpt):
     def __init__(
         self,
         model: PreTrainedModel,
-        lr: float = 5e-3,
+        settings: SessionSettings,
     ):
         self.opt = torch.optim.SGD(
-            model.parameters(), lr=lr, momentum=0.9, nesterov=True
+            model.parameters(), lr=settings.learning.server_learning_rate, momentum=settings.learning.server_momentum, nesterov=True
         )
         self.model = model
+        self.settings = settings

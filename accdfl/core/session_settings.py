@@ -16,7 +16,8 @@ class LearningSettings:
     client_optimizer: str
     server_learning_rate: float
     server_optimizer: str
-    momentum: float
+    client_momentum: float
+    server_momentum: float
     weight_decay: float
     batch_size: int
     local_steps: int

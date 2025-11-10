@@ -106,7 +106,7 @@ class LearningCommunity(Community):
         model: PreTrainedModel = create_base_model(self.settings.model, self.settings.dataset, dataset._dataset)
         participant_index = settings.all_participants.index(hexlify(self.my_id).decode())
         self.model_manager = ModelManager(model, settings, participant_index)
-        server_optimizer: GradientAggregation = get_server_optimizer(self.settings.learning.server_optimizer, model)
+        server_optimizer: GradientAggregation = get_server_optimizer(model, settings)
         self.model_manager.server_optimizer = server_optimizer
 
         # Setup the model transmission

@@ -108,7 +108,7 @@ class ModelTrainer:
 
         # 2) Delta = θ_inner - θ_base (per-parameter list)
         with torch.no_grad():
-            gradients = [p_i.detach().clone() - p_b.detach().clone() for p_i, p_b in zip(inner_model.parameters(), base_model.parameters())]
+            gradients = [p_b.detach().clone() - p_i.detach().clone() for p_i, p_b in zip(inner_model.parameters(), base_model.parameters())]
 
         return gradients, samples_trained_on
 
